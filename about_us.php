@@ -441,7 +441,7 @@
     <main class="about-page">
       <section class="page-heading">
         <h1>About <span>LokalCraft</span></h1>
-        <p>Empowering Taguig's handicraft artisans through technology and community</p>
+        <p>Empowering Taguig's handicraft artisanshdhdhdhdhd through technology and community</p>
       </section>
       <div class="tabs-wrap">
         <button class="tab-button active" type="button" data-tab="mission">Mission &amp; Vision</button>
