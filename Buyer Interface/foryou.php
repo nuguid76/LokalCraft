@@ -229,6 +229,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marketplace_action'])
                 ];
             } finally { $stmt->close(); }
             $storeReviewsReady = marketplaceReviewsReady($conn);
+            // Calculate shop-wide reviews from all of this seller's products.
+            // A true review-weighted average, not an average of product averages.
+            $shopReviewCount = 0;
+            $shopAverageRating = 0.0;
+            if ($storeReviewsReady) {
+                $shopStatsStmt = $conn->prepare('SELECT COUNT(*), COALESCE(AVG(r.rating), 0) FROM reviews r INNER JOIN products p ON p.product_id = r.product_id WHERE p.seller_id = ?');
+                if ($shopStatsStmt) {
+                    try {
+                        $shopStatsStmt->bind_param('i', $storeSellerId);
+                        $shopStatsStmt->execute();
+                        $shopStatsStmt->bind_result($shopReviewCount, $shopAverageRating);
+                        $shopStatsStmt->fetch();
+                    } finally {
+                        $shopStatsStmt->close();
+                    }
+                }
+            }
+            $shop['review_count'] = (int)$shopReviewCount;
+            $shop['avg_rating'] = $shopReviewCount > 0 ? round((float)$shopAverageRating, 1) : 0.0;
             $reviewJoin = $storeReviewsReady
                 ? 'LEFT JOIN (SELECT product_id, COUNT(*) AS review_count, AVG(rating) AS avg_rating FROM reviews GROUP BY product_id) r ON r.product_id=p.product_id'
                 : '';
@@ -466,7 +485,7 @@ asort($marketBarangayOptions, SORT_NATURAL | SORT_FLAG_CASE);
   <title>LokalCraft | Marketplace</title>
   <style>
     :root {
-      --bg: #f3f3f3;
+      --bg: #fff8ed;
       --text: #2d2d2d;
       --muted: #6e6e73;
       --line: #e2e1de;
@@ -493,7 +512,7 @@ asort($marketBarangayOptions, SORT_NATURAL | SORT_FLAG_CASE);
     .page {
       display: flex;
       min-height: 100vh;
-      background: #f4f3f1;
+      background: #fff8ed;
     }
     .content {
       flex: 1;
@@ -502,7 +521,7 @@ asort($marketBarangayOptions, SORT_NATURAL | SORT_FLAG_CASE);
       position: relative;
     }
     .marketplace-wrap {
-      max-width: 1180px;
+      max-width: 1600px;
       margin: 0 auto;
     }
     .heading-row {
@@ -688,7 +707,7 @@ asort($marketBarangayOptions, SORT_NATURAL | SORT_FLAG_CASE);
       padding: 70px 20px;
       border: 1px solid var(--line);
       border-radius: 14px;
-      background: rgba(255,255,255,0.55);
+      background: #fffefc;
       text-align: center;
     }
     .empty-state h2 {
@@ -1364,12 +1383,12 @@ asort($marketBarangayOptions, SORT_NATURAL | SORT_FLAG_CASE);
     }
 
 /* Buyer Marketplace — shared LokalCraft cream/orange design and mobile-first dialogs. */
-:root{--bg:#f8f7f5;--text:#342d27;--muted:#80756b;--line:#eae1d8;--panel:#fff;--soft:#fffaf5;--orange:#e98b40;--orange-soft:#fff1e4;--green:#278553}
-body{background:#f8f7f5;color:#342d27}
+:root{--bg:#fff8ed;--text:#342d27;--muted:#80756b;--line:#eae1d8;--panel:#fff;--soft:#fffaf5;--orange:#e98b40;--orange-soft:#fff1e4;--green:#278553}
+body{background:#fff8ed;color:#342d27}
 .page>.content{padding:80px 26px 38px!important;min-width:0}
-.marketplace-wrap{max-width:1220px;min-width:0}
+.marketplace-wrap{max-width:1600px;min-width:0}
 .heading-row{margin-bottom:20px}.page-title{font-size:clamp(1.6rem,3.3vw,2.1rem);letter-spacing:-.04em;color:#382c22}.page-subtitle{max-width:690px;font-size:.83rem;line-height:1.5;color:#9a8a7b}
-.product-grid{gap:16px}.product-card{border:1px solid #eae0d7;background:#fffdfa;border-radius:18px;box-shadow:0 8px 22px rgba(67,44,22,.045)}
+.product-grid{gap:16px}.product-card{border:1px solid #eae0d7;background:#fffefc;border-radius:18px;box-shadow:0 8px 22px rgba(67,44,22,.045)}
 .product-card:hover{box-shadow:0 11px 24px rgba(67,44,22,.09)}.product-image-wrap{background:#f3ede6}.product-name{color:#3f3329}.product-price{color:#b76624}.seller-tag{color:#71553b}
 .product-save-btn{display:grid;place-items:center;font-size:20px}.product-save-btn.is-saved{color:#d36d23}
 .product-details-modal,.lc-store-modal,.marketplace-action-modal{position:fixed!important;inset:0!important;width:100%!important;height:var(--lc-vh,100dvh)!important;min-width:0;box-sizing:border-box}
@@ -1412,8 +1431,8 @@ body.modal-open{overflow:hidden;touch-action:pan-y}
 
 /* Buyer Marketplace polish — profile-style identity, independent scroll areas, floating controls. */
 :root{--lc-brand:#ea8a3a;--lc-brand-deep:#b8662c;--lc-cream:#fff5e9;--lc-surface:#fffdfb;--lc-hairline:#eadfd5;--lc-ink:#382f29;--lc-shadow:0 24px 65px rgba(43,28,16,.2)}
-body{background:#f8f7f5;color:var(--lc-ink)}
-.product-grid{row-gap:18px}.product-card{border-radius:19px;background:#fff;border-color:var(--lc-hairline)}
+body{background:#fff8ed;color:var(--lc-ink)}
+.product-grid{row-gap:18px}.product-card{border-radius:19px;background:#fffefc;border-color:var(--lc-hairline)}
 .product-card:focus-visible{outline:3px solid #e8a96e;outline-offset:2px}
 .product-details-panel,.lc-store-panel{background:var(--lc-surface);border:1px solid #ead9c9;border-radius:22px;box-shadow:var(--lc-shadow)}
 /* The close controls are absolutely positioned siblings of scrolling content. */
@@ -1434,7 +1453,7 @@ body{background:#f8f7f5;color:var(--lc-ink)}
 .product-details-price{font-size:1.45rem;color:#ba6829}.product-details-rating{color:#77675b}.product-details-description{font-size:.87rem;line-height:1.7;color:#66594e}.product-details-section-title{font-size:.92rem}
 .product-details-actions{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 48px;gap:9px;margin-top:6px}
 .product-details-btn{min-height:48px;border-radius:12px;font-size:.79rem;min-width:0}
-.seller-details-card,.product-reviews-card{margin-top:20px;padding:17px;border:1px solid #eddfd2;border-radius:16px;background:#fff;box-shadow:none}
+.seller-details-card,.product-reviews-card{margin-top:20px;padding:17px;border:1px solid #eddfd2;border-radius:16px;background:#fffefc;box-shadow:none}
 .seller-details-title,.product-reviews-title{display:flex;align-items:center;gap:9px;margin:0 0 15px;color:#47372c;font-size:.9rem;font-weight:800}
 .seller-details-title svg,.product-reviews-title svg{width:18px;height:18px;color:#bd783c;flex:none}
 .seller-details-row{align-items:center;gap:10px}.seller-details-person{flex:1 1 auto;min-width:0}
@@ -1462,7 +1481,7 @@ body{background:#f8f7f5;color:var(--lc-ink)}
 .lc-store-fact small{font-size:.73rem;color:#a08368}.lc-store-fact strong{font-size:.85rem;color:#5c4b3d}
 .lc-store-products-heading{margin:25px 0 14px}.lc-store-products-heading h3{font-size:1.05rem;color:#433428}
 .lc-store-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.lc-store-product{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:0;min-height:0;padding:0;border:1px solid #eadfd5;border-radius:16px;background:#fff;text-align:left;overflow:hidden;box-shadow:0 6px 17px rgba(43,27,15,.045);transition:border-color .16s,transform .16s,box-shadow .16s}
+.lc-store-product{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:0;min-height:0;padding:0;border:1px solid #eadfd5;border-radius:16px;background:#fffefc;text-align:left;overflow:hidden;box-shadow:0 6px 17px rgba(43,27,15,.045);transition:border-color .16s,transform .16s,box-shadow .16s}
 .lc-store-product:hover{border-color:#d9ac85;background:#fff;transform:translateY(-2px);box-shadow:0 12px 26px rgba(43,27,15,.1)}
 .lc-store-product-image{flex:none;width:100%;height:auto;aspect-ratio:1/0.9;border-radius:0;display:grid;place-items:center;background:#f5eee6;overflow:hidden}
 .lc-store-product-image img{width:100%;height:100%;object-fit:cover}.lc-store-product-image svg{width:34px;height:34px;color:#bd8d65}
@@ -1808,6 +1827,138 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
 .lc-toast-action:focus-visible{outline:2px solid #fff;outline-offset:3px;border-radius:3px}
 @media(max-width:560px){.product-details-actions{grid-template-columns:minmax(0,1fr) 44px;gap:7px}.lc-cart-guidance{font-size:.72rem}}
 @media(max-width:350px){.product-details-actions{grid-template-columns:minmax(0,1fr) 40px}}
+
+/* At a 1600px desktop viewport, fit five products instead of enlarging four. */
+@media (min-width:1500px){
+  .product-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+/* Marketplace palette: dark-brown action buttons, saved hearts, and filters. */
+:root{
+  --lc-accent-dark:#6c402b;
+  --lc-accent-dark-hover:#512e20;
+  --lc-action-cream:#fff8ed;
+}
+/* Keep the original white/cream saved-button surface, recolor only its heart. */
+.product-save-btn.is-saved,
+.product-details-save.is-saved,
+.product-details-save:hover,
+.lc-store-save-btn.is-saved{
+  color:var(--lc-accent-dark);
+}
+.product-save-btn.is-saved{background:#fff4e9}
+.product-details-save.is-saved,.product-details-save:hover{background:#fff0e1;border-color:#d2a98a}
+.lc-store-save-btn.is-saved{background:#fff2e5}
+/* Keep category badges and the requested identity accents dark brown. */
+.category-badge,.product-details-category,.lc-store-item-category,
+.lc-store-product-meta .lc-store-item-category{color:var(--lc-accent-dark)!important}
+.lc-card-store,.lc-store-name,.marketplace-action-kicker,
+.lc-store-role,.lc-eyebrow{
+  color:var(--lc-accent-dark);
+}
+/* Prices and product titles keep their original pre-palette colors. */
+.product-price{color:#b76624}
+.product-details-price{color:#bc702f}
+.lc-store-product-meta .lc-store-item-price{color:#b86629}
+.product-name{color:#3f3329}
+.product-details-name{color:#3b2d23}
+.lc-store-product-meta strong{color:#433529}
+.lc-store-fact-icon,.lc-filter-picker-leading,.seller-details-title svg,
+.product-reviews-title svg{color:var(--lc-accent-dark)}
+/* Solid dark-brown actions with white button labels. */
+.product-details-cart,.lc-view-store,
+.marketplace-primary-action{
+  background:var(--lc-accent-dark);
+  border-color:var(--lc-accent-dark);
+  color:#fff;
+}
+.product-details-cart:hover:not(:disabled),.lc-view-store:hover,
+.marketplace-primary-action:hover{
+  background:var(--lc-accent-dark-hover);
+  border-color:var(--lc-accent-dark-hover);
+  color:#fff;
+}
+/* See Business Details returns to its original white button and brown text.
+   Keep secondary Message actions intact; store avatar remains dark brown. */
+.seller-action-btn:not(.lc-view-store){color:var(--lc-accent-dark)}
+/* Seller/store profile avatars retain their white initials. */
+.seller-avatar,.lc-store-avatar{
+  background:linear-gradient(135deg,#78482f,#573120);
+  color:#fff;
+}
+/* Shop-wide rating beneath the store avatar. */
+.lc-store-summary{
+  grid-template-columns:136px minmax(0,1fr) auto;
+}
+.lc-store-identity{
+  grid-area:avatar;
+  width:136px;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  align-self:center;
+}
+.lc-store-identity .lc-store-avatar{
+  grid-area:auto;
+  align-self:center;
+  justify-self:center;
+  margin:0;
+}
+.lc-store-reviews{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  column-gap:5px;
+  row-gap:1px;
+  max-width:100%;
+  text-align:center;
+  color:#624937;
+  font-size:.73rem;
+  font-weight:800;
+  line-height:1.35;
+  font-variant-numeric:tabular-nums;
+}
+.lc-store-review-star{color:#e3a22e;font-size:1.02rem;line-height:1}
+/* Filters: checked option stays dark brown; Apply Filter uses cream text. */
+.lc-market-filter-count,.lc-filter-option[aria-selected="true"] .lc-filter-option-check{
+  background:var(--lc-accent-dark);
+  color:#fff;
+}
+.lc-filter-option[aria-selected="true"]{
+  background:#f3e9dd;
+  color:var(--lc-accent-dark);
+}
+.lc-filter-option:hover,.lc-filter-option:focus-visible{
+  background:#f6ede4;
+  color:var(--lc-accent-dark);
+}
+.lc-market-filter-apply{
+  background:var(--lc-accent-dark);
+  border-color:var(--lc-accent-dark);
+  color:var(--lc-action-cream);
+}
+.lc-market-filter-apply:hover{
+  background:var(--lc-accent-dark-hover);
+  border-color:var(--lc-accent-dark-hover);
+  color:var(--lc-action-cream);
+}
+.lc-market-filter-trigger,.lc-filter-option-check,.lc-market-filter-chip,
+.lc-filter-picker-leading,.lc-filter-picker-toggle[aria-expanded="true"]{
+  color:var(--lc-accent-dark);
+}
+@media (max-width:760px){
+  .lc-store-summary{grid-template-columns:110px minmax(0,1fr);grid-template-areas:"avatar details" "avatar status"}
+  .lc-store-identity{width:110px}
+  .lc-store-reviews{font-size:.67rem}
+}
+@media (max-width:360px){
+  .lc-store-summary{grid-template-columns:88px minmax(0,1fr)}
+  .lc-store-identity{width:88px}
+  .lc-store-reviews{font-size:.63rem}
+}
   </style>
 </head>
 <body>
@@ -2330,8 +2481,18 @@ function renderStore(data){
   $('lcStoreTitle').textContent='Store Profile';
   $('lcStoreSummary').replaceChildren();
   const avatar=document.createElement('div');avatar.className='lc-store-avatar';avatar.textContent=String(name).trim().slice(0,2).toUpperCase();
+  const identity=document.createElement('div');identity.className='lc-store-identity';
+  const shopReviewCount=Math.max(0,Number(shop.review_count)||0);
+  const shopRating=Math.max(0,Math.min(5,Number(shop.avg_rating)||0));
+  const shopReviews=document.createElement('div');shopReviews.className='lc-store-reviews';
+  const reviewStar=document.createElement('span');reviewStar.className='lc-store-review-star';reviewStar.textContent=shopReviewCount?'★':'☆';
+  const reviewText=document.createElement('span');reviewText.textContent=shopReviewCount
+    ? shopRating.toFixed(1)+' ('+shopReviewCount+' '+(shopReviewCount===1?'review':'reviews')+')'
+    : 'No reviews yet';
+  shopReviews.setAttribute('aria-label',shopReviewCount?shopRating.toFixed(1)+' out of 5 stars from '+shopReviewCount+' reviews':'No store reviews yet');
+  shopReviews.append(reviewStar,reviewText);identity.append(avatar,shopReviews);
   const meta=document.createElement('div');meta.className='lc-store-profile-details';const role=document.createElement('span');role.className='lc-store-role';role.textContent='VERIFIED LOCAL ARTISAN';const nameEl=document.createElement('div');nameEl.className='lc-store-summary-name';nameEl.textContent=name;
-  const sub=document.createElement('div');sub.className='lc-store-summary-meta';sub.textContent=[shop.craftcategory,shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(' · ');meta.append(role,nameEl,sub);const active=document.createElement('span');active.className='lc-store-active';active.innerHTML='<span class="lc-store-active-dot"></span>Active Store';$('lcStoreSummary').append(avatar,meta,active);
+  const sub=document.createElement('div');sub.className='lc-store-summary-meta';sub.textContent=[shop.craftcategory,shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(' · ');meta.append(role,nameEl,sub);const active=document.createElement('span');active.className='lc-store-active';active.innerHTML='<span class="lc-store-active-dot"></span>Active Store';$('lcStoreSummary').append(identity,meta,active);
   const facts=$('lcStoreFacts');facts.replaceChildren(storeFact('Seller Name',shop.seller_name),storeFact('Craft Category',shop.craftcategory),storeFact('Business Description',shop.description,true),storeFact('Business Location',[shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(', '),true));
   $('lcStoreMore').hidden=false;$('lcStoreProductCount').textContent=items.length+' items';
   const listing=$('lcStoreProducts');listing.replaceChildren();

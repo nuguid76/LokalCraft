@@ -31,443 +31,6 @@ if (count($sellerNameParts) > 1) {
 }
 if ($headerInitials === '') $headerInitials = 'SE';
 ?>
-<div class="seller-header-tools">
-  <button
-    class="seller-menu-toggle"
-    id="sellerSidebarToggle"
-    type="button"
-    aria-label="Open navigation menu"
-    aria-expanded="false"
-    aria-controls="sellerSidebar"
-  >
-    <span class="seller-menu-lines" aria-hidden="true"><span></span><span></span><span></span></span>
-  </button>
-  <div class="seller-search-layout">
-    <div class="filters" id="sellerHeaderFilters">
-      <div class="filter-box search">
-        <span class="search-icon">🔍︎</span>
-        <input id="productSearch" type="text" placeholder="<?php echo htmlspecialchars($searchPlaceholder); ?>" aria-label="Search products" />
-      </div>
-    </div>
-  </div>
-  <div class="seller-header-actions">
-    <div class="seller-notifications" id="sellerNotifications">
-      <button class="seller-notification" type="button" id="sellerNotificationsToggle"
-        aria-label="Seller notifications" aria-haspopup="dialog" aria-expanded="false"
-        aria-controls="sellerNotificationsPanel" title="Seller notifications">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
-          <path d="M10 21h4"/>
-        </svg>
-        <span class="seller-notification-count" id="sellerNotificationCount" hidden>0</span>
-      </button>
-    </div>
-    <div class="seller-account">
-      <button
-        class="seller-avatar-button"
-        id="sellerAvatarButton"
-        type="button"
-        aria-label="Open account menu"
-        aria-haspopup="menu"
-        aria-controls="sellerAccountMenu"
-        aria-expanded="false"
-      ><?php echo htmlspecialchars($headerInitials); ?></button>
-      <div class="seller-account-menu" id="sellerAccountMenu" role="menu" aria-label="Seller account menu">
-        <div class="seller-account-heading" role="presentation">
-          <div class="seller-account-avatar" aria-hidden="true"><?php echo htmlspecialchars($headerInitials, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
-          <div class="seller-account-heading-copy">
-            <strong class="seller-account-name" title="<?php echo htmlspecialchars($headerUserName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo htmlspecialchars($headerUserName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></strong>
-            <?php if ($headerUserEmail !== ''): ?><span class="seller-account-email" title="<?php echo htmlspecialchars($headerUserEmail, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo htmlspecialchars($headerUserEmail, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span><?php endif; ?>
-            <span class="seller-account-role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h16l-2-6H6zM5 10v10h14V10M9 20v-6h6v6"/></svg> Seller Account</span>
-          </div>
-        </div>
-        <div class="seller-account-items">
-          <a class="seller-account-item" href="profile_seller.php" role="menuitem">
-            <span class="seller-account-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
-            <span class="seller-account-item-copy"><strong>My Profile</strong><small>Manage your seller information</small></span>
-            <span class="seller-account-chevron" aria-hidden="true">›</span>
-          </a>
-          <button class="seller-account-item seller-account-switch" type="button" role="menuitem" id="sellerRoleSwitch" data-role-target="buyer" data-role-form="sellerRoleSwitchForm">
-            <span class="seller-account-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h14l-3-3M21 7l-3 3M17 17H3l3 3M3 17l3-3"/></svg></span>
-            <span class="seller-account-item-copy"><strong>Switch to Buyer</strong><small>Browse and shop on LokalCraft</small></span>
-            <span class="seller-account-chevron" aria-hidden="true">↗</span>
-          </button>
-        </div>
-        <div class="seller-account-footer">
-          <button class="seller-account-item seller-account-logout" type="button" role="menuitem" id="sellerLogoutButton">
-            <span class="seller-account-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M15 16l4-4-4-4M19 12H9"/></svg></span>
-            <span class="seller-account-item-copy"><strong>Log Out</strong></span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-<!-- Seller-only notification popup. Messages unread counters stay separate. -->
-<section class="seller-notification-panel" id="sellerNotificationsPanel" role="dialog"
-  aria-modal="false" aria-labelledby="sellerNotificationsTitle" hidden>
-  <div class="seller-notification-panel-heading">
-    <div class="seller-notification-panel-copy">
-      <span class="seller-notification-panel-eyebrow">SHOP UPDATES</span>
-      <h2 id="sellerNotificationsTitle">Notifications</h2>
-      <p>Updates on your orders and shop.</p>
-    </div>
-    <button type="button" class="seller-notification-panel-close" id="sellerNotificationsClose"
-      aria-label="Close notifications" title="Close notifications">&times;</button>
-  </div>
-  <div class="seller-notification-panel-toolbar">
-    <span id="sellerNotificationsSummary">Recent updates</span>
-    <button type="button" class="seller-notification-mark-all" id="sellerNotificationsMarkAll" hidden>
-      Mark all as read
-    </button>
-  </div>
-  <div class="seller-notification-status" id="sellerNotificationStatus" role="status" aria-live="polite">
-    Loading notifications...
-  </div>
-  <div class="seller-notification-list" id="sellerNotificationList" hidden></div>
-  <div class="seller-notification-panel-footer">Showing your 20 most recent notifications</div>
-</section>
-<template id="sellerNotificationItemTemplate">
-  <button class="seller-notification-item" type="button">
-    <span class="seller-notification-item-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
-        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="6" width="18" height="15" rx="2"/>
-        <path d="M3 10h18M8 3v3M16 3v3"/>
-      </svg>
-    </span>
-    <span class="seller-notification-item-details">
-      <span class="seller-notification-item-title"></span>
-      <span class="seller-notification-item-message"></span>
-      <span class="seller-notification-item-date"></span>
-    </span>
-    <span class="seller-notification-item-dot" aria-label="Unread"></span>
-  </button>
-</template>
-<div class="seller-logout-modal" id="sellerLogoutModal" aria-hidden="true">
-  <div class="seller-logout-card" role="dialog" aria-modal="true" aria-labelledby="sellerLogoutTitle">
-    <div class="seller-logout-icon" aria-hidden="true">↪</div>
-    <h2 id="sellerLogoutTitle">Log out of LokalCraft?</h2>
-    <p>Are you sure you want to log out of your seller account?</p>
-    <div class="seller-logout-actions">
-      <button type="button" class="seller-logout-cancel" id="sellerLogoutCancel">No, Stay</button>
-      <form action="logout.php" method="POST" id="sellerLogoutForm">
-        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['seller_logout_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
-        <button type="submit" class="seller-logout-confirm">Yes, Logout</button>
-      </form>
-    </div>
-  </div>
-</div>
-<script>
-(function () {
-  const productSearch = document.getElementById('productSearch');
-  function applySellerHeaderFilters() {
-    const searchTerm = (productSearch?.value || '').trim().toLowerCase();
-    document.querySelectorAll('.product-card').forEach((card) => {
-      const name = (card.dataset.name || '').toLowerCase();
-      const matchesSearch = !searchTerm || name.includes(searchTerm);
-      card.style.display = matchesSearch ? '' : 'none';
-    });
-  }
-  productSearch?.addEventListener('input', applySellerHeaderFilters);
-  const sellerAvatarButton = document.getElementById('sellerAvatarButton');
-  const sellerAccountMenu = document.getElementById('sellerAccountMenu');
-  // Seller notifications: separate API, interface, CSRF, and unread count from Buyer.
-  const sellerNotificationRoot = document.getElementById('sellerNotifications');
-  const sellerNotificationToggle = document.getElementById('sellerNotificationsToggle');
-  const sellerNotificationPanel = document.getElementById('sellerNotificationsPanel');
-  const sellerNotificationCount = document.getElementById('sellerNotificationCount');
-  const sellerNotificationSummary = document.getElementById('sellerNotificationsSummary');
-  const sellerNotificationMarkAll = document.getElementById('sellerNotificationsMarkAll');
-  const sellerNotificationList = document.getElementById('sellerNotificationList');
-  const sellerNotificationStatus = document.getElementById('sellerNotificationStatus');
-  const sellerNotificationTemplate = document.getElementById('sellerNotificationItemTemplate');
-  const sellerNotificationClose = document.getElementById('sellerNotificationsClose');
-  const sellerNotificationEndpoint = 'seller_notification.php';
-  let sellerNotificationCsrf = '';
-  let sellerNotificationUnread = 0;
-  let sellerNotificationsLoading = false;
-  let sellerNotificationActionPending = false;
-  if (sellerNotificationPanel && sellerNotificationPanel.parentElement !== document.body) {
-    document.body.appendChild(sellerNotificationPanel);
-  }
-  function updateSellerNotificationCount(count) {
-    const total = Math.max(0, Number(count) || 0);
-    sellerNotificationUnread = total;
-    if (sellerNotificationCount) {
-      sellerNotificationCount.hidden = total === 0;
-      sellerNotificationCount.textContent = total > 99 ? '99+' : String(total);
-    }
-    sellerNotificationToggle?.setAttribute('aria-label', total === 0
-      ? 'Seller notifications' : `Seller notifications, ${total} unread`);
-    if (sellerNotificationSummary) {
-      sellerNotificationSummary.textContent = total === 0
-        ? 'No unread notifications'
-        : `${total} unread ${total === 1 ? 'notification' : 'notifications'}`;
-    }
-    if (sellerNotificationMarkAll) {
-      sellerNotificationMarkAll.hidden = total === 0;
-      sellerNotificationMarkAll.disabled = total > 0 && !sellerNotificationCsrf;
-    }
-  }
-  function positionSellerNotificationPanel() {
-    if (!sellerNotificationPanel || sellerNotificationPanel.hidden || !sellerNotificationToggle) return;
-    const rect = sellerNotificationToggle.getBoundingClientRect();
-    const width = sellerNotificationPanel.getBoundingClientRect().width;
-    const left = Math.max(10, Math.min(rect.right - width, window.innerWidth - width - 10));
-    const below = window.innerHeight - rect.bottom - 18;
-    sellerNotificationPanel.style.left = `${left}px`;
-    if (below >= 230 || below >= rect.top) {
-      sellerNotificationPanel.style.top = `${rect.bottom + 10}px`;
-      sellerNotificationPanel.style.bottom = 'auto';
-      sellerNotificationPanel.style.maxHeight = `${Math.max(130, below)}px`;
-    } else {
-      sellerNotificationPanel.style.top = 'auto';
-      sellerNotificationPanel.style.bottom = `${window.innerHeight - rect.top + 10}px`;
-      sellerNotificationPanel.style.maxHeight = `${Math.max(130, rect.top - 22)}px`;
-    }
-  }
-  function closeSellerNotifications(restoreFocus = false) {
-    if (!sellerNotificationPanel || sellerNotificationPanel.hidden) return;
-    sellerNotificationPanel.hidden = true;
-    sellerNotificationToggle?.setAttribute('aria-expanded', 'false');
-    if (restoreFocus) sellerNotificationToggle?.focus({preventScroll: true});
-  }
-  function sellerNotificationNotice(message, retry = false) {
-    if (!sellerNotificationStatus || !sellerNotificationList) return;
-    sellerNotificationList.hidden = true;
-    sellerNotificationStatus.hidden = false;
-    sellerNotificationStatus.replaceChildren();
-    const text = document.createElement('p');
-    text.textContent = message;
-    sellerNotificationStatus.appendChild(text);
-    if (retry) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'seller-notification-retry';
-      button.textContent = 'Try again';
-      button.addEventListener('click', () => { void loadSellerNotifications(); });
-      sellerNotificationStatus.appendChild(button);
-    }
-  }
-  async function sellerNotificationRequest(action, body = null) {
-    const options = {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}};
-    const url = `${sellerNotificationEndpoint}?action=${encodeURIComponent(action)}`;
-    if (body !== null) {
-      options.method = 'POST';
-      options.body = new URLSearchParams({action, csrf_token: sellerNotificationCsrf, ...body});
-    }
-    const response = await fetch(url, options);
-    let data;
-    try { data = await response.json(); }
-    catch (_) { throw new Error('Seller notifications are unavailable. Please try again.'); }
-    if (!response.ok || !data?.success) {
-      throw new Error(data?.message || 'Seller notifications are unavailable. Please try again.');
-    }
-    return data;
-  }
-  function sellerNotificationDateLabel(raw) {
-    const value = String(raw || '');
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-    if (!match) return value;
-    const [, year, month, day, hour, minute] = match;
-    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
-  }
-  function renderSellerNotifications(items) {
-    if (!sellerNotificationList || !sellerNotificationTemplate || !sellerNotificationStatus) return;
-    sellerNotificationList.replaceChildren();
-    if (!Array.isArray(items) || items.length === 0) {
-      sellerNotificationNotice('No shop notifications yet. New order updates will appear here.');
-      return;
-    }
-    const fragment = document.createDocumentFragment();
-    items.forEach((item) => {
-      const button = sellerNotificationTemplate.content.firstElementChild.cloneNode(true);
-      const type = String(item.type || '').toLowerCase();
-      if (type.includes('cancel') || type.includes('archive') || type.includes('reject')) {
-        button.classList.add('is-warning');
-      } else if (type.includes('paid') || type.includes('payment') || type.includes('confirm')) {
-        button.classList.add('is-success');
-      }
-      if (!item.read) button.classList.add('is-unread');
-      button.querySelector('.seller-notification-item-title').textContent = String(item.title || 'Shop update');
-      button.querySelector('.seller-notification-item-message').textContent = String(item.message || '');
-      button.querySelector('.seller-notification-item-date').textContent = sellerNotificationDateLabel(item.created_at);
-      const dot = button.querySelector('.seller-notification-item-dot');
-      if (dot) dot.hidden = Boolean(item.read);
-      button.addEventListener('click', () => { void openSellerNotification(item.id, button); });
-      fragment.appendChild(button);
-    });
-    sellerNotificationList.appendChild(fragment);
-    sellerNotificationStatus.hidden = true;
-    sellerNotificationList.hidden = false;
-  }
-  async function loadSellerNotifications() {
-    if (sellerNotificationsLoading || sellerNotificationPanel?.hidden) return;
-    sellerNotificationsLoading = true;
-    if (sellerNotificationList?.hidden) sellerNotificationNotice('Loading notifications...');
-    try {
-      const data = await sellerNotificationRequest('list');
-      sellerNotificationCsrf = String(data.csrf_token || '');
-      updateSellerNotificationCount(data.unread_count);
-      if (!sellerNotificationPanel.hidden) renderSellerNotifications(data.notifications);
-    } catch (error) {
-      if (!sellerNotificationPanel.hidden) sellerNotificationNotice(error.message, true);
-    } finally {
-      sellerNotificationsLoading = false;
-    }
-  }
-  async function refreshSellerNotificationCount() {
-    if (document.hidden || sellerNotificationActionPending) return;
-    try {
-      const data = await sellerNotificationRequest('count');
-      const previous = sellerNotificationUnread;
-      updateSellerNotificationCount(data.unread_count);
-      if (!sellerNotificationPanel?.hidden && previous !== sellerNotificationUnread) {
-        void loadSellerNotifications();
-      }
-    } catch (_) {
-      // Background errors must not interfere with search, navigation, or account controls.
-    }
-  }
-  async function openSellerNotification(id, button) {
-    if (sellerNotificationActionPending || !sellerNotificationCsrf) return;
-    sellerNotificationActionPending = true;
-    button.disabled = true;
-    try {
-      const data = await sellerNotificationRequest('mark_read', {notification_id: String(id)});
-      const wasUnread = button.classList.contains('is-unread');
-      button.classList.remove('is-unread');
-      const dot = button.querySelector('.seller-notification-item-dot');
-      if (dot) dot.hidden = true;
-      if (wasUnread) updateSellerNotificationCount(sellerNotificationUnread - 1);
-      if (typeof data.url !== 'string' || data.url.trim() === '') {
-        sellerNotificationNotice('This linked order is no longer available. The notification was marked as read.');
-        return;
-      }
-      const destination = new URL(data.url, window.location.href);
-      const sellerDirectory = new URL('./', window.location.href).pathname;
-      if (destination.origin !== window.location.origin
-          || !destination.pathname.startsWith(sellerDirectory)
-          || !destination.pathname.endsWith('/messages_seller.php')) {
-        throw new Error('The Seller notification destination could not be verified.');
-      }
-      window.location.assign(destination.href);
-    } catch (error) {
-      sellerNotificationNotice(error.message, true);
-    } finally {
-      sellerNotificationActionPending = false;
-      button.disabled = false;
-    }
-  }
-  async function markAllSellerNotifications() {
-    if (sellerNotificationActionPending || !sellerNotificationCsrf || sellerNotificationUnread === 0) return;
-    sellerNotificationActionPending = true;
-    sellerNotificationMarkAll.disabled = true;
-    try {
-      await sellerNotificationRequest('mark_all_read', {});
-      updateSellerNotificationCount(0);
-      if (!sellerNotificationPanel.hidden) await loadSellerNotifications();
-    } catch (error) {
-      sellerNotificationNotice(error.message, true);
-    } finally {
-      sellerNotificationActionPending = false;
-      if (sellerNotificationMarkAll) sellerNotificationMarkAll.disabled = sellerNotificationUnread === 0;
-    }
-  }
-  sellerNotificationToggle?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (!sellerNotificationPanel) return;
-    if (!sellerNotificationPanel.hidden) {
-      closeSellerNotifications();
-      return;
-    }
-    sellerAccountMenu?.classList.remove('open');
-    sellerAvatarButton?.setAttribute('aria-expanded', 'false');
-    sellerNotificationPanel.hidden = false;
-    sellerNotificationToggle.setAttribute('aria-expanded', 'true');
-    positionSellerNotificationPanel();
-    void loadSellerNotifications();
-  });
-  sellerNotificationClose?.addEventListener('click', () => closeSellerNotifications(true));
-  sellerNotificationMarkAll?.addEventListener('click', () => { void markAllSellerNotifications(); });
-  document.addEventListener('click', (event) => {
-    if (sellerNotificationPanel?.hidden) return;
-    if (!sellerNotificationRoot?.contains(event.target)
-        && !sellerNotificationPanel?.contains(event.target)) closeSellerNotifications();
-  });
-  window.addEventListener('resize', positionSellerNotificationPanel);
-  window.addEventListener('scroll', positionSellerNotificationPanel, {passive: true});
-  if (sellerNotificationToggle) {
-    void refreshSellerNotificationCount();
-    window.setInterval(() => { void refreshSellerNotificationCount(); }, 45000);
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) void refreshSellerNotificationCount();
-    });
-  }
-  sellerAvatarButton?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    closeSellerNotifications();
-    const isOpen = sellerAccountMenu?.classList.toggle('open') ?? false;
-    sellerAvatarButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  });
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('.seller-account')) {
-      sellerAccountMenu?.classList.remove('open');
-      sellerAvatarButton?.setAttribute('aria-expanded', 'false');
-    }
-  });
-  const sellerLogoutButton = document.getElementById('sellerLogoutButton');
-  const sellerLogoutModal = document.getElementById('sellerLogoutModal');
-  const sellerLogoutCancel = document.getElementById('sellerLogoutCancel');
-  const sellerLogoutForm = document.getElementById('sellerLogoutForm');
-  if (sellerLogoutModal && sellerLogoutModal.parentElement !== document.body) {
-    document.body.appendChild(sellerLogoutModal);
-  }
-  function openSellerLogoutModal() {
-    if (!sellerLogoutModal) return;
-    sellerAccountMenu?.classList.remove('open');
-    sellerAvatarButton?.setAttribute('aria-expanded', 'false');
-    sellerLogoutModal.classList.add('open');
-    sellerLogoutModal.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('seller-modal-open');
-    window.setTimeout(() => sellerLogoutCancel?.focus(), 0);
-  }
-  function closeSellerLogoutModal() {
-    if (!sellerLogoutModal) return;
-    sellerLogoutModal.classList.remove('open');
-    sellerLogoutModal.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('seller-modal-open');
-  }
-  sellerLogoutButton?.addEventListener('click', openSellerLogoutModal);
-  sellerLogoutCancel?.addEventListener('click', closeSellerLogoutModal);
-  sellerLogoutModal?.addEventListener('click', (event) => {
-    if (event.target === sellerLogoutModal) closeSellerLogoutModal();
-  });
-  sellerLogoutForm?.addEventListener('submit', () => {
-    const submitButton = sellerLogoutForm.querySelector('button[type="submit"]');
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = 'Logging out...';
-    }
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (sellerLogoutModal?.classList.contains('open')) {
-      closeSellerLogoutModal();
-    } else if (sellerNotificationPanel && !sellerNotificationPanel.hidden) {
-      closeSellerNotifications(true);
-    } else if (sellerAccountMenu?.classList.contains('open')) {
-      sellerAccountMenu.classList.remove('open');
-      sellerAvatarButton?.setAttribute('aria-expanded', 'false');
-      sellerAvatarButton?.focus();
-    }
-  });
-})();
-</script>
 <style>
 :root {
   --seller-orange: #ea8a3a;
@@ -573,6 +136,20 @@ if ($headerInitials === '') $headerInitials = 'SE';
   color: #8a827c;
   font-size: .95rem;
 }
+/* Header-only icon sizing: unaffected by page-specific product filters. */
+.seller-header-tools .search-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  line-height: 1;
+}
+.seller-header-tools .search-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
 .filter-box:focus-within .search-icon,
 .filter-box:focus-within .caret {
   color: var(--seller-orange-dark);
@@ -650,6 +227,7 @@ if ($headerInitials === '') $headerInitials = 'SE';
   box-shadow: 0 18px 44px rgba(48,31,15,.16);
   overflow: hidden;
 }
+.seller-account-menu[hidden] { display: none !important; }
 .seller-account-menu.open { display: block; }
 .seller-account-heading {
   display: flex;
@@ -758,6 +336,7 @@ body.seller-modal-open {
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
+.seller-logout-modal[hidden] { display: none !important; }
 .seller-logout-modal.open {
   display: flex;
 }
@@ -978,3 +557,443 @@ body.seller-modal-open {
   }
 }
 </style>
+<div class="seller-header-tools">
+  <button
+    class="seller-menu-toggle"
+    id="sellerSidebarToggle"
+    type="button"
+    aria-label="Open navigation menu"
+    aria-expanded="false"
+    aria-controls="sellerSidebar"
+  >
+    <span class="seller-menu-lines" aria-hidden="true"><span></span><span></span><span></span></span>
+  </button>
+  <div class="seller-search-layout">
+    <div class="filters" id="sellerHeaderFilters">
+      <div class="filter-box search">
+        <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>
+        <input id="productSearch" type="text" placeholder="<?php echo htmlspecialchars($searchPlaceholder); ?>" aria-label="Search products" />
+      </div>
+    </div>
+  </div>
+  <div class="seller-header-actions">
+    <div class="seller-notifications" id="sellerNotifications">
+      <button class="seller-notification" type="button" id="sellerNotificationsToggle"
+        aria-label="Seller notifications" aria-haspopup="dialog" aria-expanded="false"
+        aria-controls="sellerNotificationsPanel" title="Seller notifications">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+          <path d="M10 21h4"/>
+        </svg>
+        <span class="seller-notification-count" id="sellerNotificationCount" hidden>0</span>
+      </button>
+    </div>
+    <div class="seller-account">
+      <button
+        class="seller-avatar-button"
+        id="sellerAvatarButton"
+        type="button"
+        aria-label="Open account menu"
+        aria-haspopup="menu"
+        aria-controls="sellerAccountMenu"
+        aria-expanded="false"
+      ><?php echo htmlspecialchars($headerInitials); ?></button>
+      <div class="seller-account-menu" id="sellerAccountMenu" role="menu" aria-label="Seller account menu" hidden>
+        <div class="seller-account-heading" role="presentation">
+          <div class="seller-account-avatar" aria-hidden="true"><?php echo htmlspecialchars($headerInitials, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
+          <div class="seller-account-heading-copy">
+            <strong class="seller-account-name" title="<?php echo htmlspecialchars($headerUserName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo htmlspecialchars($headerUserName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></strong>
+            <?php if ($headerUserEmail !== ''): ?><span class="seller-account-email" title="<?php echo htmlspecialchars($headerUserEmail, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo htmlspecialchars($headerUserEmail, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span><?php endif; ?>
+            <span class="seller-account-role"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h16l-2-6H6zM5 10v10h14V10M9 20v-6h6v6"/></svg> Seller Account</span>
+          </div>
+        </div>
+        <div class="seller-account-items">
+          <a class="seller-account-item" href="profile_seller.php" role="menuitem">
+            <span class="seller-account-item-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+            <span class="seller-account-item-copy"><strong>My Profile</strong><small>Manage your seller information</small></span>
+            <span class="seller-account-chevron" aria-hidden="true">›</span>
+          </a>
+          <button class="seller-account-item seller-account-switch" type="button" role="menuitem" id="sellerRoleSwitch" data-role-target="buyer" data-role-form="sellerRoleSwitchForm">
+            <span class="seller-account-item-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h14l-3-3M21 7l-3 3M17 17H3l3 3M3 17l3-3"/></svg></span>
+            <span class="seller-account-item-copy"><strong>Switch to Buyer</strong><small>Browse and shop on LokalCraft</small></span>
+            <span class="seller-account-chevron" aria-hidden="true">↗</span>
+          </button>
+        </div>
+        <div class="seller-account-footer">
+          <button class="seller-account-item seller-account-logout" type="button" role="menuitem" id="sellerLogoutButton">
+            <span class="seller-account-item-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M15 16l4-4-4-4M19 12H9"/></svg></span>
+            <span class="seller-account-item-copy"><strong>Log Out</strong></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Seller-only notification popup. Messages unread counters stay separate. -->
+<section class="seller-notification-panel" id="sellerNotificationsPanel" role="dialog"
+  aria-modal="false" aria-labelledby="sellerNotificationsTitle" hidden>
+  <div class="seller-notification-panel-heading">
+    <div class="seller-notification-panel-copy">
+      <span class="seller-notification-panel-eyebrow">SHOP UPDATES</span>
+      <h2 id="sellerNotificationsTitle">Notifications</h2>
+      <p>Updates on your orders and shop.</p>
+    </div>
+    <button type="button" class="seller-notification-panel-close" id="sellerNotificationsClose"
+      aria-label="Close notifications" title="Close notifications">&times;</button>
+  </div>
+  <div class="seller-notification-panel-toolbar">
+    <span id="sellerNotificationsSummary">Recent updates</span>
+    <button type="button" class="seller-notification-mark-all" id="sellerNotificationsMarkAll" hidden>
+      Mark all as read
+    </button>
+  </div>
+  <div class="seller-notification-status" id="sellerNotificationStatus" role="status" aria-live="polite">
+    Loading notifications...
+  </div>
+  <div class="seller-notification-list" id="sellerNotificationList" hidden></div>
+  <div class="seller-notification-panel-footer">Showing your 20 most recent notifications</div>
+</section>
+<template id="sellerNotificationItemTemplate">
+  <button class="seller-notification-item" type="button">
+    <span class="seller-notification-item-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="6" width="18" height="15" rx="2"/>
+        <path d="M3 10h18M8 3v3M16 3v3"/>
+      </svg>
+    </span>
+    <span class="seller-notification-item-details">
+      <span class="seller-notification-item-title"></span>
+      <span class="seller-notification-item-message"></span>
+      <span class="seller-notification-item-date"></span>
+    </span>
+    <span class="seller-notification-item-dot" aria-label="Unread"></span>
+  </button>
+</template>
+<div class="seller-logout-modal" id="sellerLogoutModal" aria-hidden="true" hidden>
+  <div class="seller-logout-card" role="dialog" aria-modal="true" aria-labelledby="sellerLogoutTitle">
+    <div class="seller-logout-icon" aria-hidden="true">↪</div>
+    <h2 id="sellerLogoutTitle">Log out of LokalCraft?</h2>
+    <p>Are you sure you want to log out of your seller account?</p>
+    <div class="seller-logout-actions">
+      <button type="button" class="seller-logout-cancel" id="sellerLogoutCancel">No, Stay</button>
+      <form action="logout.php" method="POST" id="sellerLogoutForm">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['seller_logout_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
+        <button type="submit" class="seller-logout-confirm">Yes, Logout</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const productSearch = document.getElementById('productSearch');
+  function applySellerHeaderFilters() {
+    const searchTerm = (productSearch?.value || '').trim().toLowerCase();
+    document.querySelectorAll('.product-card').forEach((card) => {
+      const name = (card.dataset.name || '').toLowerCase();
+      const matchesSearch = !searchTerm || name.includes(searchTerm);
+      card.style.display = matchesSearch ? '' : 'none';
+    });
+  }
+  productSearch?.addEventListener('input', applySellerHeaderFilters);
+  const sellerAvatarButton = document.getElementById('sellerAvatarButton');
+  const sellerAccountMenu = document.getElementById('sellerAccountMenu');
+  function setSellerAccountMenuOpen(isOpen) {
+    if (!sellerAccountMenu) return;
+    sellerAccountMenu.hidden = !isOpen;
+    sellerAccountMenu.classList.toggle('open', isOpen);
+    sellerAvatarButton?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+  // Seller notifications: separate API, interface, CSRF, and unread count from Buyer.
+  const sellerNotificationRoot = document.getElementById('sellerNotifications');
+  const sellerNotificationToggle = document.getElementById('sellerNotificationsToggle');
+  const sellerNotificationPanel = document.getElementById('sellerNotificationsPanel');
+  const sellerNotificationCount = document.getElementById('sellerNotificationCount');
+  const sellerNotificationSummary = document.getElementById('sellerNotificationsSummary');
+  const sellerNotificationMarkAll = document.getElementById('sellerNotificationsMarkAll');
+  const sellerNotificationList = document.getElementById('sellerNotificationList');
+  const sellerNotificationStatus = document.getElementById('sellerNotificationStatus');
+  const sellerNotificationTemplate = document.getElementById('sellerNotificationItemTemplate');
+  const sellerNotificationClose = document.getElementById('sellerNotificationsClose');
+  const sellerNotificationEndpoint = 'seller_notification.php';
+  let sellerNotificationCsrf = '';
+  let sellerNotificationUnread = 0;
+  let sellerNotificationsLoading = false;
+  let sellerNotificationActionPending = false;
+  if (sellerNotificationPanel && sellerNotificationPanel.parentElement !== document.body) {
+    document.body.appendChild(sellerNotificationPanel);
+  }
+  function updateSellerNotificationCount(count) {
+    const total = Math.max(0, Number(count) || 0);
+    sellerNotificationUnread = total;
+    if (sellerNotificationCount) {
+      sellerNotificationCount.hidden = total === 0;
+      sellerNotificationCount.textContent = total > 99 ? '99+' : String(total);
+    }
+    sellerNotificationToggle?.setAttribute('aria-label', total === 0
+      ? 'Seller notifications' : `Seller notifications, ${total} unread`);
+    if (sellerNotificationSummary) {
+      sellerNotificationSummary.textContent = total === 0
+        ? 'No unread notifications'
+        : `${total} unread ${total === 1 ? 'notification' : 'notifications'}`;
+    }
+    if (sellerNotificationMarkAll) {
+      sellerNotificationMarkAll.hidden = total === 0;
+      sellerNotificationMarkAll.disabled = total > 0 && !sellerNotificationCsrf;
+    }
+  }
+  function positionSellerNotificationPanel() {
+    if (!sellerNotificationPanel || sellerNotificationPanel.hidden || !sellerNotificationToggle) return;
+    const rect = sellerNotificationToggle.getBoundingClientRect();
+    const width = sellerNotificationPanel.getBoundingClientRect().width;
+    const left = Math.max(10, Math.min(rect.right - width, window.innerWidth - width - 10));
+    const below = window.innerHeight - rect.bottom - 18;
+    sellerNotificationPanel.style.left = `${left}px`;
+    if (below >= 230 || below >= rect.top) {
+      sellerNotificationPanel.style.top = `${rect.bottom + 10}px`;
+      sellerNotificationPanel.style.bottom = 'auto';
+      sellerNotificationPanel.style.maxHeight = `${Math.max(130, below)}px`;
+    } else {
+      sellerNotificationPanel.style.top = 'auto';
+      sellerNotificationPanel.style.bottom = `${window.innerHeight - rect.top + 10}px`;
+      sellerNotificationPanel.style.maxHeight = `${Math.max(130, rect.top - 22)}px`;
+    }
+  }
+  function closeSellerNotifications(restoreFocus = false) {
+    if (!sellerNotificationPanel || sellerNotificationPanel.hidden) return;
+    sellerNotificationPanel.hidden = true;
+    sellerNotificationToggle?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) sellerNotificationToggle?.focus({preventScroll: true});
+  }
+  function sellerNotificationNotice(message, retry = false) {
+    if (!sellerNotificationStatus || !sellerNotificationList) return;
+    sellerNotificationList.hidden = true;
+    sellerNotificationStatus.hidden = false;
+    sellerNotificationStatus.replaceChildren();
+    const text = document.createElement('p');
+    text.textContent = message;
+    sellerNotificationStatus.appendChild(text);
+    if (retry) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'seller-notification-retry';
+      button.textContent = 'Try again';
+      button.addEventListener('click', () => { void loadSellerNotifications(); });
+      sellerNotificationStatus.appendChild(button);
+    }
+  }
+  async function sellerNotificationRequest(action, body = null) {
+    const options = {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}};
+    const url = `${sellerNotificationEndpoint}?action=${encodeURIComponent(action)}`;
+    if (body !== null) {
+      options.method = 'POST';
+      options.body = new URLSearchParams({action, csrf_token: sellerNotificationCsrf, ...body});
+    }
+    const response = await fetch(url, options);
+    let data;
+    try { data = await response.json(); }
+    catch (_) { throw new Error('Seller notifications are unavailable. Please try again.'); }
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.message || 'Seller notifications are unavailable. Please try again.');
+    }
+    return data;
+  }
+  function sellerNotificationDateLabel(raw) {
+    const value = String(raw || '');
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!match) return value;
+    const [, year, month, day, hour, minute] = match;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+  }
+  function renderSellerNotifications(items) {
+    if (!sellerNotificationList || !sellerNotificationTemplate || !sellerNotificationStatus) return;
+    sellerNotificationList.replaceChildren();
+    if (!Array.isArray(items) || items.length === 0) {
+      sellerNotificationNotice('No shop notifications yet. New order updates will appear here.');
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    items.forEach((item) => {
+      const button = sellerNotificationTemplate.content.firstElementChild.cloneNode(true);
+      const type = String(item.type || '').toLowerCase();
+      if (type.includes('cancel') || type.includes('archive') || type.includes('reject')) {
+        button.classList.add('is-warning');
+      } else if (type.includes('paid') || type.includes('payment') || type.includes('confirm')) {
+        button.classList.add('is-success');
+      }
+      if (!item.read) button.classList.add('is-unread');
+      button.querySelector('.seller-notification-item-title').textContent = String(item.title || 'Shop update');
+      button.querySelector('.seller-notification-item-message').textContent = String(item.message || '');
+      button.querySelector('.seller-notification-item-date').textContent = sellerNotificationDateLabel(item.created_at);
+      const dot = button.querySelector('.seller-notification-item-dot');
+      if (dot) dot.hidden = Boolean(item.read);
+      button.addEventListener('click', () => { void openSellerNotification(item.id, button); });
+      fragment.appendChild(button);
+    });
+    sellerNotificationList.appendChild(fragment);
+    sellerNotificationStatus.hidden = true;
+    sellerNotificationList.hidden = false;
+  }
+  async function loadSellerNotifications() {
+    if (sellerNotificationsLoading || sellerNotificationPanel?.hidden) return;
+    sellerNotificationsLoading = true;
+    if (sellerNotificationList?.hidden) sellerNotificationNotice('Loading notifications...');
+    try {
+      const data = await sellerNotificationRequest('list');
+      sellerNotificationCsrf = String(data.csrf_token || '');
+      updateSellerNotificationCount(data.unread_count);
+      if (!sellerNotificationPanel.hidden) renderSellerNotifications(data.notifications);
+    } catch (error) {
+      if (!sellerNotificationPanel.hidden) sellerNotificationNotice(error.message, true);
+    } finally {
+      sellerNotificationsLoading = false;
+    }
+  }
+  async function refreshSellerNotificationCount() {
+    if (document.hidden || sellerNotificationActionPending) return;
+    try {
+      const data = await sellerNotificationRequest('count');
+      const previous = sellerNotificationUnread;
+      updateSellerNotificationCount(data.unread_count);
+      if (!sellerNotificationPanel?.hidden && previous !== sellerNotificationUnread) {
+        void loadSellerNotifications();
+      }
+    } catch (_) {
+      // Background errors must not interfere with search, navigation, or account controls.
+    }
+  }
+  async function openSellerNotification(id, button) {
+    if (sellerNotificationActionPending || !sellerNotificationCsrf) return;
+    sellerNotificationActionPending = true;
+    button.disabled = true;
+    try {
+      const data = await sellerNotificationRequest('mark_read', {notification_id: String(id)});
+      const wasUnread = button.classList.contains('is-unread');
+      button.classList.remove('is-unread');
+      const dot = button.querySelector('.seller-notification-item-dot');
+      if (dot) dot.hidden = true;
+      if (wasUnread) updateSellerNotificationCount(sellerNotificationUnread - 1);
+      if (typeof data.url !== 'string' || data.url.trim() === '') {
+        sellerNotificationNotice('This linked order is no longer available. The notification was marked as read.');
+        return;
+      }
+      const destination = new URL(data.url, window.location.href);
+      const sellerDirectory = new URL('./', window.location.href).pathname;
+      if (destination.origin !== window.location.origin
+          || !destination.pathname.startsWith(sellerDirectory)
+          || !destination.pathname.endsWith('/messages_seller.php')) {
+        throw new Error('The Seller notification destination could not be verified.');
+      }
+      window.location.assign(destination.href);
+    } catch (error) {
+      sellerNotificationNotice(error.message, true);
+    } finally {
+      sellerNotificationActionPending = false;
+      button.disabled = false;
+    }
+  }
+  async function markAllSellerNotifications() {
+    if (sellerNotificationActionPending || !sellerNotificationCsrf || sellerNotificationUnread === 0) return;
+    sellerNotificationActionPending = true;
+    sellerNotificationMarkAll.disabled = true;
+    try {
+      await sellerNotificationRequest('mark_all_read', {});
+      updateSellerNotificationCount(0);
+      if (!sellerNotificationPanel.hidden) await loadSellerNotifications();
+    } catch (error) {
+      sellerNotificationNotice(error.message, true);
+    } finally {
+      sellerNotificationActionPending = false;
+      if (sellerNotificationMarkAll) sellerNotificationMarkAll.disabled = sellerNotificationUnread === 0;
+    }
+  }
+  sellerNotificationToggle?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!sellerNotificationPanel) return;
+    if (!sellerNotificationPanel.hidden) {
+      closeSellerNotifications();
+      return;
+    }
+    setSellerAccountMenuOpen(false);
+    sellerNotificationPanel.hidden = false;
+    sellerNotificationToggle.setAttribute('aria-expanded', 'true');
+    positionSellerNotificationPanel();
+    void loadSellerNotifications();
+  });
+  sellerNotificationClose?.addEventListener('click', () => closeSellerNotifications(true));
+  sellerNotificationMarkAll?.addEventListener('click', () => { void markAllSellerNotifications(); });
+  document.addEventListener('click', (event) => {
+    if (sellerNotificationPanel?.hidden) return;
+    if (!sellerNotificationRoot?.contains(event.target)
+        && !sellerNotificationPanel?.contains(event.target)) closeSellerNotifications();
+  });
+  window.addEventListener('resize', positionSellerNotificationPanel);
+  window.addEventListener('scroll', positionSellerNotificationPanel, {passive: true});
+  if (sellerNotificationToggle) {
+    void refreshSellerNotificationCount();
+    window.setInterval(() => { void refreshSellerNotificationCount(); }, 45000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) void refreshSellerNotificationCount();
+    });
+  }
+  sellerAvatarButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeSellerNotifications();
+    setSellerAccountMenuOpen(!sellerAccountMenu?.classList.contains('open'));
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.seller-account')) {
+      setSellerAccountMenuOpen(false);
+    }
+  });
+  const sellerLogoutButton = document.getElementById('sellerLogoutButton');
+  const sellerLogoutModal = document.getElementById('sellerLogoutModal');
+  const sellerLogoutCancel = document.getElementById('sellerLogoutCancel');
+  const sellerLogoutForm = document.getElementById('sellerLogoutForm');
+  if (sellerLogoutModal && sellerLogoutModal.parentElement !== document.body) {
+    document.body.appendChild(sellerLogoutModal);
+  }
+  function openSellerLogoutModal() {
+    if (!sellerLogoutModal) return;
+    setSellerAccountMenuOpen(false);
+    sellerLogoutModal.hidden = false;
+    sellerLogoutModal.classList.add('open');
+    sellerLogoutModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('seller-modal-open');
+    window.setTimeout(() => sellerLogoutCancel?.focus(), 0);
+  }
+  function closeSellerLogoutModal() {
+    if (!sellerLogoutModal) return;
+    sellerLogoutModal.classList.remove('open');
+    sellerLogoutModal.hidden = true;
+    sellerLogoutModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('seller-modal-open');
+  }
+  sellerLogoutButton?.addEventListener('click', openSellerLogoutModal);
+  sellerLogoutCancel?.addEventListener('click', closeSellerLogoutModal);
+  sellerLogoutModal?.addEventListener('click', (event) => {
+    if (event.target === sellerLogoutModal) closeSellerLogoutModal();
+  });
+  sellerLogoutForm?.addEventListener('submit', () => {
+    const submitButton = sellerLogoutForm.querySelector('button[type="submit"]');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Logging out...';
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (sellerLogoutModal?.classList.contains('open')) {
+      closeSellerLogoutModal();
+    } else if (sellerNotificationPanel && !sellerNotificationPanel.hidden) {
+      closeSellerNotifications(true);
+    } else if (sellerAccountMenu?.classList.contains('open')) {
+      setSellerAccountMenuOpen(false);
+      sellerAvatarButton?.focus();
+    }
+  });
+})();
+</script>

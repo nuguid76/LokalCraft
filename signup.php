@@ -15,13 +15,30 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/otp_service.php';
-require_once __DIR__ . '/includes/otp_modal.php';
 if (empty($_SESSION['signup_csrf'])) {
     $_SESSION['signup_csrf'] = bin2hex(random_bytes(32));
 }
 $errorMessage = '';
 $successMessage = '';
 $otpFlowKey = 'buyer_signup';
+// AJAX keeps the filled Signup form in the browser during the OTP flow.
+$signupAjax = $_SERVER['REQUEST_METHOD'] === 'POST'
+    && strtolower(trim((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''))) === 'xmlhttprequest';
+function signupJsonResponse(array $payload, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store, max-age=0');
+    header('X-Content-Type-Options: nosniff');
+    echo json_encode($payload);
+    exit;
+}
+// A fresh visit to Signup never resumes an abandoned OTP dialog.
+// Closing a popup with browser Back stays in the same document (no GET),
+// so it does not clear the working OTP while the user is still on Signup.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && !isset($_GET['verified'])) {
+    otpClearChallenge($otpFlowKey);
+}
 $showVerifiedTransition =
     isset($_GET['verified'])
     && $_GET['verified'] === '1'
@@ -108,6 +125,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ? $_POST['csrf_token']
         : '';
     if (!hash_equals((string)($_SESSION['signup_csrf'] ?? ''), $csrfToken)) {
+        if ($signupAjax) {
+            signupJsonResponse(['success' => false, 'message' => 'Your session expired. Refresh and try again.'], 403);
+        }
         http_response_code(403);
         exit('Invalid form token. Please reload the page and try again.');
     }
@@ -144,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     } elseif ($action === 'cancel_otp') {
         otpClearChallenge($otpFlowKey);
+        if ($signupAjax) signupJsonResponse(['success' => true, 'message' => 'You can change your email address.']);
         header('Location: signup.php');
         exit;
     } elseif ($action === 'resend_otp') {
@@ -237,6 +258,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         unset($_SESSION['signup_csrf']);
                         $_SESSION['login_success'] =
                             'Email verified successfully. Your LokalCraft account has been created. Please log in to continue.';
+                        if ($signupAjax) {
+                            signupJsonResponse([
+                                'success' => true,
+                                'message' => 'Email verified successfully. Your account is ready.',
+                                'redirect' => 'login.php?registered=1',
+                            ]);
+                        }
                         $_SESSION['signup_verified_transition'] = true;
                         header('Location: signup.php?verified=1');
                         exit;
@@ -321,9 +349,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+    if ($signupAjax) {
+        $challenge = otpGetChallenge($otpFlowKey);
+        signupJsonResponse([
+            'success' => $errorMessage === '',
+            'message' => $errorMessage !== '' ? $errorMessage : $successMessage,
+            'otp_available' => is_array($challenge),
+            'masked_email' => is_array($challenge) ? otpMaskEmail((string)($challenge['email'] ?? '')) : '',
+            'resend_seconds' => is_array($challenge) ? otpResendSeconds($otpFlowKey) : 0,
+        ], $errorMessage !== '' ? 422 : 200);
+    }
 }
 $pendingSignup = otpGetChallenge($otpFlowKey);
-$otpModalOpen = is_array($pendingSignup);
+// Show automatically only as a direct response to an OTP form action;
+// visiting Signup normally must never resurrect a session's old OTP modal.
+$otpModalOpen = is_array($pendingSignup)
+    && $_SERVER['REQUEST_METHOD'] === 'POST'
+    && in_array($action ?? '', ['request_otp', 'resend_otp', 'verify_otp'], true);
 $otpEmailMasked = $otpModalOpen
     ? otpMaskEmail((string)($pendingSignup['email'] ?? ''))
     : '';
@@ -352,115 +394,36 @@ $otpResendSeconds = $otpModalOpen
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
       position: relative;
       min-height: 100vh;
-      background-image: url('uploads/website background.png');
-      background-size: cover;
-      background-position: center center;
-      background-attachment: scroll;
-      background-repeat: no-repeat;
+      background: #fff8eb;
     }
-    body::before {
+    /* The image has its own fixed viewport-sized layer. It never grows with
+       the signup form, and 100lvh stays stable when mobile browser bars move. */
+    body::before,
+    body::after {
       content: "";
       position: fixed;
-      inset: 0;
-      background-color: rgba(255, 248, 235, 0.60);
-      backdrop-filter: blur(1px);
+      inset: 0 0 auto;
+      width: 100%;
+      height: 100vh;
+      height: 100lvh;
       pointer-events: none;
+    }
+    body::before {
       z-index: 0;
+      background: url('uploads/website background.png') center center / cover no-repeat;
     }
-    .container {
-      max-width: 1380px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 0 32px;
-      position: relative;
+    body::after {
       z-index: 1;
-    }
-    .signup-page {
-      position: relative;
-      z-index: 1;
-    }
-    /* ========== PUBLIC NAVIGATION LAYER ========== */
-    /*
-       EXACTLY the same navigation wrapper structure used by login.php:
-       full-width fixed outer layer + 1380px centered inner layer.
-       This keeps the navigation aligned with main.php/login.php while
-       allowing the signup content to scroll independently underneath.
-    */
-    .public-nav-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      z-index: 10000;
-      pointer-events: none;
-    }
-    .public-nav-container .public-nav-inner {
-      width: 100%;
-      max-width: 1380px;
-      margin: 0 auto;
-      padding: 0 32px;
-      position: relative;
-      z-index: 10001;
-      pointer-events: auto;
-      isolation: isolate;
-      overflow: visible;
-    }
-    .public-nav-container .public-header {
-      position: relative;
-      z-index: 10002;
-      overflow: visible !important;
-    }
-    .public-nav-container .public-header-inner {
-      position: relative;
-      z-index: 10003;
-      overflow: visible !important;
-    }
-    /* Keep the opened public menu above the signup card. */
-    .public-nav-container .nav-menu,
-    .public-nav-container .mobile-menu,
-    .public-nav-container .menu,
-    .public-nav-container .dropdown,
-    .public-nav-container .dropdown-menu,
-    .public-nav-container .menu-panel,
-    .public-nav-container .mobile-nav,
-    .public-nav-container [class*="menu"],
-    .public-nav-container [class*="dropdown"] {
-      z-index: 10004 !important;
-    }
-    /* ========== HEADER ========== */
-    .navbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: nowrap;
-      padding: 20px 0;
-      gap: 20px;
-      border-bottom: 1px solid rgba(160, 110, 70, 0.25);
-      backdrop-filter: blur(2px);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .signup-container {
-      width: 100%;
-      max-width: 560px;
-    }
-    .back-link {
-      display: inline-flex;
-      gap: 8px;
-      text-decoration: none;
-      color: #8b5423;
-      font-weight: 900;
-      margin-bottom: 0px;
-      transition: color 0.2s;
-      font-size: 0.95rem;
-    }
-    .back-link:hover {
-      color: #b45824;
+      background-color: rgba(255, 248, 235, 0.60);
+      -webkit-backdrop-filter: blur(1px);
+      backdrop-filter: blur(1px);
     }
     .signup-card {
       position: relative;
       z-index: 1;
+      width: min(560px, 100%);
+      max-width: 100%;
+      min-width: 0;
       background: rgba(255, 252, 245, 0.96);
       border: 1px solid rgba(220, 180, 135, 0.6);
       border-radius: 30px;
@@ -470,15 +433,6 @@ $otpResendSeconds = $otpModalOpen
     .login-header {
       text-align: center;
       margin-bottom: 26px;
-    }
-    .login-logo {
-      font-size: 2rem;
-      font-weight: 800;
-      background: linear-gradient(135deg, #A55325, #C2692E);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      margin-bottom: 14px;
     }
     .login-title {
       font-size: 2rem;
@@ -495,6 +449,8 @@ $otpResendSeconds = $otpModalOpen
     .login-form {
       display: flex;
       flex-direction: column;
+      min-width: 0;
+      width: 100%;
       gap: 18px;
     }
     .name-grid {
@@ -723,28 +679,6 @@ $otpResendSeconds = $otpModalOpen
       height: 1px;
       background: #E7CDB0;
     }
-    .social-login {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .btn-social {
-      width: 100%;
-      background: #F9EFE2;
-      border: 1.5px solid #E7CDB0;
-      color: #3F2E1F;
-      font-weight: 600;
-      font-size: 0.95rem;
-      padding: 12px 18px;
-      border-radius: 16px;
-      cursor: pointer;
-      font-family: inherit;
-      transition: all 0.2s;
-    }
-    .btn-social:hover {
-      background: #FFF7EE;
-      border-color: #D89C6C;
-    }
     .switch-text {
       text-align: center;
       color: #3F2E1F;
@@ -757,35 +691,51 @@ $otpResendSeconds = $otpModalOpen
       font-weight: 700;
     }
     .signup-page {
-      min-height: 100svh;
+      width: min(1600px, 100%);
+      max-width: 100%;
+      margin-inline: auto;
+      min-width: 0;
+      min-height: calc(100svh - 82px);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 138px 24px 40px;
+      padding: 38px 24px 40px;
       position: relative;
-      z-index: 1;
+      z-index: 2;
+    }
+    /* public_nav.php controls its own header sizing and menu breakpoints. */
+    @media (max-width: 840px) {
+      .signup-page { padding: 32px 20px 34px; }
     }
     @media (max-width: 560px) {
-      body {
-        background-attachment: scroll;
-        background-position: center center;
-      }
       .signup-page {
-        min-height: 100svh;
-        padding: 108px 16px 28px;
+        min-height: calc(100svh - 70px);
+        padding: 24px 14px 28px;
+        align-items: flex-start;
       }
-      .public-nav-container .public-nav-inner {
-        padding: 0 16px;
+      .signup-card { padding: 30px 20px 26px; border-radius: 23px; }
+      .login-header { margin-bottom: 22px; }
+      .login-title { font-size: clamp(1.55rem, 6.2vw, 1.95rem); }
+      .login-subtitle { font-size: .88rem; }
+      .login-form { gap: 16px; }
+      .name-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+      .form-group, .password-field { min-width: 0; }
+      .form-group input { min-height: 47px; padding: 12px 14px; font-size: 16px; }
+      .btn-login { min-height: 48px; padding: 13px 18px; }
+      .policy-modal { padding: 12px; }
+      .policy-card { max-height: calc(100dvh - 24px); }
+      .policy-header { padding: 17px; }
+      .policy-content {
+        max-height: calc(100dvh - 92px);
+        padding: 17px;
+        -webkit-overflow-scrolling: touch;
       }
-      .signup-card {
-        padding: 32px 22px 24px;
-      }
-      .name-grid {
-        grid-template-columns: 1fr;
-      }
+      .auth-transition-card { padding: 30px 20px 26px; }
     }
-    .public-header-inner {
-      width: 100%;
+    @media (max-width: 360px) {
+      .signup-page { padding: 20px 10px 22px; }
+      .signup-card { padding: 26px 16px 22px; border-radius: 20px; }
+      .login-title { font-size: 1.55rem; }
     }
     .auth-transition-overlay {
       position: fixed;
@@ -856,22 +806,198 @@ $otpResendSeconds = $otpModalOpen
     .auth-transition-link:hover {
       text-decoration: underline;
     }
+    /* Same soft landing entrance used on Become a Seller. */
+    @keyframes signupPageEnter {
+      from { opacity: 0; transform: translateY(22px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes signupSuccessEnter {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .signup-page .signup-card {
+      animation: signupPageEnter .72s cubic-bezier(.16,1,.3,1) both;
+    }
+    .auth-transition-card {
+      animation: signupSuccessEnter .38s ease both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .signup-page .signup-card,
+      .auth-transition-card { animation: none !important; }
+    }
     @keyframes authSpin {
       to { transform: rotate(360deg); }
+    }
+
+    /* Popup positioning and browser Back behavior share the same visible viewport. */
+    .policy-modal {
+      top: var(--signup-popup-top, 0px);
+      bottom: auto;
+      height: var(--signup-popup-height, 100dvh);
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      padding: 12px;
+    }
+    .policy-card {
+      display: flex;
+      flex-direction: column;
+      flex: 0 1 auto;
+      margin: auto;
+      min-height: 0;
+      max-height: calc(var(--signup-popup-height, 100dvh) - 24px);
+    }
+    .policy-header { flex: 0 0 auto; }
+    .policy-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    /* Signup owns its OTP popup; no shared OTP interface required. */
+    .signup-otp-modal.otp-modal {
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: var(--signup-popup-top, 0px);
+      bottom: auto;
+      width: 100%;
+      height: var(--signup-popup-height, 100dvh);
+      max-height: var(--signup-popup-height, 100dvh);
+      z-index: 30000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px;
+      background: rgba(43, 30, 18, .55);
+      -webkit-backdrop-filter: blur(5px);
+      backdrop-filter: blur(5px);
+    }
+    .signup-otp-modal.open { display: flex; }
+    .signup-otp-card.otp-card {
+      position: relative;
+      flex: 0 1 auto;
+      width: min(470px, 100%);
+      min-width: 0;
+      min-height: 0;
+      max-height: calc(var(--signup-popup-height, 100dvh) - 32px);
+      margin: auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border: 1px solid #E7CDB0;
+      border-radius: 24px;
+      background: #FFFCF7;
+      box-shadow: 0 28px 70px rgba(45, 30, 16, .28);
+      padding: 30px 28px 26px;
+    }
+    .signup-otp-close {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 50%;
+      background: #F9EFE2;
+      color: #8b5423;
+      font: inherit;
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+    .signup-otp-close:hover, .signup-otp-close:focus-visible {
+      background: #F2DFC9;
+      outline: 2px solid #D99A67;
+      outline-offset: 2px;
+    }
+    .signup-otp-icon {
+      display: grid;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 14px;
+      border-radius: 18px;
+      background: #F9EFE2;
+      color: #A55325;
+      font-size: 1.45rem;
+      font-weight: 900;
+    }
+    .signup-otp-card h2 { margin: 0; text-align: center; color: #8b5423; font-size: 1.5rem; }
+    .signup-otp-subtitle { margin: 8px 0 0; text-align: center; color: #6f5a47; font-size: .88rem; line-height: 1.5; }
+    .signup-otp-email { margin-top: 7px; text-align: center; color: #3f2e1f; font-size: .9rem; font-weight: 800; overflow-wrap: anywhere; }
+    .signup-otp-message { margin-top: 14px; padding: 10px 12px; text-align: center; border-radius: 11px; font-size: .8rem; line-height: 1.45; }
+    .signup-otp-message.error { border: 1px solid #efc0c0; background: #fff2f2; color: #a83d3d; }
+    .signup-otp-message.success { border: 1px solid #bfe2c9; background: #f2fbf5; color: #2f7a4d; }
+    .signup-otp-inputs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 20px; }
+    .signup-otp-digit {
+      width: 100%;
+      min-width: 0;
+      height: 52px;
+      padding: 0 !important;
+      border: 1.5px solid #E7CDB0;
+      border-radius: 12px;
+      background: #F9EFE2;
+      color: #2B1E12;
+      text-align: center;
+      font: 800 1.2rem/1 Inter, system-ui, sans-serif;
+      outline: none;
+    }
+    .signup-otp-digit:focus { border-color: #B85C28; background: #FFFAF4; box-shadow: 0 0 0 3px rgba(184, 92, 40, .1); }
+    .signup-otp-primary {
+      width: 100%;
+      min-height: 46px;
+      margin-top: 18px;
+      padding: 13px 18px;
+      border: 0;
+      border-radius: 60px;
+      background: #B85C28;
+      color: #fff;
+      font: inherit;
+      font-size: .94rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(160, 80, 35, .24);
+    }
+    .signup-otp-primary:hover { background: #94481F; }
+    .signup-otp-primary:disabled, .signup-otp-text:disabled { opacity: .55; cursor: not-allowed; }
+    .signup-otp-delivery-help {
+      max-width: 360px;
+      margin: 13px auto 0;
+      color: #806957;
+      text-align: center;
+      font-size: .78rem;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .signup-otp-actions { display: flex; align-items: center; justify-content: center; gap: 9px; flex-wrap: wrap; margin-top: 13px; color: #c2aa96; }
+    .signup-otp-actions form { margin: 0; }
+    .signup-otp-text { padding: 5px; border: 0; background: transparent; color: #B85C28; font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
+    .signup-otp-text:focus-visible { outline: 2px solid #D99A67; outline-offset: 2px; border-radius: 5px; }
+    .signup-otp-expiry { margin: 10px 0 0; color: #927b68; text-align: center; font-size: .74rem; line-height: 1.5; }
+    @media (max-width: 560px) {
+      .policy-modal, .signup-otp-modal.otp-modal { align-items: safe center; }
+      .signup-otp-modal.otp-modal { padding: max(12px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom)); }
+      .signup-otp-card.otp-card { max-height: calc(var(--signup-popup-height, 100dvh) - 24px); padding: 26px 16px 22px; border-radius: 20px; }
+      .signup-otp-inputs { gap: 5px; }
+      .signup-otp-digit { height: 47px; border-radius: 10px; font-size: 1.05rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .signup-otp-modal *, .signup-otp-modal *::before, .signup-otp-modal *::after { scroll-behavior: auto !important; transition: none !important; }
     }
   </style>
 </head>
 <body>
-<div class="public-nav-container">
-  <div class="public-nav-inner">
-    <?php $publicActive = 'signup'; include __DIR__ . '/public_nav.php'; ?>
-  </div>
-</div>
+<?php $publicActive = 'signup'; include __DIR__ . '/public_nav.php'; ?>
   <main class="signup-page">
     <div class="signup-card">
       <div class="login-card">
       <div class="login-header">
-        <div class="login-logo">LokalCraft</div>
         <h1 class="login-title">Create your account</h1>
         <p class="login-subtitle">Join our community and support Filipino artisans with authentic handcrafted products.</p>
       </div>
@@ -907,7 +1033,7 @@ $otpResendSeconds = $otpModalOpen
         </div>
         <div class="form-group">
           <label for="phone">Phone Number</label>
-          <input type="tel" id="phone" name="phone" value="<?php echo htmlspecialchars($_POST['phone'] ?? '09', ENT_QUOTES, 'UTF-8'); ?>" placeholder="09XXXXXXXXX" maxlength="16" pattern="09[0-9]{9}" inputmode="numeric" required autocomplete="tel">
+          <input type="tel" id="phone" name="phone" value="<?php echo htmlspecialchars($_POST['phone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="09XXXXXXXXX" maxlength="16" pattern="09[0-9]{9}" inputmode="tel" required autocomplete="tel">
           <span class="signup-field-error" id="phoneError" aria-live="polite"></span>
         </div>
         <div class="form-group">
@@ -961,25 +1087,47 @@ $otpResendSeconds = $otpModalOpen
       </div>
     </div>
   </main>
-<?php
-  renderOtpModal([
-      'id' => 'buyer-signup-otp',
-      'open' => $otpModalOpen,
-      'title' => 'Verify your email',
-      'subtitle' => 'Enter the 6-digit code we sent to:',
-      'masked_email' => $otpEmailMasked,
-      'csrf_token' => $_SESSION['signup_csrf'],
-      'verify_action' => 'verify_otp',
-      'resend_action' => 'resend_otp',
-      'cancel_action' => 'cancel_otp',
-      'action_url' => 'signup.php',
-      'error' => $otpModalOpen ? $errorMessage : '',
-      'success' => $otpModalOpen ? $successMessage : '',
-      'resend_seconds' => $otpResendSeconds,
-      'verify_label' => 'Verify & Create Account',
-      'cancel_label' => 'Change email',
-  ]);
-?>
+  <!-- Signup OTP popup is self-contained; sending and validation remain in otp_service.php. -->
+  <div class="signup-otp-modal otp-modal<?= $otpModalOpen ? ' open' : '' ?>" id="buyer-signup-otp" aria-hidden="<?= $otpModalOpen ? 'false' : 'true' ?>">
+    <div class="signup-otp-card otp-card" role="dialog" aria-modal="true" aria-labelledby="buyer-signup-otp-title" tabindex="-1">
+      <button class="signup-otp-close" type="button" data-signup-otp-close aria-label="Close email verification">&times;</button>
+      <div class="signup-otp-icon" aria-hidden="true">@</div>
+      <h2 id="buyer-signup-otp-title">Verify your email</h2>
+      <p class="signup-otp-subtitle">Enter the 6-digit code sent to:</p>
+      <div class="signup-otp-email"><?= htmlspecialchars($otpEmailMasked, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
+      <?php if ($otpModalOpen && $errorMessage !== ''): ?>
+        <div class="signup-otp-message error" role="alert"><?= htmlspecialchars($errorMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
+      <?php elseif ($otpModalOpen && $successMessage !== ''): ?>
+        <div class="signup-otp-message success" role="status"><?= htmlspecialchars($successMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
+      <?php endif; ?>
+      <form action="signup.php" method="POST" id="buyer-signup-otp-verify-form" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string)$_SESSION['signup_csrf'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+        <input type="hidden" name="action" value="verify_otp">
+        <input type="hidden" name="otp" id="buyer-signup-otp-value" value="">
+        <div class="signup-otp-inputs" id="buyer-signup-otp-inputs" aria-label="6-digit verification code">
+          <?php for ($i = 1; $i <= 6; $i++): ?>
+            <input class="signup-otp-digit" type="text" inputmode="numeric" maxlength="<?= $i === 1 ? 6 : 1 ?>" <?= $i === 1 ? 'autocomplete="one-time-code"' : '' ?> aria-label="Digit <?= $i ?>" required>
+          <?php endfor; ?>
+        </div>
+        <button class="signup-otp-primary" id="buyer-signup-otp-verify-button" type="submit">Verify &amp; Create Account</button>
+      </form>
+      <p class="signup-otp-delivery-help" role="note">Didn't receive a code? Check your email address and Spam folder. If the address is incorrect, choose Change email.</p>
+      <div class="signup-otp-actions">
+        <form action="signup.php" method="POST" id="buyer-signup-otp-resend-form">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string)$_SESSION['signup_csrf'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+          <input type="hidden" name="action" value="resend_otp">
+          <button class="signup-otp-text" id="buyer-signup-otp-resend-button" type="submit">Resend code</button>
+        </form>
+        <span aria-hidden="true">•</span>
+        <form action="signup.php" method="POST">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string)$_SESSION['signup_csrf'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+          <input type="hidden" name="action" value="cancel_otp">
+          <button class="signup-otp-text" type="submit">Change email</button>
+        </form>
+      </div>
+      <p class="signup-otp-expiry">The verification code expires in 10 minutes.</p>
+    </div>
+  </div>
   <div class="policy-modal" id="policy-modal" role="dialog" aria-modal="true" aria-labelledby="policy-title">
     <div class="policy-card">
       <div class="policy-header">
@@ -1053,28 +1201,17 @@ $otpResendSeconds = $otpModalOpen
     });
     const phoneInput = document.getElementById('phone');
     function normalizePhone(value) {
-      let digits = String(value).replace(/\D/g,'');
-      if (digits.startsWith('63')) digits='0'+digits.slice(2);
-      else if (digits.startsWith('9')) digits='0'+digits;
-      if (!digits.startsWith('09')) return '09';
-      return digits.slice(0,11);
+      let digits = String(value || '').replace(/\D/g, '');
+      if (digits.startsWith('63') && digits.length >= 3) digits = '0' + digits.slice(2);
+      else if (digits.startsWith('9')) digits = '0' + digits;
+      return digits.slice(0, 11);
     }
     phoneInput.value = normalizePhone(phoneInput.value);
-    phoneInput.addEventListener('paste', event => {
-      const pasted = event.clipboardData?.getData('text');
-      if (pasted === undefined) return;
-      event.preventDefault();
-      phoneInput.value = normalizePhone(pasted);
-      phoneInput.dispatchEvent(new Event('input',{bubbles:true}));
-    });
-    phoneInput.addEventListener('beforeinput', event => {
-      if (event.inputType === 'insertText' && event.data?.length === 1 && /[^0-9]/.test(event.data)) event.preventDefault();
-    });
     phoneInput.addEventListener('input', () => {
-      phoneInput.value = normalizePhone(phoneInput.value);
-      if (/^09\d{9}$/.test(phoneInput.value)) displayFieldError(phoneInput,'');
+      const normalized = normalizePhone(phoneInput.value);
+      if (phoneInput.value !== normalized) phoneInput.value = normalized;
+      if (/^09\d{9}$/.test(normalized)) displayFieldError(phoneInput,'');
     });
-    phoneInput.addEventListener('focus', () => { if (!phoneInput.value.startsWith('09')) phoneInput.value='09'; });
     phoneInput.addEventListener('blur', () => {
       displayFieldError(phoneInput,/^09\d{9}$/.test(phoneInput.value) ? '' : 'Enter a complete 11-digit mobile number.');
     });
@@ -1202,27 +1339,384 @@ $otpResendSeconds = $otpModalOpen
     const policyContent = document.getElementById('policy-content');
     const policyTitle = document.getElementById('policy-title');
     const policyLinks = document.querySelectorAll('.policy-link');
-    policyLinks.forEach((link) => {
-      link.addEventListener('click', (event) => {
+    const signupOtpModal = document.getElementById('buyer-signup-otp') || document.querySelector('.otp-modal');
+    // The OTP input, resend timer and verification form are owned by Signup.
+    // Backend OTP generation, delivery, cooldown and attempts remain in otp_service.php.
+    const signupOtpDigits = Array.from(signupOtpModal?.querySelectorAll('.signup-otp-digit') || []);
+    const signupOtpForm = document.getElementById('buyer-signup-otp-verify-form');
+    const signupOtpValue = document.getElementById('buyer-signup-otp-value');
+    const signupOtpVerify = document.getElementById('buyer-signup-otp-verify-button');
+    const signupOtpResend = document.getElementById('buyer-signup-otp-resend-button');
+    const signupOtpResendForm = document.getElementById('buyer-signup-otp-resend-form');
+    let signupOtpSeconds = <?= (int)$otpResendSeconds ?>;
+    const syncSignupOtp = () => {
+      const code = signupOtpDigits.map(input => input.value).join('');
+      if (signupOtpValue) signupOtpValue.value = code;
+      return code;
+    };
+    signupOtpDigits.forEach((input, index) => {
+      input.addEventListener('input', () => {
+        const entered = input.value.replace(/\D/g, '').slice(0, 6);
+        if (entered.length > 1) { // Mobile one-time-code autofill may insert all six digits at once.
+          signupOtpDigits.forEach((field, offset) => { field.value = entered[offset] || ''; });
+          syncSignupOtp();
+          signupOtpDigits[Math.min(entered.length, 6) - 1]?.focus();
+          return;
+        }
+        input.value = entered;
+        syncSignupOtp();
+        if (input.value && signupOtpDigits[index + 1]) signupOtpDigits[index + 1].focus();
+      });
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Backspace' && !input.value && signupOtpDigits[index - 1]) {
+          event.preventDefault();
+          signupOtpDigits[index - 1].value = '';
+          signupOtpDigits[index - 1].focus();
+          syncSignupOtp();
+        }
+        if (event.key === 'ArrowLeft' && signupOtpDigits[index - 1]) {
+          event.preventDefault();
+          signupOtpDigits[index - 1].focus();
+        }
+        if (event.key === 'ArrowRight' && signupOtpDigits[index + 1]) {
+          event.preventDefault();
+          signupOtpDigits[index + 1].focus();
+        }
+      });
+      input.addEventListener('paste', event => {
+        const pasted = (event.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+        if (!pasted) return;
         event.preventDefault();
-        const section = document.getElementById(link.dataset.policySection);
-        policyTitle.textContent = link.dataset.policySection === 'terms-section' ? 'Terms and Conditions' : 'Privacy Policy';
-        policyModal.classList.add('open');
-        document.body.style.overflow = 'hidden';
-        section?.scrollIntoView({ block: 'start' });
+        signupOtpDigits.forEach((field, offset) => { field.value = pasted[offset] || ''; });
+        syncSignupOtp();
+        signupOtpDigits[Math.min(pasted.length, 6) - 1]?.focus();
       });
     });
-    function closePolicyModal() {
-      policyModal.classList.remove('open');
-      document.body.style.overflow = '';
+    signupOtpForm?.addEventListener('submit', event => {
+      if (!/^\d{6}$/.test(syncSignupOtp())) {
+        event.preventDefault();
+        signupOtpDigits.find(input => !input.value)?.focus();
+        return;
+      }
+      if (signupOtpVerify) {
+        signupOtpVerify.disabled = true;
+        signupOtpVerify.textContent = 'Verifying...';
+      }
+    });
+    let signupResendTimer = null;
+    const tickSignupOtpResend = () => {
+      window.clearTimeout(signupResendTimer);
+      if (!signupOtpResend) return;
+      if (signupOtpSeconds > 0) {
+        signupOtpResend.disabled = true;
+        signupOtpResend.textContent = `Resend code (${signupOtpSeconds}s)`;
+        signupOtpSeconds -= 1;
+        signupResendTimer = window.setTimeout(tickSignupOtpResend, 1000);
+      } else {
+        signupOtpResend.disabled = false;
+        signupOtpResend.textContent = 'Resend code';
+      }
+    };
+    tickSignupOtpResend();
+
+    // Mobile system Back, browser Back and desktop Alt+Left dismiss the topmost
+    // open popup first, without navigating away from the Signup page.
+    const signupPopupHistoryKey = '__lokalcraftSignupPopupStack';
+    const signupPopupInstanceKey = '__lokalcraftSignupPopupInstance';
+    let signupPopupInstance = String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    let signupPopupStack = [];
+    let signupPreviousFocus = null;
+    const signupPopups = { otp: signupOtpModal, policy: policyModal };
+    const signupPopupVisible = node => Boolean(node && node.classList.contains('open'));
+    const signupPopupKnown = name => Object.prototype.hasOwnProperty.call(signupPopups, name) && Boolean(signupPopups[name]);
+    const signupPopupStackFromState = state => {
+      if (!state || typeof state !== 'object' || state[signupPopupInstanceKey] !== signupPopupInstance) return [];
+      const value = state[signupPopupHistoryKey];
+      return Array.isArray(value) ? value.filter(signupPopupKnown) : [];
+    };
+    const updateSignupPopupViewport = () => {
+      const viewport = window.visualViewport;
+      const height = Math.max(1, Math.round(viewport?.height || document.documentElement.clientHeight));
+      const top = Math.max(0, Math.round(viewport?.offsetTop || 0));
+      document.documentElement.style.setProperty('--signup-popup-height', `${height}px`);
+      document.documentElement.style.setProperty('--signup-popup-top', `${top}px`);
+    };
+    const syncSignupPopupStack = stack => {
+      const shouldFocusSignupOtp = !signupPopupVisible(signupOtpModal) && stack.includes('otp');
+      signupPopupStack = stack.filter(signupPopupKnown);
+      Object.entries(signupPopups).forEach(([name, popup]) => {
+        if (!popup) return;
+        const shouldOpen = signupPopupStack.includes(name);
+        popup.classList.toggle('open', shouldOpen);
+        popup.setAttribute('aria-hidden', String(!shouldOpen));
+      });
+      document.body.style.overflow = signupPopupStack.length ? 'hidden' : '';
+      if (!signupPopupStack.length && signupPreviousFocus?.isConnected) {
+        signupPreviousFocus.focus({ preventScroll: true });
+        signupPreviousFocus = null;
+      }
+      updateSignupPopupViewport();
+      if (signupPopupStack.at(-1) === 'otp' && shouldFocusSignupOtp) {
+        window.setTimeout(() => {
+          if (signupPopupVisible(signupOtpModal)) signupOtpDigits[0]?.focus({ preventScroll: true });
+        }, 80);
+      }
+    };
+    const pushSignupPopup = name => {
+      if (!signupPopupKnown(name) || signupPopupStack.at(-1) === name) return;
+      const nextStack = signupPopupStack.filter(item => item !== name).concat(name);
+      try {
+        const state = window.history.state;
+        const stateObject = state && typeof state === 'object' ? { ...state } : {};
+        window.history.pushState({ ...stateObject, [signupPopupInstanceKey]: signupPopupInstance, [signupPopupHistoryKey]: nextStack }, '', window.location.href);
+      } catch (_) { /* On-screen close remains available without History API. */ }
+      if (!signupPopupStack.length) signupPreviousFocus = document.activeElement;
+      syncSignupPopupStack(nextStack);
+    };
+    const closeSignupPopup = name => {
+      if (!signupPopupStack.includes(name)) return;
+      const stateStack = signupPopupStackFromState(window.history.state);
+      if (stateStack.at(-1) === name) {
+        window.history.back(); // popstate removes exactly one popup layer.
+      } else {
+        syncSignupPopupStack(signupPopupStack.filter(item => item !== name));
+      }
+    };
+    window.addEventListener('popstate', event => {
+      syncSignupPopupStack(signupPopupStackFromState(event.state));
+    });
+    updateSignupPopupViewport();
+    window.addEventListener('resize', updateSignupPopupViewport, { passive: true });
+    window.visualViewport?.addEventListener('resize', updateSignupPopupViewport, { passive: true });
+    window.visualViewport?.addEventListener('scroll', updateSignupPopupViewport, { passive: true });
+    document.addEventListener('focusin', event => {
+      const field = event.target;
+      if (!(field instanceof HTMLElement) || !field.closest('.otp-modal.open, .policy-modal.open')) return;
+      updateSignupPopupViewport();
+      window.setTimeout(() => {
+        updateSignupPopupViewport();
+        if (field.isConnected) field.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      }, 180);
+    });
+
+    policyLinks.forEach(link => {
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        const section = document.getElementById(link.dataset.policySection);
+        policyTitle.textContent = link.dataset.policySection === 'terms-section'
+          ? 'Terms and Conditions' : 'Privacy Policy';
+        pushSignupPopup('policy');
+        // Scroll inside the policy card only, not the underlying Signup page.
+        if (section && policyContent) {
+          const sectionY = section.getBoundingClientRect().top - policyContent.getBoundingClientRect().top;
+          policyContent.scrollTop += sectionY;
+        } else if (policyContent) {
+          policyContent.scrollTop = 0;
+        }
+      });
+    });
+    signupOtpModal?.querySelector('[data-signup-otp-close]')?.addEventListener('click', () => closeSignupPopup('otp'));
+    signupOtpModal?.addEventListener('click', event => {
+      if (event.target === signupOtpModal) closeSignupPopup('otp');
+    });
+    document.getElementById('policy-close').addEventListener('click', () => closeSignupPopup('policy'));
+    policyModal.addEventListener('click', event => {
+      if (event.target === policyModal) closeSignupPopup('policy');
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !signupPopupStack.length) return;
+      event.preventDefault();
+      closeSignupPopup(signupPopupStack.at(-1));
+    });
+
+    // The OTP modal opens from PHP after an OTP request or resend. Give this
+    // already-visible overlay a same-document history entry on load so pressing
+    // Back on a phone closes only it. Never clear the server-side OTP challenge.
+    if (signupPopupVisible(signupOtpModal)) {
+      signupOtpModal.setAttribute('aria-hidden', 'false');
+      const stateStack = signupPopupStackFromState(window.history.state);
+      if (stateStack.includes('otp')) {
+        syncSignupPopupStack(stateStack);
+      } else {
+        pushSignupPopup('otp');
+      }
+    } else {
+      syncSignupPopupStack(signupPopupStackFromState(window.history.state));
     }
-    document.getElementById('policy-close').addEventListener('click', closePolicyModal);
-    policyModal.addEventListener('click', (event) => {
-      if (event.target === policyModal) closePolicyModal();
+    // The server may render an already-open OTP dialog after a POST.
+    // Its first input still receives focus even before any history transition.
+    if (signupPopupVisible(signupOtpModal)) {
+      window.setTimeout(() => {
+        if (signupPopupVisible(signupOtpModal)) signupOtpDigits[0]?.focus({ preventScroll: true });
+      }, 100);
+    }
+    // Keep every entered Signup field, including passwords, in memory while the
+    // user is on this page. Never store passwords in localStorage/sessionStorage.
+    // All OTP actions use the same PHP backend without reloading Signup.
+    const signupOtpMessage = signupOtpModal?.querySelector('.signup-otp-message') || document.createElement('div');
+    if (signupOtpModal && !signupOtpMessage.isConnected) {
+      signupOtpMessage.className = 'signup-otp-message';
+      signupOtpMessage.hidden = true;
+      signupOtpModal.querySelector('.signup-otp-email')?.after(signupOtpMessage);
+    }
+    const signupOtpEmailLabel = signupOtpModal?.querySelector('.signup-otp-email');
+    const signupOtpCancelForm = signupOtpModal?.querySelector('form [name="action"][value="cancel_otp"]')?.form;
+    const showSignupOtpMessage = (message, kind = 'error') => {
+      if (!signupOtpMessage) return;
+      signupOtpMessage.hidden = !message;
+      signupOtpMessage.className = 'signup-otp-message ' + kind;
+      signupOtpMessage.textContent = message || '';
+    };
+    const signupJsonPost = async form => {
+      const response = await fetch('signup.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form),
+      });
+      const result = await response.json();
+      return { ...result, ok: response.ok && Boolean(result.success) };
+    };
+    const beginOtpOnPage = result => {
+      if (signupOtpEmailLabel) signupOtpEmailLabel.textContent = result.masked_email || '';
+      signupOtpDigits.forEach(input => { input.value = ''; });
+      syncSignupOtp();
+      signupOtpSeconds = Math.max(0, Number(result.resend_seconds) || 0);
+      tickSignupOtpResend();
+      showSignupOtpMessage(result.message || '', 'success');
+      pushSignupPopup('otp');
+    };
+    signupForm.addEventListener('submit', async event => {
+      if (event.defaultPrevented) return; // Existing client-side validation rejected it.
+      event.preventDefault();
+      try {
+        const result = await signupJsonPost(signupForm);
+        if (result.ok && result.otp_available) {
+          beginOtpOnPage(result);
+        } else {
+          setEmailMessage(result.message || 'Unable to send a code right now.', 'error');
+        }
+      } catch (_) {
+        setEmailMessage('Unable to connect. Please try again.', 'error');
+      } finally {
+        signupSubmitBtn.disabled = false;
+        signupSubmitBtn.textContent = 'Continue to Email Verification';
+      }
     });
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && policyModal.classList.contains('open')) closePolicyModal();
+    signupOtpForm?.addEventListener('submit', async event => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      try {
+        const result = await signupJsonPost(signupOtpForm);
+        if (result.ok && result.redirect) {
+          window.location.replace(result.redirect);
+          return;
+        }
+        showSignupOtpMessage(result.message || 'Unable to verify the code.');
+        if (!result.otp_available) closeSignupPopup('otp');
+        signupOtpDigits.forEach(input => { input.value = ''; });
+        syncSignupOtp();
+      } catch (_) {
+        showSignupOtpMessage('Unable to connect. Please try again.');
+      } finally {
+        if (signupOtpVerify) {
+          signupOtpVerify.disabled = false;
+          signupOtpVerify.textContent = 'Verify & Create Account';
+        }
+      }
     });
+    signupOtpResendForm?.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (signupOtpResend?.disabled) return;
+      signupOtpResend.disabled = true;
+      signupOtpResend.textContent = 'Sending...';
+      try {
+        const result = await signupJsonPost(signupOtpResendForm);
+        if (result.ok) {
+          signupOtpDigits.forEach(input => { input.value = ''; });
+          syncSignupOtp();
+          signupOtpSeconds = Math.max(0, Number(result.resend_seconds) || 0);
+          showSignupOtpMessage(result.message || 'A new code was sent.', 'success');
+        } else {
+          showSignupOtpMessage(result.message || 'Unable to resend the code.');
+          signupOtpSeconds = Math.max(0, Number(result.resend_seconds) || 0);
+        }
+      } catch (_) {
+        showSignupOtpMessage('Unable to connect. Please try again.');
+      } finally {
+        tickSignupOtpResend();
+      }
+    });
+    signupOtpCancelForm?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = signupOtpCancelForm.querySelector('button[type="submit"]');
+      if (button?.disabled) return;
+      if (button) button.disabled = true;
+      try {
+        const result = await signupJsonPost(signupOtpCancelForm);
+        if (!result.ok) {
+          showSignupOtpMessage(result.message || 'Unable to change email. Try again.');
+          return;
+        }
+        closeSignupPopup('otp');
+        window.setTimeout(() => emailInput.focus({ preventScroll: true }), 60);
+      } catch (_) {
+        showSignupOtpMessage('Unable to connect. Please try again.');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    });
+    // Leaving this document is different from browser Back inside a popup.
+    // Clearing on pagehide also prevents mobile bfcache from restoring old data.
+    let signupLeftDocument = false;
+    const resetSignupOnLeave = () => {
+      signupLeftDocument = true;
+      signupPopupInstance = 'left-' + signupPopupInstance;
+      signupPopupStack = [];
+      signupForm.querySelectorAll('input').forEach(input => {
+        if (input.type === 'hidden') return;
+        if (input.type === 'checkbox') input.checked = false;
+        else input.value = '';
+        input.classList.remove('input-valid', 'input-invalid');
+      });
+      signupOtpDigits.forEach(input => { input.value = ''; });
+      syncSignupOtp();
+      checkedEmail = '';
+      emailIsAvailable = false;
+      clearTimeout(emailCheckTimer);
+      emailRequest?.abort();
+      setEmailMessage('');
+      document.querySelectorAll('.signup-field-error').forEach(el => { el.textContent = ''; });
+      passwordStrength.className = 'password-strength';
+      passwordWarning.textContent = '';
+      confirmPasswordWarning.textContent = '';
+      confirmPasswordWarning.className = 'password-match';
+      signupOtpModal?.classList.remove('open');
+      signupOtpModal?.setAttribute('aria-hidden', 'true');
+      policyModal.classList.remove('open');
+      policyModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    };
+    window.addEventListener('pagehide', resetSignupOnLeave);
+    window.addEventListener('pageshow', event => {
+      if (!event.persisted) return;
+      // An older OTP history state must never reopen after leaving Signup.
+      if (signupLeftDocument) {
+        signupLeftDocument = false;
+        try {
+          const state = window.history.state;
+          if (state && typeof state === 'object') {
+            const clean = { ...state };
+            delete clean[signupPopupHistoryKey];
+            delete clean[signupPopupInstanceKey];
+            window.history.replaceState(clean, '', window.location.href);
+          }
+        } catch (_) { /* A restored page still remains cleared visually. */ }
+      }
+      syncSignupPopupStack([]);
+    });
+
     const authTransitionOverlay = document.getElementById('authTransitionOverlay');
     if (authTransitionOverlay) {
       window.setTimeout(() => {

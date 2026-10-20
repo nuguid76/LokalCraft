@@ -28,18 +28,19 @@ if (isset($conn) && $conn instanceof mysqli) {
         error_log('LokalCraft homepage artisan count query failed: ' . $e->getMessage());
     }
 }
-// Only six eligible public listings are loaded for the homepage preview.
+// Only ten available, in-stock public listings are loaded for the homepage preview.
 if (isset($conn) && $conn instanceof mysqli) {
     try {
         $featuredResult = $conn->query(
             "SELECT p.product_id, p.product_photo, p.product_name, p.craft_category,
-                    p.description, p.cost, p.stock, p.status,
+                    p.description, p.cost, p.stock,
                     u.firstname, u.lastname, b.businessname, l.barangay, l.city
              FROM products AS p
              INNER JOIN users AS u ON u.id = p.seller_id
              LEFT JOIN businessinfo AS b ON b.user_id = p.seller_id
              LEFT JOIN locationinfo AS l ON l.user_id = p.seller_id
-             WHERE LOWER(p.status) IN ('available', 'out of stock')
+             WHERE LOWER(TRIM(p.status)) = 'available'
+               AND p.stock > 0
                AND u.SellerOrNot = 1
                AND u.account_status = 'active'
                AND EXISTS (
@@ -47,7 +48,7 @@ if (isset($conn) && $conn instanceof mysqli) {
                    WHERE sa.user_id = p.seller_id AND sa.status = 'approved'
                )
              ORDER BY RAND()
-             LIMIT 6"
+             LIMIT 10"
         );
         if ($featuredResult instanceof mysqli_result) {
             while ($productRow = $featuredResult->fetch_assoc()) {
@@ -91,7 +92,7 @@ if (isset($conn) && $conn instanceof mysqli) {
             z-index: 0;
         }
         .container {
-            max-width: 1380px;
+            max-width: 1620px;
             margin: 0 auto;
             padding: 0 32px;
             position: relative;
@@ -305,6 +306,7 @@ if (isset($conn) && $conn instanceof mysqli) {
             }
             .hero {
                 flex-direction: column;
+                flex-wrap: nowrap;
             }
             .hero-left,
             .hero-right {
@@ -335,7 +337,6 @@ if (isset($conn) && $conn instanceof mysqli) {
             }
         }
 
-    /* About Us: continuous sections, no hidden panels or tab controls. */
     .about-page { padding: 50px 0 0; }
     .page-heading { text-align: center; max-width: 860px; margin: 0 auto; padding: 12px 0 34px; }
     .page-heading h2 { font-size: clamp(2.6rem, 5vw, 4rem); line-height: 1.1; font-weight: 800; letter-spacing: -1.2px; color: #2B1E12; margin-bottom: 12px; }
@@ -371,9 +372,7 @@ if (isset($conn) && $conn instanceof mysqli) {
     .cta-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
     .cta-button { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; min-width: 138px; padding: 12px 18px; border-radius: 10px; background: #fff; color: #A55325; border: 1px solid rgba(255,255,255,.9); font-weight: 700; font-size: .9rem; transition: transform .2s ease, box-shadow .2s ease; }
     .cta-button:hover { transform: translateY(-2px); box-shadow: 0 7px 16px rgba(80,40,12,.2); }
-    .cta-button.secondary { background: transparent; color: #fff; border-color: rgba(255,255,255,.95); }
 
-    /* Browse Products: maximum six cards in a single horizontal track. */
     .browse-section { padding: 58px 0 56px; scroll-margin-top: 0; }
     .browse-heading { text-align: center; max-width: 780px; margin: 0 auto 26px; }
     .browse-heading h2 { color: #2B1E12; font-size: clamp(2rem,4vw,3rem); font-weight: 800; line-height: 1.2; margin-bottom: 10px; }
@@ -384,6 +383,8 @@ if (isset($conn) && $conn instanceof mysqli) {
     .products-track::-webkit-scrollbar-thumb { background: #B85C28; border-radius: 20px; }
     .products-track::-webkit-scrollbar-track { background: rgba(225,190,153,.4); border-radius: 20px; }
     .preview-card { flex: 0 0 clamp(238px,26vw,286px); min-width: 0; background: rgba(255,252,245,.93); border: 1px solid rgba(220,180,135,.65); border-radius: 20px; overflow: hidden; box-shadow: 0 12px 24px rgba(80,50,25,.08); scroll-snap-align: start; display: flex; flex-direction: column; }
+    .preview-card-link { color: inherit; text-decoration: none; cursor: pointer; }
+    .preview-card-link:focus-visible { outline: 3px solid #B85C28; outline-offset: 3px; }
     .preview-image { height: 185px; position: relative; background: #E8D5C0; }
     .preview-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .preview-placeholder { width: 100%; height: 100%; display: grid; place-items: center; color: #A06435; }
@@ -395,12 +396,9 @@ if (isset($conn) && $conn instanceof mysqli) {
     .preview-location { display: flex; align-items: center; gap: 5px; }
     .preview-location svg { width: 14px; height: 14px; flex: none; }
     .preview-description { color: #62472F; font-size: .81rem; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin: 8px 0 12px; }
-    .preview-bottom { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .preview-bottom { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .preview-price { color: #B85C28; font-size: 1.08rem; font-weight: 800; }
     .preview-stock { color: #456643; background: #EDF5E9; border-radius: 24px; padding: 5px 8px; font-size: .69rem; font-weight: 700; }
-    .preview-button { width: 100%; display: block; text-align: center; text-decoration: none; padding: 11px 10px; background: #B85C28; color: #fff; border-radius: 11px; font-family: inherit; font-size: .83rem; font-weight: 700; border: 0; }
-    .preview-button:hover { background: #94481F; }
-    .preview-button:disabled { opacity: .55; cursor: not-allowed; }
     .browse-empty { width: 100%; padding: 40px 20px; border-radius: 20px; text-align: center; background: rgba(255,252,245,.86); color: #62472F; border: 1px solid rgba(220,180,135,.65); }
     .browse-empty h3 { color: #2B1E12; margin-bottom: 8px; }
     .browse-empty p { line-height: 1.6; }
@@ -409,7 +407,6 @@ if (isset($conn) && $conn instanceof mysqli) {
     @media (max-width: 560px) { .help-grid { grid-template-columns: 1fr; } .platform-card,.content-card { padding: 22px 18px; } .page-heading h2 { font-size: clamp(2.2rem,9vw,2.6rem); } .page-heading p { font-size: .93rem; } .products-track { gap: 12px; } .preview-card { flex-basis: min(82vw,280px); } .browse-section { padding: 43px 0 40px; } }
     @media (max-width: 550px) { .cta-section { margin: 0 -14px; padding-left: 14px; padding-right: 14px; } }
 
-    /* Joined Home -> About scrolling experience. No external animation libraries. */
     html { scroll-behavior: smooth; scroll-padding-top: 94px; }
     body { overflow-x: hidden; overflow-x: clip; }
     .scroll-progress {
@@ -460,7 +457,7 @@ if (isset($conn) && $conn instanceof mysqli) {
     .about-section .page-heading { padding-top: 16px; }
     .about-section .page-heading h2 { color: #2b1e12; }
     .about-section .page-heading p { color: #654c36; }
-    .story-scroll-cue:focus-visible, .public-nav-link:focus-visible, .preview-button:focus-visible, .btn-browse:focus-visible {
+    .story-scroll-cue:focus-visible, .public-nav-link:focus-visible, .btn-browse:focus-visible {
       outline: 3px solid rgba(184,92,40,.52); outline-offset: 3px;
     }
     .about-section .content-card, .about-section .platform-card, .about-section .help-card, .about-section .value-card {
@@ -496,6 +493,8 @@ if (isset($conn) && $conn instanceof mysqli) {
     @media (max-width: 780px) {
       .hero { min-height: 0; }
       .hero-right { --photo-shift: 0px !important; }
+      html.motion-ready .reveal[data-reveal="left"]:not(.is-visible),
+      html.motion-ready .reveal[data-reveal="right"]:not(.is-visible) { transform: translate3d(0, 25px, 0) scale(.98); }
       .story-bridge { margin-left: -24px; margin-right: -24px; min-height: 210px; }
     }
     @media (max-width: 550px) {
@@ -556,7 +555,7 @@ require __DIR__ . '/public_nav.php';
                 <p>Direct from artisans across Taguig</p>
             </article>
             <article class="feature-card reveal" data-reveal="up">
-                <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m2 12 4-4 4 2 4-2 4 4"/><path d="m6 17 4 3c.8.6 1.5.6 2 0l6-6M2 13l-1 1 4 5 2-2m14-4 1 1-4 5-2-2"/></svg></div>
+                <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="5.5" cy="5" r="2"/><circle cx="18.5" cy="5" r="2"/><path d="M2.5 21v-7.5a4 4 0 0 1 4-4h.2a4 4 0 0 1 3.2 1.6l1.1 1.4c.5.6 1.5.6 2 0l1.1-1.4a4 4 0 0 1 3.2-1.6h.2a4 4 0 0 1 4 4V21"/><path d="M8.5 21v-6.5m7 6.5v-6.5"/><path d="m10 12.6 1 1.1a1.4 1.4 0 0 0 2 0l1-1.1"/></svg></div>
                 <h3>Empower local</h3>
                 <p>Empower local communities and artisans</p>
             </article>
@@ -614,9 +613,9 @@ require __DIR__ . '/public_nav.php';
         <article class="platform-card reveal" data-reveal="up">
           <h2>About the Platform</h2>
           <div class="platform-copy">
-            <p>LokalCraft is an online marketplace for handicraft sellers and buyers in Taguig City. It was created to support small artisans who need help with product pricing, promotion, and selling online.</p>
-            <p>Setting the right price can be difficult for handmade products. Sellers need to consider materials, labor, and other costs. LokalCraft has a <strong>Costing and Pricing Calculator</strong> that helps them understand their costs and choose reasonable selling prices.</p>
-            <p>With LokalCraft, artisans can focus on making their products while using the platform to manage prices, stocks, orders, and customer messages.</p>
+            <p>LokalCraft is an online marketplace designed to connect handcrafted product sellers and buyers in Taguig City. It aims to support small handcraft microenterprises by providing a platform where sellers can showcase their products, manage orders, and reach potential customers.</p>
+            <p>Setting the right price for handmade products can be challenging, especially when sellers need to consider materials, labor, packaging, and other expenses. LokalCraft provides a <strong>"Costing and Pricing Calculator"</strong> strong to help sellers calculate product costs, set target profit margins, and consider platform fees when determining their selling prices. It also provides a market price reference based on similar products listed within the platform.</p>
+            <p>Through LokalCraft, sellers can manage product listings and stock quantities, handle orders, and communicate with buyers to discuss order details, including pricing and meet-up or delivery arrangements. Buyers can browse products, connect with sellers, and review their order details before confirming their purchases.</p>
           </div>
         </article>
       </section>
@@ -625,23 +624,23 @@ require __DIR__ . '/public_nav.php';
         <div class="help-grid">
           <article class="help-card reveal" data-reveal="up">
             <div class="help-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8 7h8M8 11h1m3 0h1m3 0h.01M8 15h1m3 0h1m3 0h.01M8 19h1m3 0h1m3 0h.01"/></svg></div>
-            <h3>Pricing Calculator</h3>
-            <p>Helps artisans set product prices based on materials, labor, and other costs.</p>
+            <h3>Pricing and Costing Calculator</h3>
+            <p>Helps artisans calculate product costs, set target profit margins, consider platform fees, and compare their prices with similar products listed on LokalCraft.</p>
           </article>
           <article class="help-card reveal" data-reveal="up">
             <div class="help-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 9 2-6h14l2 6v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0V9Z"/><path d="M5 14v7h14v-7M9 21v-6h6v6"/></svg></div>
             <h3>Online Marketplace</h3>
-            <p>Gives local artisans a place to show their products and reach more buyers in Taguig and nearby areas.</p>
+            <p>Provides local artisans with a platform to showcase their handcrafted products and connect with potential buyers in Taguig City.</p>
           </article>
           <article class="help-card reveal" data-reveal="up">
-            <div class="help-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 17 6-6 4 4 8-8M15 7h6v6"/></svg></div>
-            <h3>Business Growth</h3>
-            <p>Helps sellers keep their products and orders organized as their business grows.</p>
+            <div class="help-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 7.5 9-4.5 9 4.5v9L12 21l-9-4.5z"/><path d="m3 7.5 9 4.5 9-4.5M12 12v9"/></svg></div>
+            <h3> Order and Product Management</h3>
+            <p>Helps sellers organize their product listings, update stock quantities, and manage orders through one platform.</p>
           </article>
           <article class="help-card reveal" data-reveal="up">
             <div class="help-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11.5a8 8 0 0 1-8 8 8.5 8.5 0 0 1-4-.9L3 20l1.4-4.8A8 8 0 1 1 20 11.5Z"/><path d="M8 11h8M8 14h5"/></svg></div>
-            <h3>Direct Connection</h3>
-            <p>Connects buyers and sellers so they can talk directly about products and orders.</p>
+            <h3>Direct Buyer-Seller Communication</h3>
+            <p>Allows buyers and sellers to discuss product customizations, prices, and meet-up or delivery arrangements, with order details organized through a structured order card.</p>
           </article>
         </div>
       </section>
@@ -695,10 +694,8 @@ require __DIR__ . '/public_nav.php';
               $previewDescription = trim((string)($product['description'] ?? '')) ?: 'Handcrafted by a local Filipino artisan.';
               $previewPhoto = trim((string)($product['product_photo'] ?? ''));
               $previewStock = (int)($product['stock'] ?? 0);
-              $previewStatus = strtolower(trim((string)($product['status'] ?? 'available')));
-              $previewSoldOut = $previewStock <= 0 || $previewStatus === 'out of stock';
             ?>
-            <article class="preview-card">
+            <a class="preview-card preview-card-link" href="login.php?selected_product_id=<?php echo (int)($product['product_id'] ?? 0); ?>" aria-label="Sign in to view <?php echo htmlspecialchars($previewName, ENT_QUOTES, 'UTF-8'); ?> in your Buyer account">
               <div class="preview-image">
                 <?php if ($previewPhoto !== ''): ?>
                   <img src="<?php echo htmlspecialchars($previewPhoto, ENT_QUOTES, 'UTF-8'); ?>"
@@ -718,15 +715,10 @@ require __DIR__ . '/public_nav.php';
                 <p class="preview-description"><?php echo htmlspecialchars($previewDescription, ENT_QUOTES, 'UTF-8'); ?></p>
                 <div class="preview-bottom">
                   <span class="preview-price">₱<?php echo number_format((float)($product['cost'] ?? 0), 2); ?></span>
-                  <span class="preview-stock"><?php echo $previewSoldOut ? 'Out of Stock' : $previewStock . ' available'; ?></span>
+                  <span class="preview-stock"><?php echo $previewStock . ' available'; ?></span>
                 </div>
-                <?php if ($previewSoldOut): ?>
-                  <button class="preview-button" type="button" disabled>Out of Stock</button>
-                <?php else: ?>
-                  <a href="login.php" class="preview-button">Login to Purchase</a>
-                <?php endif; ?>
               </div>
-            </article>
+            </a>
           <?php endforeach; ?>
         <?php endif; ?>
       </div>
@@ -736,11 +728,10 @@ require __DIR__ . '/public_nav.php';
       <p>Join the LokalCraft community and share your handmade products with more people.</p>
       <div class="cta-actions">
         <a href="become_a_seller.php" class="cta-button">Get Started Today</a>
-        <a href="#home" class="cta-button secondary">Back Home</a>
       </div>
     </section>
 
-    <footer class="footer-note"><span class="footer-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 22V6M12 19C8 18 6 15 6 12c4 0 6 2 6 5M12 15c4-1 6-4 6-7-4 0-6 2-6 5M12 10C9 9 7 6 7 3c3 0 5 2 5 5M12 6c1-2 2-3 4-4 0 3-1 5-4 6"/></svg></span> LokalCraft — Preserving Filipino heritage, one craft at a time</footer>
+    <footer class="footer-note"><span class="footer-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 22V6M12 19C8 18 6 15 6 12c4 0 6 2 6 5M12 15c4-1 6-4 6-7-4 0-6 2-6 5M12 10C9 9 7 6 7 3c3 0 5 2 5 5M12 6c1-2 2-3 4-4 0 3-1 5-4 6"/></svg></span> LokalCraft — Preserving Filipino heritage, one craft at a time. Empowering local artisans through digital innovation.</footer>
 </main>
 
 <script>

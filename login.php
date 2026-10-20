@@ -15,7 +15,6 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/otp_service.php';
-require_once __DIR__ . '/includes/otp_modal.php';
 $error = '';
 $email = '';
 $forgotFlowKey = 'forgot_password';
@@ -24,11 +23,13 @@ $forgotEmailError = trim((string)($_SESSION['forgot_email_error'] ?? ''));
 $forgotOtpError = trim((string)($_SESSION['forgot_otp_error'] ?? ''));
 $forgotOtpSuccess = trim((string)($_SESSION['forgot_otp_success'] ?? ''));
 $forgotResetError = trim((string)($_SESSION['forgot_reset_error'] ?? ''));
+$forgotPasswordReuseError = trim((string)($_SESSION['forgot_password_reuse_error'] ?? ''));
 unset(
     $_SESSION['forgot_email_error'],
     $_SESSION['forgot_otp_error'],
     $_SESSION['forgot_otp_success'],
-    $_SESSION['forgot_reset_error']
+    $_SESSION['forgot_reset_error'],
+    $_SESSION['forgot_password_reuse_error']
 );
 $loginNotice = trim((string)(
     $_SESSION['login_notice']
@@ -62,6 +63,19 @@ $_SESSION['login_failures'] = array_values(array_filter(
     $previousFailures,
     static fn ($timestamp) => is_int($timestamp) && $timestamp > $now - $loginWindowSeconds
 ));
+// Keep the 15-minute lockout tied to the fifth failed attempt, not the oldest attempt.
+$loginLockoutUntil = (int)($_SESSION['login_lockout_until'] ?? 0);
+if ($loginLockoutUntil > 0 && $loginLockoutUntil <= $now) {
+    unset($_SESSION['login_lockout_until']);
+    $_SESSION['login_failures'] = [];
+    $loginLockoutUntil = 0;
+}
+// Continue any already-exhausted attempts from sessions started before this UI update.
+if ($loginLockoutUntil === 0 && count($_SESSION['login_failures']) >= $maxLoginFailures) {
+    $lastFailure = (int)end($_SESSION['login_failures']);
+    $loginLockoutUntil = $lastFailure + $loginWindowSeconds;
+    $_SESSION['login_lockout_until'] = $loginLockoutUntil;
+}
 if (empty($_SESSION['login_csrf'])) {
     $_SESSION['login_csrf'] = bin2hex(random_bytes(32));
 }
@@ -281,11 +295,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: login.php?forgot=reset');
             exit;
         }
-        if (!preg_match('/[^A-Za-z0-9]/', $newPassword)) {
-            $_SESSION['forgot_reset_error'] = 'New password must include at least one special character.';
-            header('Location: login.php?forgot=reset');
-            exit;
-        }
         if ($newPassword !== $confirmPassword) {
             $_SESSION['forgot_reset_error'] = 'The confirmation password does not match the new password.';
             header('Location: login.php?forgot=reset');
@@ -294,6 +303,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $resetUserId = (int)$verifiedReset['user_id'];
             $resetEmail = trim((string)($verifiedReset['email'] ?? ''));
+            // Compare against the stored hash only after OTP verification.
+            // Never expose the existing hash or previous password to the browser.
+            $currentPasswordStmt = $conn->prepare("
+                SELECT password
+                FROM users
+                WHERE id = ?
+                  AND LOWER(email) = LOWER(?)
+                  AND account_status <> 'disabled'
+                LIMIT 1
+            ");
+            if (!$currentPasswordStmt) {
+                throw new RuntimeException('Unable to verify the current password.');
+            }
+            $currentPasswordStmt->bind_param('is', $resetUserId, $resetEmail);
+            $currentPasswordStmt->execute();
+            $currentPasswordStmt->bind_result($currentPasswordHash);
+            $hasCurrentPassword = $currentPasswordStmt->fetch();
+            $currentPasswordStmt->close();
+            if (!$hasCurrentPassword) {
+                throw new RuntimeException('No matching user was found.');
+            }
+            if (password_verify($newPassword, (string)$currentPasswordHash)) {
+                $_SESSION['forgot_password_reuse_error'] =
+                    'Your new password must be different from your previous password.';
+                header('Location: login.php?forgot=reset', true, 303);
+                exit;
+            }
             $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
             if (!is_string($newPasswordHash) || $newPasswordHash === '') {
                 throw new RuntimeException('Unable to secure the new password.');
@@ -304,12 +340,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 WHERE id = ?
                   AND LOWER(email) = LOWER(?)
                   AND account_status <> 'disabled'
+                  AND password = ?
                 LIMIT 1
             ");
             if (!$resetStmt) {
                 throw new RuntimeException('Unable to prepare the password update.');
             }
-            $resetStmt->bind_param('sis', $newPasswordHash, $resetUserId, $resetEmail);
+            // Prevent overwriting a password that changed after the comparison.
+            $resetStmt->bind_param('siss', $newPasswordHash, $resetUserId, $resetEmail, $currentPasswordHash);
             $resetStmt->execute();
             $affected = $resetStmt->affected_rows;
             $resetStmt->close();
@@ -331,14 +369,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $email = isset($_POST['email']) && is_string($_POST['email']) ? strtolower(trim($_POST['email'])) : '';
         $password = isset($_POST['password']) && is_string($_POST['password']) ? $_POST['password'] : '';
-        if ($email === '' || $password === '') {
+        if ($loginLockoutUntil > $now) {
+            $error = 'Too many login attempts. Sign In is temporarily disabled for 15 minutes.';
+        } elseif ($email === '' || $password === '') {
             $error = 'Please enter your email and password.';
         } elseif (strlen($email) > 100 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
-        } elseif (count($_SESSION['login_failures']) >= $maxLoginFailures) {
-            $remainingSeconds = $loginWindowSeconds - ($now - $_SESSION['login_failures'][0]);
-            $waitMinutes = max(1, (int)ceil($remainingSeconds / 60));
-            $error = 'Too many login attempts. Please try again in ' . $waitMinutes . ' minute(s).';
         } else {
             try {
                 $stmt = $conn->prepare("
@@ -367,9 +403,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->close();
                 if (!$found || !password_verify($password, (string)$passwordHash)) {
                     $_SESSION['login_failures'][] = $now;
-                    $error = count($_SESSION['login_failures']) >= $maxLoginFailures
-                        ? 'Too many login attempts. Please try again in 15 minutes.'
-                        : 'Invalid email or password. Please try again.';
+                    if (count($_SESSION['login_failures']) >= $maxLoginFailures) {
+                        $loginLockoutUntil = $now + $loginWindowSeconds;
+                        $_SESSION['login_lockout_until'] = $loginLockoutUntil;
+                        $error = 'Too many login attempts. Sign In is temporarily disabled for 15 minutes.';
+                    } else {
+                        $error = 'Invalid email or password. Please try again.';
+                    }
                 } elseif (strtolower(trim((string)$accountStatus)) === 'disabled') {
                     $error = 'This account has been disabled. Please contact the LokalCraft administrator.';
                 } else {
@@ -511,6 +551,7 @@ $forgotOtpResendSeconds = $forgotOtpModalOpen
 $forgotResetMaskedEmail = $forgotResetModalOpen
     ? otpMaskEmail((string)($verifiedForgotReset['email'] ?? ''))
     : '';
+$loginLockoutRemaining = max(0, $loginLockoutUntil - time());
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -532,124 +573,102 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
       position: relative;
       min-height: 100vh;
-      background-image: url('uploads/website background.png');
-      background-size: cover;
-      background-position: center center;
-      background-repeat: no-repeat;
-      background-attachment: scroll;
+      background: #fff8eb;
       overflow-x: hidden;
     }
-    body::before {
+    /* Keep the landing-page image framed to the viewport, not the form height. */
+    body::before,
+    body::after {
       content: "";
       position: fixed;
-      inset: 0;
-      background-color: rgba(255, 248, 235, 0.60);
-      backdrop-filter: blur(1px);
+      inset: 0 0 auto;
+      width: 100%;
+      height: 100vh;
+      height: 100lvh;
       pointer-events: none;
+    }
+    body::before {
       z-index: 0;
+      background: url('uploads/website background.png') center center / cover no-repeat;
     }
-    .public-nav-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      z-index: 10000;
-      pointer-events: none;
-    }
-    .public-nav-container .public-nav-inner {
-      width: 100%;
-      max-width: 1380px;
-      margin: 0 auto;
-      padding: 0 32px;
-      position: relative;
-      z-index: 10001;
-      pointer-events: auto;
-      isolation: isolate;
-      overflow: visible;
-    }
-    .public-nav-container .public-header {
-      position: relative;
-      z-index: 10002;
-      overflow: visible !important;
-    }
-    .public-nav-container .public-header-inner {
-      position: relative;
-      z-index: 10003;
-      overflow: visible !important;
-    }
-    .public-nav-container .nav-menu,
-    .public-nav-container .mobile-menu,
-    .public-nav-container .menu,
-    .public-nav-container .dropdown,
-    .public-nav-container .dropdown-menu,
-    .public-nav-container .menu-panel,
-    .public-nav-container .mobile-nav,
-    .public-nav-container [class*="menu"],
-    .public-nav-container [class*="dropdown"] {
-      z-index: 10004;
-    }
-    .container {
-      max-width: 1380px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 0 32px;
-      position: relative;
+    body::after {
       z-index: 1;
+      background-color: rgba(255, 248, 235, 0.60);
+      -webkit-backdrop-filter: blur(1px);
+      backdrop-filter: blur(1px);
     }
-    .navbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: nowrap;
-      padding: 20px 0;
-      gap: 20px;
-      border-bottom: 1px solid rgba(160, 110, 70, 0.25);
-      backdrop-filter: blur(2px);
-    }
+    /* One stable desktop layout. Browser zoom naturally scales CSS pixels without
+       width-based enlargement or alignment jumps at arbitrary breakpoints. */
     .login-page {
-      min-height: 100svh;
+      min-height: calc(100svh - 82px);
       width: 100%;
+      max-width: 1600px;
+      margin-inline: auto;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 138px 20px 40px;
+      padding: clamp(24px, 2.4vw, 40px) 16px;
       position: relative;
-      z-index: 1;
+      z-index: 2;
     }
     .login-container {
-      width: 100%;
-      max-width: 420px;
+      width: min(100%, 420px);
+      min-width: 0;
+      margin-inline: auto;
       position: relative;
       z-index: 1;
     }
-.login-card {
+    .login-card {
+      width: 100%;
+      min-width: 0;
       background: rgba(255, 252, 245, 0.95);
       backdrop-filter: blur(8px);
-      border-radius: 32px;
-      padding: 48px 40px;
+      border-radius: 30px;
+      padding: clamp(30px, 2.6vw, 44px) clamp(22px, 2.4vw, 38px);
       box-shadow: 0 25px 40px -8px rgba(0, 0, 0, 0.15);
       border: 1px solid rgba(220, 180, 135, 0.6);
     }
+    /* Lightweight entrance motion; no artificial zoom or layout movement. */
+    .login-card {
+      animation: lokalcraftLoginCardEnter 650ms cubic-bezier(.22, 1, .36, 1) both;
+    }
+    .login-header,
+    .login-form > .form-group,
+    .login-form > .forgot-password-row,
+    .login-form > .btn-login,
+    .signup-prompt {
+      animation: lokalcraftLoginItemEnter 480ms ease-out both;
+    }
+    .login-header { animation-delay: 100ms; }
+    .login-form > .form-group { animation-delay: 170ms; }
+    .login-form > .form-group + .form-group { animation-delay: 230ms; }
+    .login-form > .forgot-password-row { animation-delay: 290ms; }
+    .login-form > .btn-login { animation-delay: 350ms; }
+    .signup-prompt { animation-delay: 410ms; }
+    @keyframes lokalcraftLoginCardEnter {
+      from { opacity: 0; transform: translateY(20px) scale(.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes lokalcraftLoginItemEnter {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .login-header {
       text-align: center;
-      margin-bottom: 32px;
+      margin-bottom: clamp(22px, 2vw, 30px);
     }
-.login-title {
+    .login-title {
       font-size: 2rem;
       font-weight: 800;
       color: #8b5423;
       margin-bottom: 8px;
       line-height: 1.2;
     }
-    .login-subtitle {
-      font-size: 0.95rem;
-      color: #5A3F28;
-      line-height: 1.5;
-    }
     .login-form {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      min-width: 0;
+      gap: clamp(16px, 1.5vw, 20px);
     }
     .form-group {
       display: flex;
@@ -662,6 +681,8 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       font-size: 0.9rem;
     }
     .form-group input {
+      width: 100%;
+      min-width: 0;
       background: #F9EFE2;
       border: 1.5px solid #E7CDB0;
       border-radius: 16px;
@@ -740,6 +761,16 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       cursor: wait;
       transform: none;
     }
+    .btn-login.is-locked:disabled {
+      cursor: not-allowed;
+    }
+    .login-lockout-hint {
+      margin-top: -10px;
+      text-align: center;
+      color: #8B3430;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
     .btn-login:active {
       transform: translateY(0);
     }
@@ -759,69 +790,93 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       color: #94481F;
       text-decoration: underline;
     }
-    .error-box {
-      background: rgba(220, 53, 69, 0.10);
-      border: 1px solid rgba(220, 53, 69, 0.25);
-      color: #8b1e1e;
-      border-radius: 12px;
-      padding: 12px 14px;
-      margin-bottom: 16px;
-      font-size: 0.9rem;
-      font-weight: 600;
+    /* Floating notices overlay the shared navigation without moving the form. */
+    .login-notification-stack {
+      position: fixed;
+      z-index: 20000;
+      top: max(14px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      display: grid;
+      gap: 10px;
+      width: min(520px, calc(100% - 32px));
+      pointer-events: none;
     }
-    .status-box {
-      background: #e3f2fd;
-      border: 1px solid #b9d8ef;
-      color: #155b89;
-      border-radius: 12px;
-      padding: 12px 14px;
-      margin-bottom: 16px;
-      font-size: 0.9rem;
-      line-height: 1.45;
-    }
-@media (max-width: 600px) {
-      .login-card {
-        padding: 36px 28px;
-        border-radius: 28px;
-      }
-      .login-title {
-        font-size: 1.6rem;
-      }
-.form-group input {
-        padding: 12px 16px;
-        font-size: 16px;
-      }
-      .btn-login {
-        padding: 12px 32px;
-        font-size: 0.95rem;
-      }
-      body {
-        padding: 0;
-      }
-    }
-    @media (max-width: 600px) {
-      .login-page {
-        min-height: 100svh;
-        padding: 122px 16px 32px;
-      }
-    }
-    .public-header-inner {
+    .login-notification {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
       width: 100%;
+      min-width: 0;
+      padding: 12px 12px 12px 13px;
+      border: 1px solid #DEC8A8;
+      border-radius: 13px;
+      background: #FFFCF7;
+      box-shadow: 0 12px 34px rgba(45, 30, 16, 0.17);
+      pointer-events: auto;
+      animation: loginNoticeDrop .48s cubic-bezier(.16, 1, .3, 1) both;
+      color: #4A3323;
+      font-size: 0.84rem;
+      line-height: 1.48;
+      overflow-wrap: anywhere;
     }
-    @media (max-width: 400px) {
-      .login-card {
-        padding: 28px 20px;
-      }
-      .login-title {
-        font-size: 1.4rem;
-      }
-}
-    @media (max-width: 600px) {
-      body {
-        background-attachment: scroll;
-        background-position: center center;
-      }
+    .login-notification--error {
+      border-color: #E9C7C2;
+      background: #FFF8F6;
+      color: #8B3430;
     }
+    .login-notification-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 23px;
+      width: 23px;
+      height: 23px;
+      border-radius: 50%;
+      background: #F2E0C7;
+      color: #875020;
+      font-size: 0.88rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .login-notification--error .login-notification-icon {
+      background: #F8E0DC;
+      color: #A34239;
+    }
+    .login-notification-message { flex: 1; min-width: 0; padding-top: 2px; }
+    .login-notification-close {
+      display: grid;
+      place-items: center;
+      flex: 0 0 27px;
+      width: 27px;
+      height: 27px;
+      margin: -2px -3px -2px 0;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .login-notification-close:hover, .login-notification-close:focus-visible {
+      background: rgba(92, 65, 43, 0.09);
+      outline-offset: 2px;
+    }
+    .login-notification.is-leaving {
+      animation: loginNoticeLeave .32s ease-in both;
+      pointer-events: none;
+    }
+    @keyframes loginNoticeDrop {
+      from { opacity: 0; transform: translateY(-140%); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes loginNoticeLeave {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-35%); }
+    }
+    /* Phone field and button sizes are handled with the mobile rules below. */
     .forgot-password-row {
       display: flex;
       justify-content: flex-end;
@@ -857,6 +912,18 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
     }
     .forgot-modal.open {
       display: flex;
+      animation: lokalcraftLoginModalBackdrop 220ms ease-out both;
+    }
+    .forgot-modal.open > .forgot-card {
+      animation: lokalcraftLoginModalEnter 310ms cubic-bezier(.22, 1, .36, 1) both;
+    }
+    @keyframes lokalcraftLoginModalBackdrop {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes lokalcraftLoginModalEnter {
+      from { opacity: 0; transform: translateY(12px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
     .forgot-card {
       width: min(470px, 100%);
@@ -887,18 +954,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
     .forgot-close:focus-visible {
       background: rgba(184, 92, 40, 0.10);
       outline: none;
-    }
-    .forgot-icon {
-      width: 58px;
-      height: 58px;
-      display: grid;
-      place-items: center;
-      margin: 0 auto 14px;
-      border-radius: 18px;
-      background: #F9EFE2;
-      color: #A55325;
-      font-size: 1.45rem;
-      font-weight: 900;
     }
     .forgot-card h2 {
       margin: 0;
@@ -991,13 +1046,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       gap: 8px;
       margin: 0;
     }
-    .forgot-reset-form .password-wrap {
-      width: 100%;
-    }
-    .forgot-reset-form .forgot-helper {
-      margin: -2px 2px 0;
-      text-align: left;
-    }
     .forgot-reset-form .forgot-primary {
       margin-top: 2px;
     }
@@ -1007,60 +1055,7 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       height: 20px;
       pointer-events: none;
     }
-    .password-requirements {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 7px 14px;
-      margin-top: 10px;
-      padding: 12px 14px;
-      border: 1px solid #E7CDB0;
-      border-radius: 14px;
-      background: #FFF9F1;
-    }
-    .password-requirements-title {
-      grid-column: 1 / -1;
-      margin: 0 0 2px;
-      color: #6F5139;
-      font-size: 0.78rem;
-      font-weight: 800;
-    }
-    .password-rule {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      color: #8A7563;
-      font-size: 0.76rem;
-      line-height: 1.35;
-    }
-    .password-rule-icon {
-      width: 17px;
-      height: 17px;
-      flex: 0 0 17px;
-      display: grid;
-      place-items: center;
-      border: 1.5px solid #C9B29D;
-      border-radius: 50%;
-      font-size: 0.68rem;
-      font-weight: 900;
-      line-height: 1;
-    }
-    .password-rule.valid {
-      color: #2F7A4F;
-      font-weight: 700;
-    }
-    .password-rule.valid .password-rule-icon {
-      border-color: #2F7A4F;
-      background: #EAF7EF;
-      color: #2F7A4F;
-    }
-    .password-rule.invalid {
-      color: #A83D3D;
-    }
-    .password-rule.invalid .password-rule-icon {
-      border-color: #D99A9A;
-      background: #FFF2F2;
-      color: #A83D3D;
-    }
+
     .password-inline-feedback {
       min-height: 18px;
       margin-top: 7px;
@@ -1088,14 +1083,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       background: #FFF8F8;
       box-shadow: 0 0 0 3px rgba(201, 107, 107, 0.10);
     }
-    @media (max-width: 480px) {
-      .forgot-card {
-        padding: 24px 18px;
-      }
-      .password-requirements {
-        grid-template-columns: 1fr;
-      }
-    }
     @media (max-width: 768px) {
       html,
       body {
@@ -1105,26 +1092,14 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       }
       body {
         min-height: 100dvh;
-        background-attachment: scroll;
-        background-position: center center;
-      }
-      .public-nav-container .public-nav-inner,
-      .container {
-        padding-left: 16px;
-        padding-right: 16px;
       }
       .login-page {
-        min-height: 100dvh;
+        min-height: calc(100svh - 82px);
         align-items: flex-start;
-        padding:
-          calc(108px + env(safe-area-inset-top))
-          16px
-          calc(28px + env(safe-area-inset-bottom));
+        padding: 32px 16px 28px;
       }
       .login-container {
-        width: 100%;
-        max-width: 440px;
-        margin: 0 auto;
+        width: min(100%, 420px);
       }
       .login-card {
         width: 100%;
@@ -1137,9 +1112,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .login-title {
         font-size: clamp(1.55rem, 7vw, 1.8rem);
       }
-      .login-subtitle {
-        font-size: 0.9rem;
-      }
       .login-form {
         gap: 18px;
       }
@@ -1147,6 +1119,9 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-field input {
         min-height: 50px;
         font-size: 16px;
+      }
+      .form-group input {
+        padding: 12px 16px;
       }
       .password-wrap input {
         padding-right: 54px;
@@ -1164,12 +1139,15 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
         width: 100%;
         min-height: 50px;
       }
+      .btn-login {
+        padding: 12px 32px;
+        font-size: 0.95rem;
+      }
       .signup-prompt {
         margin-top: 22px;
         line-height: 1.5;
       }
-      .error-box,
-      .status-box {
+      .login-notification {
         overflow-wrap: anywhere;
       }
       .forgot-modal {
@@ -1195,11 +1173,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-reset-card {
         padding: 26px 20px;
       }
-      .forgot-icon {
-        width: 54px;
-        height: 54px;
-        margin-bottom: 12px;
-      }
       .forgot-card h2 {
         font-size: 1.45rem;
         padding: 0 34px;
@@ -1212,29 +1185,17 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-reset-form {
         gap: 16px;
       }
-      .password-requirements {
-        grid-template-columns: 1fr;
-        gap: 7px;
-        padding: 12px;
-      }
-      .password-requirements-title {
-        margin-bottom: 1px;
-      }
+
       .password-inline-feedback {
         overflow-wrap: anywhere;
       }
     }
+    @media (max-width: 700px) {
+      .login-page { min-height: calc(100svh - 70px); }
+    }
     @media (max-width: 480px) {
-      .public-nav-container .public-nav-inner,
-      .container {
-        padding-left: 12px;
-        padding-right: 12px;
-      }
       .login-page {
-        padding:
-          calc(98px + env(safe-area-inset-top))
-          12px
-          calc(22px + env(safe-area-inset-bottom));
+        padding: 24px 12px 22px;
       }
       .login-card {
         padding: 30px 20px;
@@ -1245,9 +1206,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       }
       .login-title {
         font-size: 1.55rem;
-      }
-      .login-subtitle {
-        font-size: 0.86rem;
       }
       .form-group label,
       .forgot-field label {
@@ -1283,9 +1241,7 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
         font-size: 0.84rem;
         line-height: 1.5;
       }
-      .password-requirements {
-        margin-top: 8px;
-      }
+
     }
     @media (max-width: 360px) {
       .login-page {
@@ -1298,7 +1254,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .login-title {
         font-size: 1.42rem;
       }
-      .login-subtitle,
       .signup-prompt {
         font-size: 0.83rem;
       }
@@ -1312,14 +1267,12 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-description {
         font-size: 0.81rem;
       }
-      .password-rule {
-        font-size: 0.73rem;
-      }
+
     }
     @media (max-height: 620px) and (max-width: 900px) {
       .login-page {
         align-items: flex-start;
-        padding-top: calc(92px + env(safe-area-inset-top));
+        padding-top: 18px;
       }
       .login-card {
         padding-top: 26px;
@@ -1330,9 +1283,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       }
     }
     @media (max-width: 1440px) {
-      .login-container {
-        max-width: 420px;
-      }
       .forgot-modal {
         overflow-y: auto;
         overscroll-behavior: contain;
@@ -1346,18 +1296,9 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
         -webkit-overflow-scrolling: touch;
       }
     }
-    @media (max-width: 1440px) and (max-height: 900px) {
-      .login-page {
-        align-items: flex-start;
-        padding-top: 112px;
-        padding-bottom: 28px;
-      }
-      .login-card {
-        padding: 36px 34px;
-      }
-      .login-header {
-        margin-bottom: 26px;
-      }
+    /* Forgot Password modal alone uses the short-viewport desktop breakpoints.
+       The Login card stays centered and keeps the same proportions at every zoom. */
+    @media (min-width: 769px) and (max-width: 1440px) and (max-height: 900px) {
       .forgot-modal {
         align-items: flex-start;
         padding: 20px 24px;
@@ -1371,11 +1312,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-reset-card {
         padding: 26px;
       }
-      .forgot-icon {
-        width: 52px;
-        height: 52px;
-        margin-bottom: 10px;
-      }
       .forgot-card h2 {
         font-size: 1.42rem;
       }
@@ -1385,38 +1321,11 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-reset-form {
         gap: 14px;
       }
-      .password-requirements {
-        gap: 6px 12px;
-        padding: 10px 12px;
-      }
       .forgot-primary {
         margin-top: 10px;
       }
     }
-    @media (max-width: 1440px) and (max-height: 760px) {
-      .login-page {
-        padding-top: 96px;
-        padding-bottom: 20px;
-      }
-      .login-card {
-        padding: 30px 30px;
-      }
-      .login-header {
-        margin-bottom: 22px;
-      }
-      .login-title {
-        font-size: 1.7rem;
-      }
-      .login-subtitle {
-        font-size: 0.88rem;
-      }
-      .login-form {
-        gap: 16px;
-      }
-      .form-group input {
-        padding-top: 12px;
-        padding-bottom: 12px;
-      }
+    @media (min-width: 769px) and (max-width: 1440px) and (max-height: 760px) {
       .forgot-modal {
         padding: 14px 20px;
       }
@@ -1426,11 +1335,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       }
       .forgot-reset-card {
         padding: 22px 24px;
-      }
-      .forgot-icon {
-        width: 46px;
-        height: 46px;
-        margin-bottom: 8px;
       }
       .forgot-card h2 {
         font-size: 1.34rem;
@@ -1447,13 +1351,7 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       .forgot-reset-form {
         gap: 12px;
       }
-      .password-requirements {
-        margin-top: 6px;
-        padding: 9px 11px;
-      }
-      .password-rule {
-        font-size: 0.72rem;
-      }
+
       .password-inline-feedback {
         margin-top: 5px;
       }
@@ -1487,16 +1385,6 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       background: #F9EFE2;
       color: #8b5423;
       font-size: 1.4rem;
-    }
-    .forgot-icon {
-      width: 58px;
-      height: 58px;
-      margin: 0 auto 14px;
-      border-radius: 18px;
-      background: #F9EFE2;
-      color: #A55325;
-      font-size: 1.45rem;
-      font-weight: 900;
     }
     .forgot-card h2 {
       margin: 0;
@@ -1579,29 +1467,155 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
         min-height: 48px;
       }
     }
+    /* Respect reduced-motion preferences, including modal animations. */
+    @media (prefers-reduced-motion: reduce) {
+      .login-notification,
+      .login-notification.is-leaving,
+      .login-card,
+      .login-header,
+      .login-form > .form-group,
+      .login-form > .forgot-password-row,
+      .login-form > .btn-login,
+      .signup-prompt,
+      .forgot-modal.open,
+      .forgot-modal.open > .forgot-card { animation: none; }
+    }
+
+    /* LokalCraft self-contained password recovery: matches the Login card. */
+    .forgot-modal,.otp-modal {
+      position:fixed;inset:0;z-index:30000;display:none;align-items:center;justify-content:center;
+      top:var(--login-dialog-visible-top,0px);bottom:auto;
+      width:100%;height:var(--login-dialog-visible-height,100dvh);
+      max-height:var(--login-dialog-visible-height,100dvh);overflow-y:auto;
+      padding:max(12px,env(safe-area-inset-top)) 14px max(12px,env(safe-area-inset-bottom));
+      background:rgba(43,30,18,.55);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+      overscroll-behavior:contain;
+    }
+    .forgot-modal.open,.otp-modal.open{display:flex}
+    .otp-modal.open{animation:lokalcraftLoginModalBackdrop 220ms ease-out both}
+    .forgot-modal .forgot-card,.otp-modal .otp-card{
+      position:relative;width:min(460px,100%);min-width:0;flex:0 1 auto;
+      margin:auto;max-height:calc(var(--login-dialog-visible-height,100dvh) - 28px);
+      padding:32px 30px 28px;overflow-y:auto;overscroll-behavior:contain;
+      border:1px solid rgba(220,180,135,.6);border-radius:28px;
+      background:rgba(255,252,245,.98);box-shadow:0 25px 45px rgba(45,30,16,.2);
+      -webkit-overflow-scrolling:touch;
+    }
+    .otp-modal.open>.otp-card{animation:lokalcraftLoginModalEnter 310ms cubic-bezier(.22,1,.36,1) both}
+    .forgot-modal .forgot-step,.otp-modal .forgot-step{
+      display:block;margin:0 44px 11px 0;color:#A55325;font-size:.69rem;font-weight:800;
+      letter-spacing:.13em;
+    }
+    .forgot-modal .forgot-card h2,.otp-modal .otp-card h2{
+      margin:0;padding:0;text-align:left;color:#8b5423;font-size:1.65rem;font-weight:800;line-height:1.2;
+    }
+    .forgot-modal .forgot-description,.otp-modal .forgot-description{
+      margin:9px 0 22px;max-width:none;color:#6f5a47;text-align:left;font-size:.88rem;line-height:1.55;
+    }
+    .forgot-modal .forgot-description strong{overflow-wrap:anywhere;color:#493423}
+    .forgot-modal .forgot-close,.otp-modal .forgot-close{
+      position:absolute;top:17px;right:17px;display:grid;place-items:center;
+      width:36px;height:36px;padding:0;border:0;border-radius:50%;
+      background:#F9EFE2;color:#8b5423;font-size:1.4rem;line-height:1;cursor:pointer;
+    }
+    .forgot-modal .forgot-close:hover,.otp-modal .forgot-close:hover{background:#f0dfcb}
+    .forgot-modal .forgot-close:focus-visible,.otp-modal .forgot-close:focus-visible,
+    .otp-modal .otp-digit:focus-visible,.otp-modal .otp-text-button:focus-visible{
+      outline:2px solid #C9854E;outline-offset:2px;
+    }
+    .forgot-modal .forgot-field label{font-size:.86rem;color:#2B1E12;font-weight:700}
+    .forgot-modal .forgot-field input{
+      width:100%;min-height:49px;border:1.5px solid #E7CDB0;border-radius:15px;
+      background:#F9EFE2;color:#2B1E12;font-size:16px;padding:13px 16px;
+    }
+    .forgot-modal .forgot-reset-form,.forgot-modal #forgotPasswordForm{display:flex;flex-direction:column;gap:16px}
+    .forgot-modal .forgot-primary,.otp-modal .forgot-primary{
+      width:100%;min-height:49px;margin:1px 0 0;padding:13px 18px;border:0;border-radius:60px;
+      background:#B85C28;color:#fff;font:inherit;font-weight:800;font-size:.94rem;cursor:pointer;
+      box-shadow:0 6px 14px rgba(160,80,35,.17);
+    }
+    .forgot-modal .forgot-primary:hover,.otp-modal .forgot-primary:hover{background:#94481F}
+    .forgot-modal .forgot-primary:disabled,.otp-modal .forgot-primary:disabled,
+    .otp-modal .otp-text-button:disabled{opacity:.6;cursor:not-allowed}
+    .forgot-modal .forgot-helper{margin:13px 0 0;font-size:.74rem;text-align:center;color:#927b68;line-height:1.5}
+    .forgot-modal .forgot-message,.otp-modal .forgot-message{
+      margin:0 0 16px;padding:10px 12px;border:1px solid #efc0c0;border-radius:11px;
+      background:#fff2f2;color:#a83d3d;text-align:left;font-size:.79rem;line-height:1.45;
+    }
+    .otp-modal .forgot-message--success{border-color:#bfe2c9;background:#f2fbf5;color:#2f7a4d}
+    .otp-modal .otp-email{margin:-13px 0 14px;overflow-wrap:anywhere;color:#493423;font-size:.83rem;font-weight:800}
+    .otp-modal .otp-inputs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:11px;margin:14px 0 0}
+    .otp-modal .otp-digit{
+      width:100%;min-width:0;height:50px;padding:0;border:1.5px solid #E7CDB0;border-radius:11px;
+      background:#F9EFE2;color:#2B1E12;text-align:center;font:800 1.16rem/1 Inter,system-ui,sans-serif;
+    }
+    .otp-modal .otp-digit:focus{border-color:#B85C28;background:#FFFAF4;box-shadow:0 0 0 3px rgba(184,92,40,.1)}
+    .otp-modal .otp-inline-error{margin:6px 0 0;font-size:.74rem;color:#a83d3d;line-height:1.4}
+    .otp-modal .otp-inline-error:empty{display:none}
+    .otp-modal .otp-delivery-help{margin:20px 0 0;text-align:center;color:#806957;font-size:.77rem;line-height:1.5}
+    .otp-modal .otp-actions{display:flex;justify-content:center;align-items:center;gap:18px;flex-wrap:wrap;margin:16px 0 0}
+    .otp-modal .otp-actions form{margin:0}
+    .otp-modal .otp-text-button{padding:8px 5px;border:0;background:transparent;color:#B85C28;font:inherit;font-size:.8rem;font-weight:800;cursor:pointer}
+    .otp-modal .otp-separator{color:#bdac9c}
+    /* Keep the six digits and recovery actions visually separate. */
+    .otp-modal #forgot-password-otp-verify-form > .forgot-primary{margin-top:23px}
+    .otp-modal .otp-expiry{margin:13px 0 0;text-align:center;color:#927b68;font-size:.73rem}
+    /* Three-segment strength indicator matches Signup. */
+    .forgot-modal .forgot-strength{display:flex;align-items:center;gap:10px;min-height:17px;margin:6px 0 0}
+    .forgot-modal .forgot-strength-bar{display:flex;flex:1;gap:4px;height:5px;max-width:110px}
+    .forgot-modal .forgot-strength-bar i{flex:1;border-radius:6px;background:#e6d9cb;transition:background .16s}
+    .forgot-modal .forgot-strength.weak i:first-child{background:#d94c47}
+    .forgot-modal .forgot-strength.normal i:nth-child(-n+2){background:#efa63e}
+    .forgot-modal .forgot-strength.strong i{background:#3a9b62}
+    .forgot-modal .forgot-strength-label{font-size:.75rem;font-weight:700}
+    .forgot-modal .forgot-strength.weak .forgot-strength-label{color:#bd4340}
+    .forgot-modal .forgot-strength.normal .forgot-strength-label{color:#ad781e}
+    .forgot-modal .forgot-strength.strong .forgot-strength-label{color:#338954}
+    .forgot-modal .password-inline-feedback{min-height:0;margin:5px 0 0;padding:0;font-size:.77rem;font-weight:600;line-height:1.4}
+    .forgot-modal .password-inline-feedback:empty{display:none}
+    .forgot-modal .password-inline-feedback.success{color:#2F7A4F}
+    .forgot-modal .password-inline-feedback.error{color:#A83D3D}
+    .forgot-modal .forgot-field input.password-valid{border-color:#79ad83;background:#f7fcf9}
+    .forgot-modal .forgot-field input.password-invalid{border-color:#cc665e;background:#fff9f8}
+    @media(max-width:480px){
+      .forgot-modal,.otp-modal{padding:max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom))}
+      .forgot-modal .forgot-card,.otp-modal .otp-card{max-height:calc(var(--login-dialog-visible-height,100dvh) - 22px);padding:27px 18px 23px;border-radius:23px}
+      .forgot-modal .forgot-card h2,.otp-modal .otp-card h2{font-size:1.45rem}
+      .otp-modal .otp-inputs{gap:7px}
+      .otp-modal .otp-digit{height:46px;border-radius:9px;font-size:1.06rem}
+    }
+    @media(max-width:340px){.otp-modal .otp-inputs{gap:5px}.otp-modal .otp-digit{height:42px;font-size:1rem}}
+    @media(prefers-reduced-motion:reduce){
+      .otp-modal.open,.otp-modal.open>.otp-card{animation:none}
+    }
   </style>
 </head>
 <body>
-<div class="public-nav-container">
-  <div class="public-nav-inner">
-    <?php $publicActive = 'login'; require __DIR__ . '/public_nav.php'; ?>
-  </div>
-</div>
+<?php $publicActive = 'login'; include __DIR__ . '/public_nav.php'; ?>
+<?php if ($loginNotice !== '' || $error !== ''): ?>
+    <div class="login-notification-stack" aria-label="Login notifications">
+      <?php if ($loginNotice !== ''): ?>
+        <div class="login-notification" role="status" data-login-notification data-auto-dismiss="12000">
+          <span class="login-notification-icon" aria-hidden="true">i</span>
+          <span class="login-notification-message"><?php echo htmlspecialchars($loginNotice, ENT_QUOTES, 'UTF-8'); ?></span>
+          <button class="login-notification-close" type="button" data-dismiss-login-notification aria-label="Dismiss notification">&times;</button>
+        </div>
+      <?php endif; ?>
+      <?php if ($error !== ''): ?>
+        <div class="login-notification login-notification--error" role="alert" data-login-notification>
+          <span class="login-notification-icon" aria-hidden="true">!</span>
+          <span class="login-notification-message"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></span>
+          <button class="login-notification-close" type="button" data-dismiss-login-notification aria-label="Dismiss error message">&times;</button>
+        </div>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
 <main class="login-page">
 <div class="login-container">
   <div class="login-card">
     <div class="login-header">
-      <h1 class="login-title">Welcome Back</h1>
-      <p class="login-subtitle">Connect with local artisans in Taguig and support authentic Filipino craftsmanship.</p>
+      <h1 class="login-title">Welcome</h1>
     </div>
-    <?php if ($loginNotice !== ''): ?>
-      <div class="status-box" role="status">
-        <?php echo htmlspecialchars($loginNotice, ENT_QUOTES, 'UTF-8'); ?>
-      </div>
-    <?php endif; ?>
-    <?php if (!empty($error)): ?>
-      <div class="error-box" role="alert"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
-    <?php endif; ?>
     <form class="login-form" method="POST" action="login.php">
       <input type="hidden" name="action" value="login">
       <input type="hidden" name="login_csrf" value="<?php echo htmlspecialchars($_SESSION['login_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
@@ -1646,7 +1660,12 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
       <div class="forgot-password-row">
         <button type="button" class="forgot-password-link" id="forgotPasswordLink">Forgot Password?</button>
       </div>
-      <button type="submit" class="btn-login" id="signInButton">Sign In</button>
+      <button type="submit" class="btn-login<?php echo $loginLockoutRemaining > 0 ? ' is-locked' : ''; ?>" id="signInButton"<?php if ($loginLockoutRemaining > 0): ?> disabled aria-disabled="true" aria-describedby="loginLockoutHint" data-login-lockout-seconds="<?php echo $loginLockoutRemaining; ?>"<?php endif; ?>>Sign In</button>
+      <?php if ($loginLockoutRemaining > 0): ?>
+        <p class="login-lockout-hint" id="loginLockoutHint">
+          Try again in <span id="loginLockoutCountdown"><?php echo sprintf('%02d:%02d', intdiv($loginLockoutRemaining, 60), $loginLockoutRemaining % 60); ?></span>.
+        </p>
+      <?php endif; ?>
     </form>
     <div class="signup-prompt">
       Don't have an account? <a href="signup.php">Sign up here</a>
@@ -1654,249 +1673,76 @@ $forgotResetMaskedEmail = $forgotResetModalOpen
   </div>
 </div>
 </main>
-<div
-  class="forgot-modal<?php echo $forgotEmailModalOpen ? ' open' : ''; ?>"
-  id="forgotPasswordModal"
-  aria-hidden="<?php echo $forgotEmailModalOpen ? 'false' : 'true'; ?>"
->
-  <div class="forgot-card" role="dialog" aria-modal="true" aria-labelledby="forgotPasswordTitle">
-    <button type="button" class="forgot-close" id="forgotPasswordClose" aria-label="Close">&times;</button>
-    <div class="forgot-icon" aria-hidden="true">@</div>
+<div class="forgot-modal<?php echo $forgotEmailModalOpen ? ' open' : ''; ?>" id="forgotPasswordModal" aria-hidden="<?php echo $forgotEmailModalOpen ? 'false' : 'true'; ?>">
+  <section class="forgot-card" role="dialog" aria-modal="true" aria-labelledby="forgotPasswordTitle" tabindex="-1">
+    <button type="button" class="forgot-close" id="forgotPasswordClose" aria-label="Close forgot password">&times;</button>
+    <div class="forgot-step">STEP 1 OF 3</div>
     <h2 id="forgotPasswordTitle">Forgot Password?</h2>
-    <p class="forgot-description">
-      Enter the email address connected to your LokalCraft account. We will send a 6-digit verification code to continue the password reset process.
-    </p>
+    <p class="forgot-description">Enter your registered email to receive a verification code.</p>
     <?php if ($forgotEmailError !== ''): ?>
-      <div class="forgot-message" role="alert">
-        <?php echo htmlspecialchars($forgotEmailError, ENT_QUOTES, 'UTF-8'); ?>
-      </div>
+      <div class="forgot-message" role="alert"><?php echo htmlspecialchars($forgotEmailError, ENT_QUOTES, 'UTF-8'); ?></div>
     <?php endif; ?>
     <form method="POST" action="login.php?forgot=email" id="forgotPasswordForm" autocomplete="off">
       <input type="hidden" name="action" value="forgot_request_otp">
       <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['login_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
       <div class="forgot-field">
         <label for="forgotEmail">Email Address</label>
-        <input
-          type="email"
-          id="forgotEmail"
-          name="forgot_email"
-          placeholder="yourname@gmail.com"
-          value="<?php echo htmlspecialchars($forgotEmailValue !== '' ? $forgotEmailValue : $email, ENT_QUOTES, 'UTF-8'); ?>"
-          required
-          maxlength="100"
-          autocomplete="email"
-        >
+        <input type="email" id="forgotEmail" name="forgot_email" placeholder="yourname@gmail.com" value="<?php echo htmlspecialchars($forgotEmailValue !== '' ? $forgotEmailValue : $email, ENT_QUOTES, 'UTF-8'); ?>" required maxlength="100" autocomplete="email">
       </div>
       <button type="submit" class="forgot-primary" id="forgotSendButton">Send Verification Code</button>
-      <p class="forgot-helper">For security, LokalCraft does not reveal whether an email address is registered.</p>
     </form>
-  </div>
+    <p class="forgot-helper">For your privacy, we don't disclose whether an email is registered.</p>
+  </section>
 </div>
-<?php
-renderOtpModal([
-    'id' => 'forgot-password-otp',
-    'open' => $forgotOtpModalOpen,
-    'title' => 'Verify Password Reset',
-    'subtitle' => 'Enter the 6-digit code sent to:',
-    'masked_email' => $forgotOtpMaskedEmail,
-    'csrf_token' => $_SESSION['login_csrf'],
-    'verify_action' => 'forgot_verify_otp',
-    'resend_action' => 'forgot_resend_otp',
-    'cancel_action' => 'forgot_change_email',
-    'action_url' => 'login.php',
-    'error' => $forgotOtpError,
-    'success' => $forgotOtpSuccess,
-    'resend_seconds' => $forgotOtpResendSeconds,
-    'verify_label' => 'Verify Code',
-    'cancel_label' => 'Change email',
-    'expiry_text' => 'The verification code expires in 10 minutes.',
-]);
-?>
-<style>
-  .otp-modal {
-    z-index: 110000 !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 20px !important;
-    background: rgba(43, 30, 18, 0.55) !important;
-    backdrop-filter: blur(5px) !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-  .otp-card {
-    width: min(470px, 100%) !important;
-    max-height: calc(100dvh - 40px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    padding: 30px 28px 26px !important;
-    border: 1px solid #E7CDB0 !important;
-    border-radius: 24px !important;
-    background: #FFFCF7 !important;
-    box-shadow: 0 28px 70px rgba(45, 30, 16, 0.28) !important;
-  }
-  .otp-icon {
-    width: 58px !important;
-    height: 58px !important;
-    margin: 0 auto 14px !important;
-    border-radius: 18px !important;
-    background: #F9EFE2 !important;
-    color: #A55325 !important;
-    font-size: 1.45rem !important;
-    font-weight: 900 !important;
-  }
-  .otp-card h2 {
-    margin: 0 !important;
-    color: #8b5423 !important;
-    text-align: center !important;
-    font-size: 1.5rem !important;
-    line-height: 1.2 !important;
-  }
-  .otp-subtitle {
-    max-width: none !important;
-    margin: 8px 0 0 !important;
-    color: #6f5a47 !important;
-    text-align: center !important;
-    font-size: 0.88rem !important;
-    line-height: 1.45 !important;
-  }
-  .otp-email {
-    margin-top: 7px !important;
-    color: #3f2e1f !important;
-    text-align: center !important;
-    font-size: 0.9rem !important;
-    font-weight: 800 !important;
-    overflow-wrap: anywhere;
-  }
-  .otp-message {
-    margin-top: 14px !important;
-    padding: 10px 12px !important;
-    border-radius: 11px !important;
-    text-align: center !important;
-    font-size: 0.8rem !important;
-    line-height: 1.4 !important;
-  }
-  .otp-inputs {
-    display: grid !important;
-    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-    width: 100% !important;
-    margin-top: 20px !important;
-  }
-  .otp-digit {
-    width: 100% !important;
-    min-width: 0 !important;
-    height: 52px !important;
-    padding: 0 !important;
-    border: 1.5px solid #E7CDB0 !important;
-    border-radius: 12px !important;
-    background: #F9EFE2 !important;
-    color: #2B1E12 !important;
-    text-align: center !important;
-    font: 800 1.2rem/1 Inter, system-ui, sans-serif !important;
-    outline: none !important;
-  }
-  .otp-digit:focus {
-    border-color: #B85C28 !important;
-    background: #FFFAF4 !important;
-    box-shadow: 0 0 0 3px rgba(184, 92, 40, 0.1) !important;
-  }
-  .otp-primary {
-    width: 100% !important;
-    min-height: 48px !important;
-    margin-top: 18px !important;
-    border: 0 !important;
-    border-radius: 60px !important;
-    background: #B85C28 !important;
-    color: #fff !important;
-    padding: 13px 18px !important;
-    font: inherit !important;
-    font-weight: 800 !important;
-    cursor: pointer;
-    box-shadow: none !important;
-  }
-  .otp-primary:hover {
-    background: #94481F !important;
-  }
-  .otp-actions {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 9px !important;
-    margin-top: 13px !important;
-    flex-wrap: wrap !important;
-  }
-  .otp-text-button {
-    border: 0 !important;
-    background: transparent !important;
-    color: #B85C28 !important;
-    padding: 5px !important;
-    font: inherit !important;
-    font-size: 0.8rem !important;
-    font-weight: 800 !important;
-    cursor: pointer;
-  }
-  .otp-expiry {
-    margin: 10px 0 0 !important;
-    color: #927b68 !important;
-    text-align: center !important;
-    font-size: 0.74rem !important;
-  }
-  @media (max-width: 600px) {
-    .otp-modal {
-      align-items: flex-start !important;
-      padding:
-        max(12px, env(safe-area-inset-top))
-        10px
-        max(12px, env(safe-area-inset-bottom)) !important;
-    }
-    .otp-card {
-      width: 100% !important;
-      max-width: 470px !important;
-      max-height: calc(100dvh - 24px);
-      margin: auto 0 !important;
-      padding: 26px 16px 22px !important;
-      border-radius: 20px !important;
-    }
-    .otp-inputs {
-      gap: 5px !important;
-    }
-    .otp-digit {
-      height: 47px !important;
-      font-size: 1.05rem !important;
-    }
-  }
-  @media (max-width: 360px) {
-    .otp-card {
-      padding-left: 12px !important;
-      padding-right: 12px !important;
-    }
-    .otp-inputs {
-      gap: 4px !important;
-    }
-    .otp-digit {
-      height: 43px !important;
-      font-size: 0.96rem !important;
-    }
-  }
-</style>
-<div
-  class="forgot-modal<?php echo $forgotResetModalOpen ? ' open' : ''; ?>"
-  id="forgotResetModal"
-  aria-hidden="<?php echo $forgotResetModalOpen ? 'false' : 'true'; ?>"
->
-  <div class="forgot-card forgot-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotResetTitle">
-    <div class="forgot-icon" aria-hidden="true">✓</div>
-    <h2 id="forgotResetTitle">Create New Password</h2>
-    <p class="forgot-description">
-      Your email <strong><?php echo htmlspecialchars($forgotResetMaskedEmail, ENT_QUOTES, 'UTF-8'); ?></strong> has been verified.
-      Create a new password for your LokalCraft account.
-    </p>
-    <?php if ($forgotResetError !== ''): ?>
-      <div class="forgot-message" role="alert">
-        <?php echo htmlspecialchars($forgotResetError, ENT_QUOTES, 'UTF-8'); ?>
+<div class="otp-modal<?php echo $forgotOtpModalOpen ? ' open' : ''; ?>" id="forgot-password-otp" aria-hidden="<?php echo $forgotOtpModalOpen ? 'false' : 'true'; ?>">
+  <section class="otp-card" role="dialog" aria-modal="true" aria-labelledby="forgotOtpTitle" tabindex="-1">
+    <button type="button" class="forgot-close" id="forgotOtpClose" aria-label="Close email verification">&times;</button>
+    <div class="forgot-step">STEP 2 OF 3</div>
+    <h2 id="forgotOtpTitle">Verify Your Email</h2>
+    <p class="forgot-description">Enter the 6-digit code sent to your email.</p>
+    <p class="otp-email"><?php echo htmlspecialchars($forgotOtpMaskedEmail, ENT_QUOTES, 'UTF-8'); ?></p>
+    <?php if ($forgotOtpError !== ''): ?>
+      <div class="forgot-message" role="alert"><?php echo htmlspecialchars($forgotOtpError, ENT_QUOTES, 'UTF-8'); ?></div>
+    <?php elseif ($forgotOtpSuccess !== ''): ?>
+      <div class="forgot-message forgot-message--success" role="status"><?php echo htmlspecialchars($forgotOtpSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
+    <?php endif; ?>
+    <form action="login.php" method="POST" id="forgot-password-otp-verify-form" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['login_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
+      <input type="hidden" name="action" value="forgot_verify_otp">
+      <input type="hidden" name="otp" id="forgot-password-otp-value" value="">
+      <div class="otp-inputs" aria-label="6-digit verification code">
+        <?php for ($i = 1; $i <= 6; $i++): ?>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="6" <?php echo $i === 1 ? 'autocomplete="one-time-code"' : ''; ?> aria-label="Digit <?php echo $i; ?>" required>
+        <?php endfor; ?>
       </div>
+      <p class="otp-inline-error" id="forgotOtpInputError" role="alert" aria-live="polite"></p>
+      <button class="forgot-primary" type="submit" id="forgot-password-otp-verify-button">Verify Code</button>
+    </form>
+    <p class="otp-delivery-help">Didn't receive a code? Check your email address and Spam folder.</p>
+    <div class="otp-actions">
+      <form action="login.php" method="POST">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['login_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="action" value="forgot_resend_otp">
+        <button class="otp-text-button" type="submit" id="forgot-password-otp-resend-button">Resend Code</button>
+      </form>
+      <span class="otp-separator" aria-hidden="true">•</span>
+      <form action="login.php" method="POST">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['login_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="action" value="forgot_change_email">
+        <button class="otp-text-button" type="submit">Change Email</button>
+      </form>
+    </div>
+    <p class="otp-expiry">Code expires in 10 minutes.</p>
+  </section>
+</div>
+<div class="forgot-modal<?php echo $forgotResetModalOpen ? ' open' : ''; ?>" id="forgotResetModal" aria-hidden="<?php echo $forgotResetModalOpen ? 'false' : 'true'; ?>">
+  <section class="forgot-card forgot-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotResetTitle" tabindex="-1">
+    <button type="button" class="forgot-close" id="forgotResetClose" aria-label="Close reset password">&times;</button>
+    <div class="forgot-step">STEP 3 OF 3</div>
+    <h2 id="forgotResetTitle">Create New Password</h2>
+    <p class="forgot-description">Create a new password for <strong><?php echo htmlspecialchars($forgotResetMaskedEmail, ENT_QUOTES, 'UTF-8'); ?></strong>.</p>
+    <?php if ($forgotResetError !== ''): ?>
+      <div class="forgot-message" role="alert"><?php echo htmlspecialchars($forgotResetError, ENT_QUOTES, 'UTF-8'); ?></div>
     <?php endif; ?>
     <form class="forgot-reset-form" method="POST" action="login.php?forgot=reset" id="forgotResetForm" autocomplete="off">
       <input type="hidden" name="action" value="forgot_reset_password">
@@ -1904,105 +1750,76 @@ renderOtpModal([
       <div class="forgot-field">
         <label for="forgotNewPassword">New Password</label>
         <div class="password-wrap">
-          <input
-            type="password"
-            id="forgotNewPassword"
-            name="new_password"
-            aria-describedby="forgotPasswordRequirements"
-            placeholder="Enter your new password"
-            minlength="8"
-            required
-            autocomplete="new-password"
-          >
-          <button
-            type="button"
-            class="password-toggle reset-password-toggle"
-            data-target="forgotNewPassword"
-            aria-label="Show password"
-            aria-pressed="false"
-          >
-            <svg class="reset-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-            <svg class="reset-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
-              <path d="M3 3l18 18"></path>
-              <path d="M10.6 10.6a2 2 0 002.8 2.8"></path>
-              <path d="M9.9 4.2A10.8 10.8 0 0112 4c6.5 0 10 8 10 8a17.7 17.7 0 01-2.1 3.2"></path>
-              <path d="M6.2 6.2C3.5 8.1 2 12 2 12s3.5 8 10 8a9.8 9.8 0 004.1-.9"></path>
-            </svg>
+          <input type="password" id="forgotNewPassword" name="new_password" placeholder="Enter your new password" minlength="8" required autocomplete="new-password" aria-describedby="forgotNewPasswordFeedback forgotStrength" aria-invalid="<?php echo $forgotPasswordReuseError !== '' ? 'true' : 'false'; ?>"<?php echo $forgotPasswordReuseError !== '' ? ' class="password-invalid"' : ''; ?>>
+          <button type="button" class="password-toggle reset-password-toggle" data-target="forgotNewPassword" aria-label="Show password" aria-pressed="false">
+            <svg class="reset-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg class="reset-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><path d="M3 3l18 18"></path><path d="M10.6 10.6a2 2 0 002.8 2.8"></path><path d="M9.9 4.2A10.8 10.8 0 0112 4c6.5 0 10 8 10 8a17.7 17.7 0 01-2.1 3.2"></path><path d="M6.2 6.2C3.5 8.1 2 12 2 12s3.5 8 10 8a9.8 9.8 0 004.1-.9"></path></svg>
           </button>
         </div>
-        <div class="password-requirements" id="forgotPasswordRequirements" aria-live="polite">
-          <p class="password-requirements-title">Your password must contain:</p>
-          <div class="password-rule" data-rule="length">
-            <span class="password-rule-icon">•</span>
-            <span>At least 8 characters</span>
-          </div>
-          <div class="password-rule" data-rule="uppercase">
-            <span class="password-rule-icon">•</span>
-            <span>1 uppercase letter</span>
-          </div>
-          <div class="password-rule" data-rule="lowercase">
-            <span class="password-rule-icon">•</span>
-            <span>1 lowercase letter</span>
-          </div>
-          <div class="password-rule" data-rule="number">
-            <span class="password-rule-icon">•</span>
-            <span>1 number</span>
-          </div>
-          <div class="password-rule" data-rule="special">
-            <span class="password-rule-icon">•</span>
-            <span>1 special character</span>
-          </div>
+        <div class="password-inline-feedback<?php echo $forgotPasswordReuseError !== '' ? ' error' : ''; ?>" id="forgotNewPasswordFeedback" role="alert"><?php echo htmlspecialchars($forgotPasswordReuseError, ENT_QUOTES, 'UTF-8'); ?></div>
+        <div class="forgot-strength" id="forgotStrength" role="status" aria-live="polite">
+          <span class="forgot-strength-bar" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="forgot-strength-label" id="forgotStrengthLabel"></span>
         </div>
       </div>
       <div class="forgot-field">
         <label for="forgotConfirmPassword">Confirm New Password</label>
         <div class="password-wrap">
-          <input
-            type="password"
-            id="forgotConfirmPassword"
-            name="confirm_password"
-            aria-describedby="forgotPasswordMatchFeedback"
-            placeholder="Re-enter your new password"
-            minlength="8"
-            required
-            autocomplete="new-password"
-          >
-          <button
-            type="button"
-            class="password-toggle reset-password-toggle"
-            data-target="forgotConfirmPassword"
-            aria-label="Show password"
-            aria-pressed="false"
-          >
-            <svg class="reset-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-            <svg class="reset-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
-              <path d="M3 3l18 18"></path>
-              <path d="M10.6 10.6a2 2 0 002.8 2.8"></path>
-              <path d="M9.9 4.2A10.8 10.8 0 0112 4c6.5 0 10 8 10 8a17.7 17.7 0 01-2.1 3.2"></path>
-              <path d="M6.2 6.2C3.5 8.1 2 12 2 12s3.5 8 10 8a9.8 9.8 0 004.1-.9"></path>
-            </svg>
+          <input type="password" id="forgotConfirmPassword" name="confirm_password" placeholder="Re-enter your new password" minlength="8" required autocomplete="new-password" aria-describedby="forgotPasswordMatchFeedback">
+          <button type="button" class="password-toggle reset-password-toggle" data-target="forgotConfirmPassword" aria-label="Show password" aria-pressed="false">
+            <svg class="reset-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg class="reset-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><path d="M3 3l18 18"></path><path d="M10.6 10.6a2 2 0 002.8 2.8"></path><path d="M9.9 4.2A10.8 10.8 0 0112 4c6.5 0 10 8 10 8a17.7 17.7 0 01-2.1 3.2"></path><path d="M6.2 6.2C3.5 8.1 2 12 2 12s3.5 8 10 8a9.8 9.8 0 004.1-.9"></path></svg>
           </button>
         </div>
-        <div
-          class="password-inline-feedback neutral"
-          id="forgotPasswordMatchFeedback"
-          role="status"
-          aria-live="polite"
-        >
-          Re-enter your new password to confirm it.
-        </div>
+        <div class="password-inline-feedback" id="forgotPasswordMatchFeedback" role="status" aria-live="polite"></div>
       </div>
       <button type="submit" class="forgot-primary" id="forgotResetButton">Update Password</button>
     </form>
-  </div>
+  </section>
 </div>
 <script>
+  // Match the visible viewport, including when a phone's keyboard is open.
+  // Keep existing OTP, forgot/reset actions and validations unchanged.
+  function updateLoginDialogViewport() {
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport ? viewport.height : document.documentElement.clientHeight;
+    const visibleTop = viewport ? viewport.offsetTop : 0;
+    const root = document.documentElement.style;
+    root.setProperty('--login-dialog-visible-height', `${Math.max(1, Math.round(visibleHeight))}px`);
+    root.setProperty('--login-dialog-visible-top', `${Math.max(0, Math.round(visibleTop))}px`);
+  }
+  updateLoginDialogViewport();
+  window.addEventListener('resize', updateLoginDialogViewport, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateLoginDialogViewport, { passive: true });
+    window.visualViewport.addEventListener('scroll', updateLoginDialogViewport, { passive: true });
+  }
+  document.addEventListener('focusin', function (event) {
+    const field = event.target;
+    if (!(field instanceof HTMLElement) || !field.closest('.forgot-modal.open, .otp-modal.open')) return;
+    updateLoginDialogViewport();
+    window.setTimeout(function () {
+      updateLoginDialogViewport();
+      // Scroll inside the dialog if the keyboard obscures a focused field.
+      field.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+    }, 180);
+  });
+  // Informational notices leave automatically; login errors stay until dismissed.
+  document.querySelectorAll('[data-login-notification]').forEach(function (notice) {
+    const close = notice.querySelector('[data-dismiss-login-notification]');
+    const dismiss = function () {
+      if (notice.classList.contains('is-leaving')) return;
+      notice.classList.add('is-leaving');
+      window.setTimeout(function () {
+        notice.remove();
+        const stack = document.querySelector('.login-notification-stack');
+        if (stack && !stack.children.length) stack.remove();
+      }, 320);
+    };
+    if (close) close.addEventListener('click', dismiss);
+    const timeout = Number(notice.getAttribute('data-auto-dismiss'));
+    if (Number.isFinite(timeout) && timeout > 0) window.setTimeout(dismiss, timeout);
+  });
   const passwordInput = document.getElementById('password');
   const passwordToggle = document.getElementById('passwordToggle');
   const eyeOpen = document.getElementById('eyeOpen');
@@ -2021,8 +1838,41 @@ renderOtpModal([
   const loginForm = document.querySelector('.login-form');
   const signInButton = document.getElementById('signInButton');
   if (loginForm && signInButton) {
-    loginForm.addEventListener('submit', function () {
-      if (!loginForm.checkValidity()) return;
+    const initialLockoutSeconds = Number(signInButton.dataset.loginLockoutSeconds || 0);
+    if (initialLockoutSeconds > 0) {
+      const lockoutEndsAt = Date.now() + initialLockoutSeconds * 1000;
+      const countdown = document.getElementById('loginLockoutCountdown');
+      const hint = document.getElementById('loginLockoutHint');
+      let countdownTimer = null;
+      const updateLockoutCountdown = function () {
+        const secondsLeft = Math.max(0, Math.ceil((lockoutEndsAt - Date.now()) / 1000));
+        if (secondsLeft === 0) {
+          signInButton.disabled = false;
+          signInButton.classList.remove('is-locked');
+          signInButton.removeAttribute('aria-disabled');
+          signInButton.removeAttribute('aria-describedby');
+          signInButton.removeAttribute('data-login-lockout-seconds');
+          if (hint) {
+            hint.textContent = 'You can now try signing in again.';
+            hint.setAttribute('role', 'status');
+          }
+          if (countdownTimer !== null) window.clearInterval(countdownTimer);
+          return;
+        }
+        if (countdown) {
+          const minutes = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+          const seconds = String(secondsLeft % 60).padStart(2, '0');
+          countdown.textContent = `${minutes}:${seconds}`;
+        }
+      };
+      updateLockoutCountdown();
+      if (signInButton.disabled) countdownTimer = window.setInterval(updateLockoutCountdown, 1000);
+    }
+    loginForm.addEventListener('submit', function (event) {
+      if (signInButton.disabled || !loginForm.checkValidity()) {
+        event.preventDefault();
+        return;
+      }
       signInButton.disabled = true;
       signInButton.textContent = 'Signing In...';
       signInButton.setAttribute('aria-busy', 'true');
@@ -2034,34 +1884,181 @@ renderOtpModal([
   const forgotEmailInput = document.getElementById('forgotEmail');
   const forgotPasswordForm = document.getElementById('forgotPasswordForm');
   const forgotSendButton = document.getElementById('forgotSendButton');
-  const openForgotPassword = () => {
-    if (!forgotPasswordModal) return;
-    forgotPasswordModal.classList.add('open');
-    forgotPasswordModal.setAttribute('aria-hidden', 'false');
-    document.body.style.overflow = 'hidden';
-    window.setTimeout(() => forgotEmailInput?.focus(), 80);
+  const forgotResetModal = document.getElementById('forgotResetModal');
+  const forgotOtpModal = document.querySelector('.otp-modal');
+
+  // Password-reset OTP input is now owned by Login (otp_service.php stays the backend).
+  const forgotOtpDigits = Array.from(forgotOtpModal?.querySelectorAll('.otp-digit') || []);
+  const forgotOtpVerifyForm = document.getElementById('forgot-password-otp-verify-form');
+  const forgotOtpHiddenValue = document.getElementById('forgot-password-otp-value');
+  const forgotOtpVerifyButton = document.getElementById('forgot-password-otp-verify-button');
+  const forgotOtpResendButton = document.getElementById('forgot-password-otp-resend-button');
+  const forgotOtpInlineError = document.getElementById('forgotOtpInputError');
+  const forgotOtpResendDeadline = Date.now() + <?php echo (int)$forgotOtpResendSeconds; ?> * 1000;
+  const syncForgotOtp = () => {
+    const code = forgotOtpDigits.map(input => input.value).join('');
+    if (forgotOtpHiddenValue) forgotOtpHiddenValue.value = code;
+    if (forgotOtpInlineError) forgotOtpInlineError.textContent = '';
+    return code;
   };
-  const closeForgotPassword = () => {
-    if (!forgotPasswordModal) return;
-    forgotPasswordModal.classList.remove('open');
-    forgotPasswordModal.setAttribute('aria-hidden', 'true');
-    const otpModalOpen = document.querySelector('.otp-modal.open');
-    if (!otpModalOpen) {
-      document.body.style.overflow = '';
+  forgotOtpDigits.forEach((input,index) => {
+    input.addEventListener('input', () => {
+      const incoming = input.value.replace(/\D/g,'');
+      if (incoming.length > 1) {
+        incoming.slice(0,6-index).split('').forEach((digit,j) => { if (forgotOtpDigits[index+j]) forgotOtpDigits[index+j].value = digit; });
+        forgotOtpDigits[Math.min(5,index+incoming.length-1)]?.focus();
+      } else {
+        input.value = incoming.slice(0,1);
+        if (input.value) forgotOtpDigits[index+1]?.focus();
+      }
+      syncForgotOtp();
+    });
+    input.addEventListener('keydown',event => {
+      if (event.key === 'Backspace' && !input.value && forgotOtpDigits[index-1]) forgotOtpDigits[index-1].focus();
+      if (event.key === 'ArrowLeft' && forgotOtpDigits[index-1]) { event.preventDefault(); forgotOtpDigits[index-1].focus(); }
+      if (event.key === 'ArrowRight' && forgotOtpDigits[index+1]) { event.preventDefault(); forgotOtpDigits[index+1].focus(); }
+    });
+    input.addEventListener('paste',event => {
+      const pasted = (event.clipboardData?.getData('text') || '').replace(/\D/g,'').slice(0,6);
+      if (!pasted) return;
+      event.preventDefault();
+      pasted.split('').forEach((digit,i) => { if (forgotOtpDigits[i]) forgotOtpDigits[i].value = digit; });
+      syncForgotOtp();
+      forgotOtpDigits[Math.min(5,pasted.length-1)]?.focus();
+    });
+  });
+  forgotOtpVerifyForm?.addEventListener('submit',event => {
+    const code = syncForgotOtp();
+    if (!/^\d{6}$/.test(code)) {
+      event.preventDefault();
+      if (forgotOtpInlineError) forgotOtpInlineError.textContent = 'Enter the complete 6-digit code.';
+      (forgotOtpDigits.find(input => !input.value) || forgotOtpDigits[0])?.focus();
+      return;
+    }
+    if (forgotOtpVerifyButton) {
+      forgotOtpVerifyButton.disabled = true;
+      forgotOtpVerifyButton.textContent = 'Verifying...';
+    }
+  });
+  let forgotOtpResendTimer = null;
+  const updateForgotOtpResend = () => {
+    if (!forgotOtpResendButton) return;
+    const secondsLeft = Math.max(0, Math.ceil((forgotOtpResendDeadline - Date.now()) / 1000));
+    forgotOtpResendButton.disabled = secondsLeft > 0;
+    forgotOtpResendButton.textContent = secondsLeft > 0 ? `Resend Code (${secondsLeft}s)` : 'Resend Code';
+    if (secondsLeft === 0 && forgotOtpResendTimer !== null) {
+      window.clearInterval(forgotOtpResendTimer);
+      forgotOtpResendTimer = null;
     }
   };
+  updateForgotOtpResend();
+  if (forgotOtpResendButton && Date.now() < forgotOtpResendDeadline) {
+    forgotOtpResendTimer = window.setInterval(updateForgotOtpResend, 1000);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) updateForgotOtpResend();
+  });
+  document.getElementById('forgotOtpClose')?.addEventListener('click', () => closeLoginPopup('otp'));
+  document.getElementById('forgotResetClose')?.addEventListener('click', () => closeLoginPopup('reset'));
+
+  // Android/iPhone browser Back and desktop Alt+Left close the frontmost popup
+  // before leaving Login. A popup gets one same-document history entry.
+  const loginPopupHistoryKey = '__lokalcraftLoginPopup';
+  const loginPopups = {
+    email: forgotPasswordModal,
+    otp: forgotOtpModal,
+    reset: forgotResetModal
+  };
+  const popupIsOpen = popup => Boolean(popup?.classList.contains('open'));
+  const updateLoginPopupScroll = () => {
+    document.body.style.overflow = Object.values(loginPopups).some(popupIsOpen) ? 'hidden' : '';
+  };
+  const showLoginPopup = (name, focusField = false) => {
+    Object.entries(loginPopups).forEach(([key, popup]) => {
+      if (!popup) return;
+      const isOpen = key === name;
+      popup.classList.toggle('open', isOpen);
+      popup.setAttribute('aria-hidden', String(!isOpen));
+    });
+    updateLoginPopupScroll();
+    if (focusField && name === 'email') {
+      window.setTimeout(() => forgotEmailInput?.focus({ preventScroll: true }), 80);
+    } else if (focusField && name === 'otp') {
+      window.setTimeout(() => forgotOtpDigits[0]?.focus({ preventScroll: true }), 80);
+    } else if (focusField && name === 'reset') {
+      window.setTimeout(() => document.getElementById('forgotNewPassword')?.focus({ preventScroll: true }), 80);
+    }
+  };
+  const addLoginPopupHistory = (name, initial = false) => {
+    try {
+      if (window.history.state?.[loginPopupHistoryKey] === name) return;
+      const state = window.history.state;
+      const nextState = state && typeof state === 'object' ? { ...state } : {};
+      const popupUrl = window.location.href;
+      // A server redirect to ?forgot=otp/reset opens an overlay on page load.
+      // Leave a clean Login entry underneath, so Back hides the overlay and
+      // refreshing after Back does not unexpectedly reopen it.
+      if (initial) {
+        const cleanUrl = new URL(popupUrl);
+        if (cleanUrl.searchParams.has('forgot')) {
+          cleanUrl.searchParams.delete('forgot');
+          window.history.replaceState(nextState, '', cleanUrl.href);
+        }
+      }
+      window.history.pushState({ ...nextState, [loginPopupHistoryKey]: name }, '', popupUrl);
+    } catch (_) {
+      // If History API is unavailable, on-screen closing still works.
+    }
+  };
+  let loginPopupBackPending = false;
+  const closeLoginPopup = name => {
+    if (!popupIsOpen(loginPopups[name]) || loginPopupBackPending) return;
+    if (window.history.state?.[loginPopupHistoryKey] === name) {
+      loginPopupBackPending = true;
+      window.history.back(); // popstate handles closing; don't go back twice.
+      window.setTimeout(() => { loginPopupBackPending = false; }, 900);
+    } else {
+      showLoginPopup('');
+    }
+  };
+  window.addEventListener('popstate', event => {
+    loginPopupBackPending = false;
+    const requestedPopup = event.state?.[loginPopupHistoryKey];
+    // Back closes the overlay; Forward may reopen it without adding a new entry.
+    showLoginPopup(Object.prototype.hasOwnProperty.call(loginPopups, requestedPopup)
+      ? requestedPopup : '');
+  });
+  const openForgotPassword = () => {
+    if (!forgotPasswordModal) return;
+    addLoginPopupHistory('email');
+    showLoginPopup('email', true);
+  };
+  const closeForgotPassword = () => closeLoginPopup('email');
   forgotPasswordLink?.addEventListener('click', openForgotPassword);
   forgotPasswordClose?.addEventListener('click', closeForgotPassword);
   forgotPasswordModal?.addEventListener('click', event => {
-    if (event.target === forgotPasswordModal) {
-      closeForgotPassword();
-    }
+    if (event.target === forgotPasswordModal) closeForgotPassword();
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && forgotPasswordModal?.classList.contains('open')) {
-      closeForgotPassword();
-    }
+    if (event.key !== 'Escape') return;
+    if (popupIsOpen(forgotOtpModal)) closeLoginPopup('otp');
+    else if (popupIsOpen(forgotResetModal)) closeLoginPopup('reset');
+    else if (popupIsOpen(forgotPasswordModal)) closeForgotPassword();
   });
+  // OTP and reset are opened by PHP after redirects, unlike the email popup.
+  // Register their initial open state so the first browser Back closes only it.
+  const initiallyOpenPopup = popupIsOpen(forgotOtpModal) ? 'otp'
+    : popupIsOpen(forgotResetModal) ? 'reset'
+    : popupIsOpen(forgotPasswordModal) ? 'email' : '';
+  if (initiallyOpenPopup) {
+    addLoginPopupHistory(initiallyOpenPopup, true);
+    updateLoginPopupScroll();
+    if (initiallyOpenPopup === 'email') {
+      window.setTimeout(() => forgotEmailInput?.focus({ preventScroll: true }), 80);
+    } else if (initiallyOpenPopup === 'otp') {
+      window.setTimeout(() => forgotOtpDigits[0]?.focus({ preventScroll: true }), 80);
+    }
+  }
   forgotPasswordForm?.addEventListener('submit', function () {
     if (!forgotPasswordForm.checkValidity()) return;
     if (forgotSendButton) {
@@ -2070,11 +2067,6 @@ renderOtpModal([
       forgotSendButton.setAttribute('aria-busy', 'true');
     }
   });
-  if (forgotPasswordModal?.classList.contains('open')) {
-    document.body.style.overflow = 'hidden';
-    window.setTimeout(() => forgotEmailInput?.focus(), 80);
-  }
-  const forgotResetModal = document.getElementById('forgotResetModal');
   const forgotResetForm = document.getElementById('forgotResetForm');
   const forgotResetButton = document.getElementById('forgotResetButton');
   const forgotNewPassword = document.getElementById('forgotNewPassword');
@@ -2096,101 +2088,91 @@ renderOtpModal([
       target.focus({ preventScroll: true });
     });
   });
+  const forgotNewPasswordFeedback = document.getElementById('forgotNewPasswordFeedback');
   const forgotPasswordMatchFeedback = document.getElementById('forgotPasswordMatchFeedback');
-  const passwordRules = {
-    length: value => value.length >= 8,
-    uppercase: value => /[A-Z]/.test(value),
-    lowercase: value => /[a-z]/.test(value),
-    number: value => /[0-9]/.test(value),
-    special: value => /[^A-Za-z0-9]/.test(value)
-  };
-  const getPasswordRuleElements = () =>
-    Array.from(document.querySelectorAll('#forgotPasswordRequirements .password-rule'));
+  const forgotStrength = document.getElementById('forgotStrength');
+  const forgotStrengthLabel = document.getElementById('forgotStrengthLabel');
+  const resetPasswordRulesMet = value =>
+    value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value);
   const validateNewPassword = (showErrors = false) => {
     if (!forgotNewPassword) return false;
     const value = forgotNewPassword.value;
-    let allValid = true;
-    getPasswordRuleElements().forEach(ruleElement => {
-      const ruleName = ruleElement.dataset.rule;
-      const passes = Boolean(passwordRules[ruleName]?.(value));
-      const icon = ruleElement.querySelector('.password-rule-icon');
-      ruleElement.classList.toggle('valid', passes);
-      ruleElement.classList.toggle('invalid', showErrors && value.length > 0 && !passes);
-      if (icon) {
-        icon.textContent = passes ? '✓' : '•';
-      }
-      if (!passes) {
-        allValid = false;
-      }
-    });
-    forgotNewPassword.classList.toggle('password-valid', allValid && value.length > 0);
-    forgotNewPassword.classList.toggle(
-      'password-invalid',
-      showErrors && value.length > 0 && !allValid
-    );
-    return allValid;
+    const valid = resetPasswordRulesMet(value);
+    const level = !value ? '' : valid && value.length >= 12 ? 'strong' : valid ? 'normal' : 'weak';
+    if (forgotStrength) forgotStrength.className = 'forgot-strength' + (level ? ' ' + level : '');
+    if (forgotStrengthLabel) forgotStrengthLabel.textContent = level ? level[0].toUpperCase() + level.slice(1) : '';
+    forgotNewPassword.classList.toggle('password-valid',valid && Boolean(value));
+    forgotNewPassword.classList.toggle('password-invalid',showErrors && !valid);
+    forgotNewPassword.setAttribute('aria-invalid',String(showErrors && !valid));
+    if (showErrors && !valid && forgotNewPasswordFeedback) {
+      forgotNewPasswordFeedback.textContent = 'Use 8+ characters, uppercase, lowercase, and a number.';
+      forgotNewPasswordFeedback.className = 'password-inline-feedback error';
+    }
+    return valid;
   };
   const validatePasswordMatch = (showErrors = false) => {
-    if (!forgotNewPassword || !forgotConfirmPassword || !forgotPasswordMatchFeedback) {
-      return false;
-    }
-    const newPassword = forgotNewPassword.value;
+    if (!forgotNewPassword || !forgotConfirmPassword || !forgotPasswordMatchFeedback) return false;
     const confirmation = forgotConfirmPassword.value;
-    forgotConfirmPassword.classList.remove('password-valid', 'password-invalid');
-    forgotPasswordMatchFeedback.classList.remove('neutral', 'success', 'error');
-    if (confirmation === '') {
-      forgotPasswordMatchFeedback.textContent = 'Re-enter your new password to confirm it.';
-      forgotPasswordMatchFeedback.classList.add('neutral');
-      return false;
-    }
-    if (newPassword === confirmation) {
-      forgotPasswordMatchFeedback.textContent = 'Passwords match.';
-      forgotPasswordMatchFeedback.classList.add('success');
-      forgotConfirmPassword.classList.add('password-valid');
-      return true;
-    }
-    forgotPasswordMatchFeedback.textContent =
-      'Passwords do not match. Make sure both password fields are exactly the same.';
-    forgotPasswordMatchFeedback.classList.add(showErrors ? 'error' : 'neutral');
-    if (showErrors) {
-      forgotConfirmPassword.classList.add('password-invalid');
-    }
-    return false;
+    const matches = Boolean(confirmation && confirmation === forgotNewPassword.value);
+    forgotPasswordMatchFeedback.textContent = !confirmation ? '' : matches ? '✓ Passwords match.' : 'Passwords do not match.';
+    forgotPasswordMatchFeedback.className = 'password-inline-feedback' + (confirmation ? matches ? ' success' : ' error' : '');
+    forgotConfirmPassword.classList.toggle('password-valid',matches);
+    forgotConfirmPassword.classList.toggle('password-invalid',showErrors && Boolean(confirmation) && !matches);
+    forgotConfirmPassword.setAttribute('aria-invalid',String(Boolean(confirmation) && !matches));
+    return matches;
   };
-  forgotNewPassword?.addEventListener('input', function () {
-    validateNewPassword(false);
-    if (forgotConfirmPassword?.value) {
-      validatePasswordMatch(true);
+  forgotNewPassword?.addEventListener('input', () => {
+    // A server-side password reuse error is cleared only when the user edits the field.
+    if (forgotNewPasswordFeedback?.textContent.trim()) {
+      forgotNewPasswordFeedback.textContent = '';
+      forgotNewPasswordFeedback.className = 'password-inline-feedback';
     }
+    validateNewPassword(false);
+    if (forgotConfirmPassword?.value) validatePasswordMatch(true);
   });
-  forgotNewPassword?.addEventListener('blur', function () {
-    validateNewPassword(true);
-  });
-  forgotConfirmPassword?.addEventListener('input', function () {
-    validatePasswordMatch(true);
-  });
-  forgotResetForm?.addEventListener('submit', function (event) {
-    const passwordValid = validateNewPassword(true);
-    const passwordsMatch = validatePasswordMatch(true);
-    if (!forgotResetForm.checkValidity() || !passwordValid || !passwordsMatch) {
+  forgotConfirmPassword?.addEventListener('input', () => validatePasswordMatch(true));
+  forgotResetForm?.addEventListener('submit', event => {
+    const valid = validateNewPassword(true);
+    const matched = validatePasswordMatch(true);
+    if (!forgotResetForm.checkValidity() || !valid || !matched) {
       event.preventDefault();
-      if (!passwordValid) {
-        forgotNewPassword?.focus({ preventScroll: true });
-      } else if (!passwordsMatch) {
-        forgotConfirmPassword?.focus({ preventScroll: true });
-      }
+      if (!valid) forgotNewPassword?.focus();
+      else if (!matched) forgotConfirmPassword?.focus();
       return;
     }
     if (forgotResetButton) {
       forgotResetButton.disabled = true;
       forgotResetButton.textContent = 'Updating Password...';
-      forgotResetButton.setAttribute('aria-busy', 'true');
+      forgotResetButton.setAttribute('aria-busy','true');
     }
   });
-  if (forgotResetModal?.classList.contains('open')) {
-    document.body.style.overflow = 'hidden';
-    window.setTimeout(() => forgotNewPassword?.focus(), 80);
+  if (popupIsOpen(forgotResetModal)) {
+    window.setTimeout(() => forgotNewPassword?.focus({ preventScroll: true }), 80);
   }
+  window.addEventListener('pageshow', event => {
+    updateForgotOtpResend();
+    if (!event.persisted) return;
+    if (signInButton && !signInButton.classList.contains('is-locked')) {
+      signInButton.disabled = false;
+      signInButton.textContent = 'Sign In';
+      signInButton.removeAttribute('aria-busy');
+    }
+    if (forgotSendButton) {
+      forgotSendButton.disabled = false;
+      forgotSendButton.textContent = 'Send Verification Code';
+      forgotSendButton.removeAttribute('aria-busy');
+    }
+    if (forgotOtpVerifyButton) {
+      forgotOtpVerifyButton.disabled = false;
+      forgotOtpVerifyButton.textContent = 'Verify Code';
+    }
+    if (forgotResetButton) {
+      forgotResetButton.disabled = false;
+      forgotResetButton.textContent = 'Update Password';
+      forgotResetButton.removeAttribute('aria-busy');
+    }
+    updateLoginPopupScroll();
+  });
 </script>
 </body>
 </html>

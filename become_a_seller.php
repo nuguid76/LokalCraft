@@ -123,22 +123,27 @@ function saveSellerIdImage(array $file, string $label, string $uploadDirectory):
 function getBusinessCraftCategories(mysqli $conn): array
 {
     $categories = [];
-    $result = $conn->query(
-        'SELECT category_name
-         FROM craft_categories
-         ORDER BY category_id ASC'
-    );
-    if (!$result) {
-        error_log('Unable to load craft categories: ' . $conn->error);
+    try {
+        $result = $conn->query(
+            'SELECT category_name
+             FROM craft_categories
+             ORDER BY category_id ASC'
+        );
+        if (!$result) {
+            error_log('Unable to load craft categories: ' . $conn->error);
+            return [];
+        }
+        while ($row = $result->fetch_assoc()) {
+            $category = trim((string)($row['category_name'] ?? ''));
+            if ($category !== '') {
+                $categories[] = $category;
+            }
+        }
+        $result->free();
+    } catch (mysqli_sql_exception $e) {
+        error_log('Unable to load craft categories: ' . $e->getMessage());
         return [];
     }
-    while ($row = $result->fetch_assoc()) {
-        $category = trim((string)($row['category_name'] ?? ''));
-        if ($category !== '') {
-            $categories[] = $category;
-        }
-    }
-    $result->free();
     return $categories;
 }
 function sellerEmailAccountState(mysqli $conn, string $email): ?array
@@ -251,7 +256,7 @@ function sellerTaguigBarangays(): array
         'Central Bicutan'=>'1637','Central Signal Village'=>'1637','Fort Bonifacio'=>'1637',
         'Hagonoy'=>'1630','Ibayo-Tipas'=>'1630','Katuparan'=>'1637',
         'Ligid-Tipas'=>'1638','Lower Bicutan'=>'1632','Maharlika Village'=>'1630',
-        'Napindan'=>'1630','New Lower Bicutan'=>'1632','North Daang Hari'=>'1637',
+        'Napindan'=>'1630','New Lower Bicutan'=>'1637','North Daang Hari'=>'1637',
         'North Signal Village'=>'1637','Palingon'=>'1630','Pinagsama'=>'1630',
         'San Miguel'=>'1637','Santa Ana'=>'1630','South Daang Hari'=>'1637',
         'South Signal Village'=>'1637','Tanyag'=>'1637','Tuktukan'=>'1637',
@@ -282,7 +287,7 @@ $businessDocumentTypes = [
     'BIR Certificate of Registration (Form 2303)',
     "Mayor's / Business Permit",
 ];
-$craftCategories = getBusinessCraftCategories($conn);
+$craftCategories = isset($conn) && $conn instanceof mysqli ? getBusinessCraftCategories($conn) : [];
 if ($craftCategories === []) {
     $error = 'Unable to load craft categories from the database. Please refresh the page or contact the administrator.';
 }
@@ -562,8 +567,8 @@ if (
         $error = 'Barangay must be one of the 38 Taguig barangays.';
     } elseif ($city !== 'Taguig City') {
         $error = 'Only businesses in Taguig City can register.';
-    } elseif ($selectedBarangay === null || $zipcode !== $taguigBarangays[$selectedBarangay]) {
-        $error = 'ZIP code does not match the selected Taguig barangay.';
+    } elseif (!preg_match('/^[0-9]{4}$/', $zipcode)) {
+        $error = 'Please enter a valid 4-digit ZIP code.';
     } elseif (
         !is_array($validid)
         || ($validid['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
@@ -787,69 +792,86 @@ if ($application_submitted) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Application Submitted — LokalCraft</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,sans-serif;min-height:100vh;background:url('uploads/website background.png');background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;padding:20px}
-    body::before{content:"";position:fixed;inset:0;background-color:rgba(255,248,235,.62);z-index:-1}
-    .container{max-width:1380px;width:100%;margin:0 auto;padding:0 32px;position:relative;z-index:1}
-    .public-nav-container{
-      position:fixed;
-      top:0;
-      left:0;
-      width:100%;
-      z-index:10000;
-      pointer-events:none;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+      min-height: 100vh;
+      background: #fff8eb;
+      position: relative;
     }
-    .public-nav-container .public-nav-inner{
-      width:100%;
-      max-width:1380px;
-      margin:0 auto;
-      padding:0 32px;
-      position:relative;
-      z-index:10001;
-      pointer-events:auto;
-      isolation:isolate;
-      overflow:visible;
+    /* Same viewport-fixed background as signup.php; the seller form's height cannot resize the image. */
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0 0 auto;
+      width: 100%;
+      height: 100vh;
+      height: 100lvh;
+      pointer-events: none;
     }
-    .public-nav-container .public-header{
-      position:relative;
-      z-index:10002;
-      overflow:visible !important;
+    body::before {
+      z-index: 0;
+      background: url('uploads/website background.png') center center / cover no-repeat;
     }
-    .public-nav-container .public-header-inner{
-      position:relative;
-      z-index:10003;
-      overflow:visible !important;
+    body::after {
+      z-index: 1;
+      background-color: rgba(255, 248, 235, 0.60);
+      -webkit-backdrop-filter: blur(1px);
+      backdrop-filter: blur(1px);
     }
-    .public-nav-container .nav-menu,
-    .public-nav-container .mobile-menu,
-    .public-nav-container .menu,
-    .public-nav-container .dropdown,
-    .public-nav-container .dropdown-menu,
-    .public-nav-container .menu-panel,
-    .public-nav-container .mobile-nav,
-    .public-nav-container .hamburger-menu,
-    .public-nav-container [class*="menu"],
-    .public-nav-container [class*="dropdown"]{
-      z-index:10004 !important;
+    /* The success screen uses the same 1600px public content boundary as the header. */
+    .success-page { width: min(1600px, calc(100% - 64px)); min-height: calc(100svh - 82px); margin-inline: auto; display: grid; place-items: center; padding: 28px 16px; position: relative; z-index: 2; }
+    .success-container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 560px;
+      padding: 60px 40px;
+      border: 1px solid rgba(220,180,135,.6);
+      border-radius: 30px;
+      background: rgba(255,252,245,.96);
+      box-shadow: 0 25px 45px rgba(45,30,16,.12);
+      text-align: center;
+      animation: sellerPageEnter .65s cubic-bezier(.16,1,.3,1) both;
     }
-    .success-container{position:relative;z-index:1;background:rgba(255,252,245,.96);border:1px solid rgba(220,180,135,.6);border-radius:30px;padding:60px 40px;text-align:center;max-width:560px;box-shadow:0 25px 45px rgba(45,30,16,.12)}
-    .success-icon{font-size:4rem;margin-bottom:20px}.success-title{font-size:1.8rem;font-weight:800;color:#8b5423;margin-bottom:12px}.success-message{color:#5A3F28;font-size:1rem;line-height:1.6;margin-bottom:30px}.success-details{background:#f1e5d5;border-radius:16px;padding:20px;margin-bottom:30px;text-align:left;font-size:.95rem;color:#5A3F28}.success-details strong{color:#8b5423}.btn-home{background:#B85C28;border:none;color:#fff;font-weight:700;font-size:1rem;padding:14px 38px;border-radius:60px;cursor:pointer;transition:.2s;text-decoration:none;display:inline-block;box-shadow:0 6px 14px rgba(160,80,35,.3)}.btn-home:hover{background:#94481F;transform:translateY(-2px)}
-    @media(max-width:600px){
-      body{background-attachment:scroll;background-position:center center}
-      .container{padding:0 16px}
-      .public-nav-container .public-nav-inner{padding:0 16px}
-      .success-container{padding:40px 24px;border-radius:24px}
+    .success-icon {
+      display: grid;
+      place-items: center;
+      width: 92px;
+      height: 92px;
+      margin: 0 auto 22px;
+      border: 1px solid #cce7cb;
+      border-radius: 50%;
+      background: #eaf6e8;
+      box-shadow: 0 10px 24px rgba(47,141,84,.10);
     }
+    .success-icon svg { display: block; width: 62px; height: 62px; }
+    .success-title { font-size: 1.8rem; font-weight: 800; color: #8b5423; margin-bottom: 12px; }
+    .success-message { color: #5A3F28; font-size: 1rem; line-height: 1.6; margin-bottom: 30px; }
+    .success-details { background: #f1e5d5; border-radius: 16px; padding: 20px; margin-bottom: 30px; text-align: left; font-size: .95rem; color: #5A3F28; line-height: 1.55; }
+    .success-details strong { color: #8b5423; }
+    .btn-home { display: inline-block; padding: 14px 38px; border: 0; border-radius: 60px; background: #B85C28; color: #fff; box-shadow: 0 6px 14px rgba(160,80,35,.3); font-size: 1rem; font-weight: 700; text-decoration: none; cursor: pointer; transition: .2s; }
+    .btn-home:hover { background: #94481F; transform: translateY(-2px); }
+    @keyframes sellerPageEnter { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 600px) {
+      .success-page { width: calc(100% - 28px); min-height: calc(100svh - 70px); padding: 20px 0; }
+      .success-container { padding: 40px 24px; border-radius: 24px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .success-container { animation: none; } }
   </style>
 </head>
 <body>
-<div class="public-nav-container">
-  <div class="public-nav-inner">
-    <?php $publicActive = ""; include __DIR__ . '/public_nav.php'; ?>
-  </div>
-</div>
-<div class="success-container">
-    <div class="success-icon">✅</div>
+<?php $publicActive = ''; include __DIR__ . '/public_nav.php'; ?>
+<main class="success-page">
+  <div class="success-container">
+    <div class="success-icon" aria-hidden="true">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="32" cy="32" r="29" fill="#2F8D54"/>
+        <circle cx="32" cy="32" r="28" stroke="#FFFFFF" stroke-opacity=".24" stroke-width="2"/>
+        <path d="M18.5 32.5 28 42l18-19" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
     <h1 class="success-title">Application Submitted!</h1>
     <p class="success-message">Your seller application has been submitted successfully and is now waiting for administrator review.</p>
     <div class="success-details">
@@ -858,6 +880,7 @@ if ($application_submitted) {
     </div>
     <a href="login.php" class="btn-home">Go to Login</a>
   </div>
+</main>
 </body>
 </html>
 <?php
@@ -885,96 +908,44 @@ if ($application_submitted) {
       position: relative;
       overflow-x: hidden;
       min-height: 100vh;
-      background-image: url('uploads/website background.png');
-      background-size: cover;
-      background-position: center center;
-      background-attachment: scroll;
-      background-repeat: no-repeat;
+      background: #fff8eb;
     }
-    body::before {
+    /* Same viewport-fixed background as signup.php; the seller form's height cannot resize the image. */
+    body::before,
+    body::after {
       content: "";
       position: fixed;
-      inset: 0;
-      background-color: rgba(255, 248, 235, 0.60);
-      backdrop-filter: blur(1px);
+      inset: 0 0 auto;
+      width: 100%;
+      height: 100vh;
+      height: 100lvh;
       pointer-events: none;
+    }
+    body::before {
       z-index: 0;
+      background: url('uploads/website background.png') center center / cover no-repeat;
     }
-    .container {
-      max-width: 1380px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 0 32px;
-      position: relative;
+    body::after {
       z-index: 1;
+      background-color: rgba(255, 248, 235, 0.60);
+      -webkit-backdrop-filter: blur(1px);
+      backdrop-filter: blur(1px);
     }
-    .public-nav-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      z-index: 10000;
-      pointer-events: none;
-    }
-    .public-nav-container .public-nav-inner {
-      width: 100%;
-      max-width: 1380px;
-      margin: 0 auto;
-      padding: 0 32px;
-      position: relative;
-      z-index: 10001;
-      pointer-events: auto;
-      isolation: isolate;
-      overflow: visible;
-    }
-    .public-nav-container .public-header {
-      position: relative;
-      z-index: 10002;
-      overflow: visible !important;
-    }
-    .public-nav-container .public-header-inner {
-      position: relative;
-      z-index: 10003;
-      overflow: visible !important;
-    }
-    .public-nav-container .nav-menu,
-    .public-nav-container .mobile-menu,
-    .public-nav-container .menu,
-    .public-nav-container .dropdown,
-    .public-nav-container .dropdown-menu,
-    .public-nav-container .menu-panel,
-    .public-nav-container .mobile-nav,
-    .public-nav-container .hamburger-menu,
-    .public-nav-container [class*="menu"],
-    .public-nav-container [class*="dropdown"] {
-      z-index: 10004 !important;
-    }
-    .navbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: nowrap;
-      padding: 20px 0;
-      gap: 20px;
-      border-bottom: 1px solid rgba(160, 110, 70, 0.25);
-      backdrop-filter: blur(2px);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
+    /* Match public_nav.php's 1600px content boundary, while keeping the form readable. */
     .seller-page {
-      min-height: 100svh;
-      width: 100%;
+      width: min(1600px, calc(100% - 64px));
+      min-height: calc(100svh - 82px);
+      margin-inline: auto;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 138px 20px 40px;
+      padding: clamp(24px, 2.4vw, 40px) 16px;
       position: relative;
-      z-index: 1;
+      z-index: 2;
     }
     .seller-container {
-      width: 100%;
-      max-width: 550px;
+      width: min(100%, 550px);
+      min-width: 0;
       position: relative;
       z-index: 1;
     }
@@ -1010,6 +981,14 @@ if ($application_submitted) {
       gap: 8px;
     }
     .progress-step {
+      min-width:0;
+      border:0;
+      border-radius:14px;
+      padding:7px 2px;
+      background:transparent;
+      color:inherit;
+      font:inherit;
+      cursor:pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1092,7 +1071,7 @@ if ($application_submitted) {
     }
     .form-row {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 16px;
     }
     .form-row.full {
@@ -1106,6 +1085,7 @@ if ($application_submitted) {
     .form-group {
       display: flex;
       flex-direction: column;
+      min-width: 0;
       gap: 8px;
     }
     .form-group label {
@@ -1124,6 +1104,13 @@ if ($application_submitted) {
       color: #2B1E12;
       font-family: inherit;
       transition: all 0.2s;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
     }
     .form-group textarea {
       resize: vertical;
@@ -1373,16 +1360,10 @@ if ($application_submitted) {
       padding-left: 22px;
     }
     @media (max-width: 600px) {
-      body {
-        background-attachment: scroll;
-        background-position: center center;
-      }
       .seller-page {
-        min-height: 100svh;
-        padding: 108px 16px 28px;
-      }
-      .public-nav-container .public-nav-inner {
-        padding: 0 16px;
+        width: calc(100% - 28px);
+        min-height: calc(100svh - 70px);
+        padding: 24px 0 28px;
       }
       .seller-card {
         padding: 28px 22px;
@@ -1414,13 +1395,12 @@ if ($application_submitted) {
         grid-template-columns: 1fr;
       }
     }
-    .document-guide{padding:15px 16px;border:1px solid #E7CDB0;border-radius:16px;background:#FFF8EF;color:#5A3F28}
-    .document-guide-title{margin-bottom:5px;color:#8b5423;font-weight:800;font-size:.95rem}
-    .document-guide p{margin:0 0 12px;font-size:.86rem;line-height:1.5}
-    .accepted-doc-list{display:flex;flex-wrap:wrap;gap:7px}
-    .accepted-doc-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid #E7CDB0;border-radius:999px;background:#fffdf9;color:#6b4b32;font-size:.76rem;font-weight:700;line-height:1.2}
-    .accepted-doc-pill.recommended{border-color:#C98B5B;background:#FFF1E4;color:#8b5423}
-    .accepted-doc-pill.recommended strong{padding:2px 6px;border-radius:999px;background:#B85C28;color:#fff;font-size:.66rem}
+    @media (min-width: 601px) and (max-width: 900px) {
+      .seller-page { width: calc(100% - 40px); }
+    }
+    @media (max-width: 380px) {
+      .seller-page { width: calc(100% - 22px); }
+    }
     .document-upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
     .upload-card{min-width:0;padding:15px;border:1px solid #E7CDB0;border-radius:17px;background:rgba(255,252,245,.92)}
     .business-document-card{width:100%}
@@ -1444,10 +1424,10 @@ if ($application_submitted) {
     .upload-file-meta strong{overflow:hidden;color:#4B3422;font-size:.82rem;text-overflow:ellipsis;white-space:nowrap}
     .upload-file-meta span{color:#8C7562;font-size:.72rem}
     .upload-actions{display:flex;flex-wrap:wrap;gap:7px}
-    .upload-actions button,.review-document-view{border:1px solid #E0C2A4;border-radius:999px;background:#FFF8EF;color:#8b5423;padding:7px 11px;font:inherit;font-size:.74rem;font-weight:800;cursor:pointer}
-    .upload-actions button:hover,.review-document-view:hover{border-color:#B85C28;background:#FFF0E2}
+    .upload-actions button{border:1px solid #E0C2A4;border-radius:999px;background:#FFF8EF;color:#8b5423;padding:7px 11px;font:inherit;font-size:.74rem;font-weight:800;cursor:pointer}
+    .upload-actions button:hover{border-color:#B85C28;background:#FFF0E2}
     .review-document-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;margin-top:12px}
-    .review-document-card{display:grid;grid-template-columns:66px minmax(0,1fr) auto;align-items:center;gap:12px;min-width:0;padding:11px 12px;border:1px solid #DFC5AA;border-radius:13px;background:#FFF9F1}
+    .review-document-card{display:grid;grid-template-columns:66px minmax(0,1fr);align-items:center;gap:12px;min-width:0;padding:11px 12px;border:1px solid #DFC5AA;border-radius:13px;background:#FFF9F1}
     .review-doc-preview{display:grid;place-items:center;width:66px;height:66px;overflow:hidden;border:1px solid #E7CDB0;border-radius:10px;background:#F7F2EB;color:#8b5423;font-weight:800;font-size:1.15rem}
     .review-doc-thumb{display:block;width:100%;height:100%;object-fit:contain}
     .review-doc-pdf{display:grid;place-items:center;width:100%;height:100%;background:#F4E7D8;color:#8b5423;font-size:.85rem;font-weight:900}
@@ -1455,36 +1435,12 @@ if ($application_submitted) {
     .review-doc-label{display:block;color:#8b5423;font-size:.78rem;font-weight:800;line-height:1.35}
     .review-doc-name{display:block;color:#5A3F28;font-size:.76rem;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
     .review-doc-size{display:block;color:#967f6a;font-size:.69rem}
-    .review-document-card .review-document-view{justify-self:end;white-space:nowrap}
-    .document-preview-modal{position:fixed;inset:0;z-index:50000;display:none;align-items:center;justify-content:center;padding:20px}
-    .document-preview-modal.open{display:flex}
-    .document-preview-backdrop{position:absolute;inset:0;background:rgba(35,24,15,.72);backdrop-filter:blur(4px)}
-    .document-preview-dialog{position:relative;z-index:1;width:min(920px,100%);max-height:calc(100dvh - 40px);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(231,205,176,.8);border-radius:20px;background:#FFFCF7;box-shadow:0 28px 80px rgba(0,0,0,.28)}
-    .document-preview-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 18px;border-bottom:1px solid #E7CDB0}
-    .document-preview-header>div{min-width:0}
-    .document-preview-header strong{display:block;color:#8b5423;font-size:.95rem}
-    .document-preview-header span{display:block;max-width:min(650px,70vw);overflow:hidden;margin-top:3px;color:#7A6552;font-size:.75rem;text-overflow:ellipsis;white-space:nowrap}
-    .document-preview-close{width:38px;height:38px;flex:0 0 38px;border:0;border-radius:50%;background:#F9EFE2;color:#8b5423;font-size:1.5rem;cursor:pointer}
-    .document-preview-body{min-height:0;flex:1;display:grid;place-items:center;overflow:auto;padding:18px;background:#F1EBE4}
-    .document-preview-body img{max-width:100%;max-height:calc(100dvh - 150px);object-fit:contain;border-radius:10px;background:white}
-    .document-preview-body iframe{width:100%;height:min(72dvh,760px);border:0;border-radius:10px;background:white}
     @media(max-width:760px){
       .document-upload-grid{grid-template-columns:1fr}
-      .accepted-doc-pill{width:100%;justify-content:space-between;border-radius:11px}
-      .document-preview-modal{align-items:flex-start;overflow-y:auto;padding:max(12px,env(safe-area-inset-top)) 10px max(12px,env(safe-area-inset-bottom))}
-      .document-preview-dialog{max-height:calc(100dvh - 24px);margin:auto 0;border-radius:16px}
-      .document-preview-body{padding:10px}
-      .document-preview-body iframe{height:70dvh}
     }
     @media(max-width:480px){
       .review-document-card{grid-template-columns:56px minmax(0,1fr);gap:9px;padding:10px}
       .review-doc-preview{width:56px;height:58px}
-      .review-document-card .review-document-view{grid-column:2;justify-self:start}
-    }
-    @media(max-width:1440px) and (max-height:820px){
-      .seller-page{align-items:flex-start;padding-top:108px}
-      .document-preview-modal{align-items:flex-start;overflow-y:auto;padding:14px 20px}
-      .document-preview-dialog{max-height:calc(100dvh - 28px);margin:auto}
     }
     .upload-dropzone[hidden],
     .upload-preview[hidden],
@@ -1549,25 +1505,6 @@ if ($application_submitted) {
       border-radius: 12px;
       background: rgba(220,53,69,.05);
     }
-    .public-nav-container { z-index: 9000 !important; }
-    .public-nav-container .public-nav-inner { z-index: 9001 !important; }
-    .public-nav-container .public-header { z-index: 9002 !important; }
-    .public-nav-container .public-header-inner { z-index: 9003 !important; }
-    .public-nav-container .nav-menu,
-    .public-nav-container .mobile-menu,
-    .public-nav-container .menu,
-    .public-nav-container .dropdown,
-    .public-nav-container .dropdown-menu,
-    .public-nav-container .menu-panel,
-    .public-nav-container .mobile-nav,
-    .public-nav-container .hamburger-menu,
-    .public-nav-container [class*="menu"],
-    .public-nav-container [class*="dropdown"] {
-      z-index: 9004 !important;
-    }
-    .policy-modal { z-index: 100000 !important; }
-    .policy-card { z-index: 100001 !important; }
-    .document-preview-modal { z-index: 105000 !important; }
     .seller-otp-modal {
       position: fixed;
       inset: 0;
@@ -1722,6 +1659,15 @@ if ($application_submitted) {
       font-weight: 800;
       cursor: pointer;
     }
+    .seller-otp-delivery-help {
+      max-width: 350px;
+      margin: 12px auto 0;
+      color: #806957;
+      font-size: .78rem;
+      line-height: 1.5;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
     .seller-otp-expiry {
       margin: 10px 0 0;
       color: #927b68;
@@ -1746,30 +1692,12 @@ if ($application_submitted) {
       .seller-otp-inputs { gap: 5px; }
       .seller-otp-digit { height: 47px; font-size: 1.05rem; }
     }
-    .document-preview-modal {
-      z-index: 2147483647 !important;
-      isolation: isolate;
-    }
-    .document-preview-backdrop {
-      z-index: 0 !important;
-    }
-    .document-preview-dialog {
-      z-index: 1 !important;
-    }
-    body.document-preview-open .public-nav-container,
-    body.document-preview-open .public-nav-container * {
-      z-index: 1 !important;
-    }
     .policy-modal {
       z-index: 2147483647 !important;
       isolation: isolate;
     }
     .policy-modal .policy-card {
       position: relative;
-      z-index: 1 !important;
-    }
-    body.policy-modal-open .public-nav-container,
-    body.policy-modal-open .public-nav-container * {
       z-index: 1 !important;
     }
     #personalNextBtn.btn-loading {
@@ -1802,10 +1730,6 @@ if ($application_submitted) {
     .seller-otp-card {
       z-index: 1 !important;
     }
-    body.seller-otp-open .public-nav-container,
-    body.seller-otp-open .public-nav-container * {
-      z-index: 1 !important;
-    }
   .password-strength{display:flex;align-items:center;gap:10px;margin-top:7px;min-height:17px}
   .password-strength-bar{display:flex;gap:4px;flex:1;height:5px;max-width:110px}
   .password-strength-bar i{flex:1;border-radius:6px;background:#e6d9cb;transition:background .16s}
@@ -1816,13 +1740,9 @@ if ($application_submitted) {
   .password-strength.weak .password-strength-label{color:#bd4340}
   .password-strength.normal .password-strength-label{color:#ad781e}
   .password-strength.strong .password-strength-label{color:#338954}
-  .document-guide-jump{border:0;background:transparent;cursor:pointer;text-align:left;font:inherit}
-  .document-guide-jump:hover{text-decoration:underline}
-  .accepted-doc-pill{cursor:pointer;font-family:inherit}
-  .accepted-doc-pill:hover,.accepted-doc-pill:focus-visible{border-color:#B85C28;background:#fff0e2}
   .category-select{position:relative;min-width:0}
   .category-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:47px;padding:11px 15px;border:1.5px solid #E7CDB0;border-radius:15px;background:#F9EFE2;text-align:left;color:#2B1E12;font:inherit;cursor:pointer}
-  .category-options{position:absolute;z-index:120;top:calc(100% + 5px);left:0;right:0;max-height:230px;overflow-y:auto;border:1px solid #E7CDB0;border-radius:14px;background:#fffdfa;box-shadow:0 13px 28px rgba(60,37,15,.14);padding:6px}
+  .category-options{position:absolute;z-index:120;top:calc(100% + 5px);left:0;right:0;max-height:var(--seller-dropdown-max-height,230px);overflow-y:auto;overscroll-behavior:contain;border:1px solid #E7CDB0;border-radius:14px;background:#fffdfa;box-shadow:0 13px 28px rgba(60,37,15,.14);padding:6px}
   .category-options[hidden]{display:none}
   .category-choice{display:flex;align-items:center;gap:10px;padding:10px;border-radius:9px;font-weight:500!important;cursor:pointer}
   .category-choice:hover{background:#fff1e3}
@@ -1830,47 +1750,246 @@ if ($application_submitted) {
   .category-select.input-invalid .category-toggle{border-color:#dc3545}
   .barangay-combobox{position:relative;min-width:0}
   .barangay-combobox input{width:100%}
-  .barangay-suggestions{position:absolute;z-index:130;top:calc(100% + 5px);left:0;right:0;max-height:220px;overflow-y:auto;padding:5px;border:1px solid #E7CDB0;border-radius:13px;background:#fffdfa;box-shadow:0 12px 26px rgba(60,37,15,.15)}
+  .barangay-suggestions{position:absolute;z-index:130;top:calc(100% + 5px);left:0;right:0;max-height:var(--seller-dropdown-max-height,220px);overflow-y:auto;overscroll-behavior:contain;padding:5px;border:1px solid #E7CDB0;border-radius:13px;background:#fffdfa;box-shadow:0 12px 26px rgba(60,37,15,.15)}
+  .category-options.opens-up,.barangay-suggestions.opens-up{top:auto;bottom:calc(100% + 5px)}
   .barangay-suggestions[hidden]{display:none}
   .barangay-suggestion{display:block;width:100%;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:#2B1E12;text-align:left;font:inherit;cursor:pointer}
   .barangay-suggestion:hover,.barangay-suggestion.active{background:#fff0e1}
-  #city[readonly],#zipcode[readonly]{background:#eee8e0;color:#61564b;cursor:default}
+  #city[readonly]{background:#eee8e0;color:#61564b;cursor:default}
   .location-title{display:flex;align-items:center;gap:7px;position:relative}
   .location-tip{border:0;background:none;color:#956035;font:inherit;font-size:1rem;cursor:help}
   .location-tip-text{display:none;position:absolute;z-index:150;left:0;top:calc(100% + 3px);max-width:min(330px,95%);padding:10px 13px;border:1px solid #e0c3a6;border-radius:9px;background:#fffdf8;color:#59402c;box-shadow:0 10px 22px rgba(45,30,16,.14);font-size:.77rem;line-height:1.5;font-weight:400}
   .location-tip:hover+.location-tip-text,.location-tip:focus+.location-tip-text{display:block}
   @media(max-width:600px){.location-tip-text{max-width:95%}}
+
+    .progress-step:disabled{cursor:default;opacity:.58}
+    .progress-step.completed:not(:disabled):hover .step-circle{filter:brightness(.94);transform:translateY(-2px)}
+    .progress-step:focus-visible{outline:2px solid #B85C28;outline-offset:3px}
+    @keyframes sellerPageEnter{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes sellerStepEnter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    .seller-card{animation:sellerPageEnter .72s cubic-bezier(.16,1,.3,1) both}
+    .form-step.active{animation:sellerStepEnter .38s ease both}
+    .form-group select{appearance:none;-webkit-appearance:none;width:100%;padding-right:48px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%238b5423' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;background-size:18px}
+    .form-group select:invalid{color:#796759}
+    .category-toggle{transition:border-color .2s,background-color .2s,box-shadow .2s}
+    .category-toggle:focus-visible{outline:none;border-color:#B85C28;box-shadow:0 0 0 3px rgba(184,92,40,.12)}
+    .verification-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:4px 0 -2px;padding-top:12px;border-top:1px solid rgba(220,180,135,.45)}
+    .verification-heading-label{display:flex;align-items:center;gap:10px;color:#493627;font-weight:800;font-size:1.05rem}
+    .verification-heading-label svg{width:22px;height:22px;flex-shrink:0;color:#B85C28}
+    .document-guide-button{display:inline-flex;align-items:center;gap:6px;justify-content:center;border:1px solid #DCA875;border-radius:13px;padding:10px 14px;background:#FFF2E5;color:#A55325;font:inherit;font-weight:700;font-size:.85rem;cursor:pointer;transition:background .2s,border-color .2s}
+    .document-guide-button:hover,.document-guide-button:focus-visible{background:#FFE8D2;border-color:#B85C28;outline-offset:2px}
+    .seller-guide-modal{position:fixed;inset:0;z-index:2000000;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(43,30,18,.52);backdrop-filter:blur(3px)}
+    .seller-guide-modal.open{display:flex}
+    .seller-guide-card{width:min(620px,100%);max-height:calc(100dvh - 36px);overflow:hidden;display:flex;flex-direction:column;border:1px solid #E7CDB0;border-radius:22px;background:#FFFCF7;box-shadow:0 25px 60px rgba(30,18,9,.27);animation:sellerStepEnter .26s ease both}
+    .seller-guide-header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 24px;border-bottom:1px solid #E7CDB0}
+    .seller-guide-header h2{font-size:1.22rem;color:#443529;line-height:1.3}
+    .seller-guide-close{width:40px;height:40px;flex-shrink:0;border:2px solid #30271e;border-radius:12px;background:transparent;color:#403329;font-size:1.5rem;cursor:pointer}
+    .seller-guide-content{overflow-y:auto;padding:22px 25px 26px;color:#645345;line-height:1.65;font-size:.95rem}
+    .seller-guide-content strong{color:#594637}
+    .seller-guide-content ul{padding-left:22px;margin:12px 0}
+    .seller-guide-content li{margin:6px 0}
+    .seller-guide-content[hidden]{display:none}
+    .upload-preview-media:focus-visible,.review-doc-preview:focus-visible{outline:3px solid #B85C28;outline-offset:3px}
+    .review-doc-preview[data-file-view]{border:1px solid #E7CDB0;cursor:pointer;padding:0;font:inherit}
+    @media(max-width:700px){.verification-heading{align-items:stretch}.document-guide-button{padding:9px 12px}.seller-guide-header{padding:15px 17px}.seller-guide-content{padding:17px 20px}}
+    @media(prefers-reduced-motion:reduce){.seller-card,.seller-guide-card,.form-step.active{animation:none!important;transition:none!important}}
+    /* Full-document viewer: fit the whole image, and give PDFs the available viewport. */
+    .document-preview-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 120000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 15px;
+      isolation: isolate;
+      background: rgba(28, 23, 19, .84);
+      -webkit-backdrop-filter: blur(5px);
+      backdrop-filter: blur(5px);
+    }
+    .document-preview-modal.open { display: flex; }
+    .document-preview-backdrop { position: absolute; inset: 0; z-index: 0; }
+    .document-preview-dialog {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      width: min(1200px, 100%);
+      height: calc(100dvh - 30px);
+      max-height: 100%;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid #69584c;
+      border-radius: 18px;
+      background: #211e1b;
+      box-shadow: 0 26px 90px rgba(0, 0, 0, .4);
+      animation: sellerViewerEnter .22s ease-out both;
+    }
+    .document-preview-close {
+      position: absolute;
+      z-index: 2;
+      top: 14px;
+      right: 14px;
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, .27);
+      border-radius: 50%;
+      background: rgba(36, 32, 29, .9);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 5px 19px rgba(0, 0, 0, .22);
+    }
+    .document-preview-close svg { width: 21px; height: 21px; }
+    .document-preview-close:hover, .document-preview-close:focus-visible {
+      background: #4d3a2e;
+      outline: 2px solid #f0bc8d;
+      outline-offset: 2px;
+    }
+    .document-preview-body {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      padding: 58px 14px 10px;
+    }
+    .document-preview-body img {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      margin: auto;
+      object-fit: contain;
+      object-position: center;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .document-preview-body iframe {
+      display: block;
+      flex: 1 1 auto;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      border: 0;
+      border-radius: 9px;
+      background: #fff;
+    }
+    .document-preview-body img[hidden],
+    .document-preview-body iframe[hidden] { display: none !important; }
+    .document-preview-dialog.is-pdf .document-preview-body { padding: 60px 15px 12px; }
+    .document-preview-footer {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 58px;
+      padding: 12px 21px;
+      color: #f1e6dc;
+      font-size: .82rem;
+    }
+    .document-preview-file-name {
+      display: block;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      font-size: .82rem;
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .document-preview-type { flex: 0 0 auto; color: #c2b3a6; font-size: .72rem; }
+    .document-preview-open-pdf {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      padding: 8px 11px;
+      border: 1px solid rgba(255, 255, 255, .32);
+      border-radius: 9px;
+      background: #3e342c;
+      color: #fff;
+      font-size: .75rem;
+      font-weight: 750;
+      text-decoration: none;
+    }
+    .document-preview-open-pdf[hidden] { display: none !important; }
+    .document-preview-open-pdf svg { width: 15px; height: 15px; }
+    .document-preview-open-pdf:hover { background: #594536; }
+    .document-preview-open-pdf:focus-visible { outline: 2px solid #f0bc8d; outline-offset: 2px; }
+    @keyframes sellerViewerEnter { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 760px) {
+      .document-preview-modal { padding: 0; }
+      .document-preview-dialog {
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100dvh;
+        border: 0;
+        border-radius: 0;
+      }
+      .document-preview-close { top: calc(12px + env(safe-area-inset-top)); right: 13px; }
+      .document-preview-body { padding: calc(60px + env(safe-area-inset-top)) 9px 8px; }
+      .document-preview-dialog.is-pdf .document-preview-body { padding: calc(60px + env(safe-area-inset-top)) 8px 8px; }
+      .document-preview-footer { min-height: 59px; gap: 8px; padding: 12px 14px calc(13px + env(safe-area-inset-bottom)); }
+      .document-preview-type { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .document-preview-dialog { animation: none; } }
+    /* Mobile keyboard-safe placement for interactive popups. This doesn't scale the page. */
+    @media (max-width: 768px) {
+      .seller-otp-modal.open, .seller-guide-modal.open, .policy-modal.open {
+        top: var(--seller-visual-top, 0px);
+        bottom: auto;
+        height: var(--seller-visual-height, 100dvh);
+        max-height: var(--seller-visual-height, 100dvh);
+        overflow-y: auto;
+      }
+      .seller-otp-card {
+        max-height: calc(var(--seller-visual-height, 100dvh) - 24px);
+      }
+      .seller-guide-card, .policy-card {
+        max-height: calc(var(--seller-visual-height, 100dvh) - 24px);
+        margin: auto;
+      }
+      .policy-card { display: flex; flex-direction: column; min-height: 0; }
+      .policy-content { flex: 1 1 auto; min-height: 0; max-height: none; }
+    }
 </style>
 </head>
 <body>
-<div class="public-nav-container">
-  <div class="public-nav-inner">
-    <?php $publicActive = ""; include __DIR__ . '/public_nav.php'; ?>
-  </div>
-</div>
+<?php $publicActive = ''; include __DIR__ . '/public_nav.php'; ?>
 <div class="seller-page">
   <div class="seller-container">
   <div class="seller-card">
     <div class="progress-indicator">
-      <div class="progress-step active" id="step1">
+      <button type="button" class="progress-step active" id="step1" data-progress-step="1" aria-label="Step 1" aria-current="step">
         <div class="step-circle">1</div>
         <div class="step-label">Personal</div>
-      </div>
+      </button>
       <div class="progress-line"></div>
-      <div class="progress-step" id="step2">
+      <button type="button" class="progress-step" id="step2" data-progress-step="2" aria-label="Step 2" disabled>
         <div class="step-circle">2</div>
         <div class="step-label">Business</div>
-      </div>
+      </button>
       <div class="progress-line"></div>
-      <div class="progress-step" id="step3">
+      <button type="button" class="progress-step" id="step3" data-progress-step="3" aria-label="Step 3" disabled>
         <div class="step-circle">3</div>
         <div class="step-label">Location</div>
-      </div>
+      </button>
       <div class="progress-line"></div>
-      <div class="progress-step" id="step4">
+      <button type="button" class="progress-step" id="step4" data-progress-step="4" aria-label="Step 4" disabled>
         <div class="step-circle">4</div>
         <div class="step-label">Review</div>
-      </div>
+      </button>
     </div>
     <div class="seller-header">
       <h1 class="seller-title">Become a Seller</h1>
@@ -1904,7 +2023,7 @@ if ($application_submitted) {
         </div>
         <div class="form-group form-row full">
           <label for="phone">Phone Number *</label>
-          <input type="tel" id="phone" name="phone" placeholder="09XXXXXXXXX" maxlength="11" pattern="09[0-9]{9}" inputmode="numeric" required value="<?php echo htmlspecialchars($_POST['phone'] ?? '09'); ?>">
+          <input type="tel" id="phone" name="phone" placeholder="09XXXXXXXXX" maxlength="14" pattern="09[0-9]{9}" inputmode="tel" required value="<?php echo htmlspecialchars($_POST['phone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -1927,17 +2046,9 @@ if ($application_submitted) {
             <div class="password-match" id="passwordMatch" aria-live="polite"></div>
           </div>
         </div>
-        <div class="document-guide">
-          <button type="button" class="document-guide-title document-guide-jump" data-jump-to="valid_id_type">Identity Verification ↗</button>
-          <div class="accepted-doc-list">
-            <button type="button" class="accepted-doc-pill recommended" data-select-id="TIN ID">TIN ID <strong>Recommended</strong></button>
-            <button type="button" class="accepted-doc-pill" data-select-id="PhilSys National ID">PhilSys National ID</button>
-            <button type="button" class="accepted-doc-pill" data-select-id="Driver&#39;s License">Driver's License</button>
-            <button type="button" class="accepted-doc-pill" data-select-id="Passport">Passport</button>
-            <button type="button" class="accepted-doc-pill" data-select-id="UMID">UMID</button>
-            <button type="button" class="accepted-doc-pill" data-select-id="PRC ID">PRC ID</button>
-            <button type="button" class="accepted-doc-pill" data-select-id="Postal ID">Postal ID</button>
-          </div>
+        <div class="verification-heading">
+          <div class="verification-heading-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M9 12h6m-6 4h6"/></svg><span>Valid ID Documents</span></div>
+          <button type="button" class="document-guide-button" data-open-guide="id" aria-haspopup="dialog">Document Guide ↗</button>
         </div>
         <div class="form-group form-row full">
           <label for="valid_id_type">Valid ID Type *</label>
@@ -1981,7 +2092,6 @@ if ($application_submitted) {
                 <span data-file-size="valid_id"></span>
               </div>
               <div class="upload-actions">
-                <button type="button" data-file-view="valid_id">View</button>
                 <button type="button" data-file-change="valid_id">Change</button>
                 <button type="button" data-file-remove="valid_id">Remove</button>
               </div>
@@ -2010,7 +2120,6 @@ if ($application_submitted) {
                 <span data-file-size="valid_id_back"></span>
               </div>
               <div class="upload-actions">
-                <button type="button" data-file-view="valid_id_back">View</button>
                 <button type="button" data-file-change="valid_id_back">Change</button>
                 <button type="button" data-file-remove="valid_id_back">Remove</button>
               </div>
@@ -2043,13 +2152,9 @@ if ($application_submitted) {
           <label for="business_description">Business Description *</label>
           <textarea id="business_description" name="businessdescription" minlength="20" maxlength="300" placeholder="Describe your craft materials, years of experience, and what makes your products unique..." required><?php echo htmlspecialchars($_POST['businessdescription'] ?? ''); ?></textarea>
         </div>
-        <div class="document-guide">
-          <button type="button" class="document-guide-title document-guide-jump" data-jump-to="business_document_type">Business Verification ↗</button>
-          <div class="accepted-doc-list">
-            <button type="button" class="accepted-doc-pill" data-select-business="DTI Business Name Registration">DTI Business Name Registration</button>
-            <button type="button" class="accepted-doc-pill" data-select-business="BIR Certificate of Registration (Form 2303)">BIR Certificate of Registration (Form 2303)</button>
-            <button type="button" class="accepted-doc-pill" data-select-business="Mayor&#39;s / Business Permit">Mayor's / Business Permit</button>
-          </div>
+        <div class="verification-heading">
+          <div class="verification-heading-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M9 12h6m-6 4h6"/></svg><span>Business Documents</span></div>
+          <button type="button" class="document-guide-button" data-open-guide="business" aria-haspopup="dialog">Document Guide ↗</button>
         </div>
         <div class="form-group form-row full">
           <label for="business_document_type">Business Verification Document *</label>
@@ -2092,7 +2197,6 @@ if ($application_submitted) {
               <span data-file-size="business_permit"></span>
             </div>
             <div class="upload-actions">
-              <button type="button" data-file-view="business_permit">View</button>
               <button type="button" data-file-change="business_permit">Change</button>
               <button type="button" data-file-remove="business_permit">Remove</button>
             </div>
@@ -2123,7 +2227,7 @@ if ($application_submitted) {
           </div>
           <div class="form-group">
             <label for="zipcode">Zip Code *</label>
-            <input type="text" id="zipcode" name="zipcode" placeholder="Auto-filled" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" readonly required value="<?php echo htmlspecialchars($_POST['zipcode'] ?? ''); ?>">
+            <input type="text" id="zipcode" name="zipcode" placeholder="e.g., 1637" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" required value="<?php echo htmlspecialchars($_POST['zipcode'] ?? ''); ?>">
           </div>
         </div>
         <div class="form-buttons">
@@ -2182,6 +2286,7 @@ if ($application_submitted) {
       </div>
     </form>
   </div>
+  </div>
 </div>
 <div class="seller-otp-modal" id="sellerOtpModal" aria-hidden="true">
   <div class="seller-otp-backdrop" data-otp-close></div>
@@ -2201,6 +2306,7 @@ if ($application_submitted) {
       <input class="seller-otp-digit" type="text" inputmode="numeric" maxlength="1" aria-label="Digit 6">
     </div>
     <button type="button" class="seller-otp-primary" id="sellerOtpVerifyButton" disabled>Verify Email</button>
+    <p class="seller-otp-delivery-help">Didn't receive a code? Check your email address and Spam folder.</p>
     <div class="seller-otp-actions">
       <button type="button" class="seller-otp-text" id="sellerOtpResendButton">Resend code</button>
       <span>•</span>
@@ -2209,19 +2315,49 @@ if ($application_submitted) {
     <p class="seller-otp-expiry">The verification code expires in 10 minutes.</p>
   </div>
 </div>
+<div class="seller-guide-modal" id="sellerGuideModal" aria-hidden="true">
+  <div class="seller-guide-card" role="dialog" aria-modal="true" aria-labelledby="sellerGuideTitle" tabindex="-1">
+    <div class="seller-guide-header">
+      <h2 id="sellerGuideTitle">Document Guide</h2>
+      <button class="seller-guide-close" type="button" data-close-guide aria-label="Close document guide">&times;</button>
+    </div>
+    <div class="seller-guide-content" data-guide-panel="id" hidden>
+      <strong>Accepted valid IDs</strong>
+      <ul>
+        <?php foreach ($validIdTypes as $type => $config): ?>
+          <li><?php echo htmlspecialchars($type, ENT_QUOTES, 'UTF-8'); ?><?php echo !empty($config['recommended']) ? ' (Recommended)' : ''; ?></li>
+        <?php endforeach; ?>
+      </ul>
+      <p>Upload a readable JPG, PNG, or WEBP image, maximum 5 MB per file. Include the front and back where required. For passports, upload the information page.</p>
+    </div>
+    <div class="seller-guide-content" data-guide-panel="business" hidden>
+      <strong>Accepted business documents</strong>
+      <ul>
+        <?php foreach ($businessDocumentTypes as $type): ?>
+          <li><?php echo htmlspecialchars($type, ENT_QUOTES, 'UTF-8'); ?></li>
+        <?php endforeach; ?>
+      </ul>
+      <p>Upload one readable document. PDF, JPG, PNG, or WEBP; maximum 5 MB.</p>
+    </div>
+  </div>
+</div>
 <div class="document-preview-modal" id="documentPreviewModal" aria-hidden="true">
   <div class="document-preview-backdrop" data-document-preview-close></div>
-  <div class="document-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="documentPreviewTitle">
-    <div class="document-preview-header">
-      <div>
-        <strong id="documentPreviewTitle">Document Preview</strong>
-        <span id="documentPreviewFileName"></span>
-      </div>
-      <button type="button" class="document-preview-close" data-document-preview-close aria-label="Close document preview">&times;</button>
-    </div>
+  <div class="document-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="documentPreviewFileName">
+    <button type="button" class="document-preview-close" data-document-preview-close aria-label="Close full preview">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
     <div class="document-preview-body">
-      <img id="documentPreviewImage" alt="Uploaded document preview" hidden>
-      <iframe id="documentPreviewPdf" title="Uploaded PDF preview" hidden></iframe>
+      <img id="documentPreviewImage" alt="Full uploaded document image" hidden>
+      <iframe id="documentPreviewPdf" title="Full PDF document preview" referrerpolicy="no-referrer" hidden></iframe>
+    </div>
+    <div class="document-preview-footer">
+      <strong class="document-preview-file-name" id="documentPreviewFileName">File Preview</strong>
+      <a class="document-preview-open-pdf" id="documentPreviewOpenPdf" href="#" target="_blank" rel="noopener noreferrer" hidden>
+        Open full PDF
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5m0-5-9 9"/><path d="M19 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+      </a>
+      <span class="document-preview-type" id="documentPreviewMediaKind">Full image</span>
     </div>
   </div>
 </div>
@@ -2248,8 +2384,36 @@ if ($application_submitted) {
   </div>
 </div>
 <script>
+  // Treat an open popup as a temporary browser-history entry (Samsung/Android Back support).
+  // No entry is added for normal form steps, so Back works normally when no popup is open.
+  const sellerPopupHistoryKey = '__lokalcraftSellerPopup';
+  function openSellerPopupHistory(modalId) {
+    try {
+      if (window.history.state?.[sellerPopupHistoryKey] === modalId) return;
+      const state = window.history.state;
+      const nextState = state && typeof state === 'object' ? {...state} : {};
+      nextState[sellerPopupHistoryKey] = modalId;
+      window.history.pushState(nextState, '', window.location.href);
+    } catch (_) {
+      // The popup still works with its on-screen close button if history is unavailable.
+    }
+  }
+  function closeSellerPopupHistory(modalId) {
+    if (window.history.state?.[sellerPopupHistoryKey] === modalId) {
+      window.history.back();
+    }
+  }
+  window.addEventListener('popstate', () => {
+    // Only intercept Back while a popup is open; otherwise allow normal browser navigation.
+    if (sellerGuideModal?.classList.contains('open')) { closeSellerGuide(); return; }
+    if (sellerOtpModal?.classList.contains('open')) { cancelSellerOtp(); return; }
+    if (documentPreviewModal?.classList.contains('open')) { closeDocumentPreview(); return; }
+    const openPolicy = document.querySelector('.policy-modal.open');
+    if (openPolicy) closePolicyModal(openPolicy);
+  });
   let currentStep = 1;
-  let verifiedEmail = <?php echo json_encode($verifiedSellerEmail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+  let furthestCompletedStep = 1;
+  let verifiedEmail = <?php echo json_encode($verifiedSellerEmail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
   let emailVerified = verifiedEmail !== '';
   const VALID_ID_TYPES = {
     'TIN ID': { requiresBack: true, recommended: true },
@@ -2373,6 +2537,7 @@ if ($application_submitted) {
     resetOtpDigits();
     setOtpMessage();
     setOtpResendCountdown(resendSeconds);
+    openSellerPopupHistory('sellerOtpModal');
     sellerOtpModal.classList.add('open');
     sellerOtpModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('seller-otp-open');
@@ -2404,7 +2569,7 @@ if ($application_submitted) {
     try {
       data = JSON.parse(rawResponse);
     } catch (_) {
-      console.error('Seller OTP returned a non-JSON response:', rawResponse);
+      console.error('Seller OTP returned a non-JSON response.');
       throw new Error('The OTP request could not be completed. Check the PHP error log or reload the page.');
     }
     if (!response.ok && !data?.message) {
@@ -2415,6 +2580,7 @@ if ($application_submitted) {
   async function cancelSellerOtp() {
     sellerOtpModal.classList.remove('open');
     sellerOtpModal.setAttribute('aria-hidden', 'true');
+    closeSellerPopupHistory('sellerOtpModal');
     document.body.classList.remove('seller-otp-open');
     if (
       !document.querySelector('.policy-modal.open')
@@ -2507,11 +2673,14 @@ if ($application_submitted) {
       clearFieldError('email');
       setOtpMessage('Email verified successfully.', 'success');
       window.setTimeout(() => {
+        if (!sellerOtpModal.classList.contains('open')) return;
         sellerOtpModal.classList.remove('open');
         sellerOtpModal.setAttribute('aria-hidden', 'true');
+        closeSellerPopupHistory('sellerOtpModal');
         document.body.classList.remove('seller-otp-open');
         document.body.style.overflow = '';
         currentStep = 2;
+        furthestCompletedStep = Math.max(furthestCompletedStep, 2);
         updateForm();
       }, 450);
     } catch (_) {
@@ -2582,7 +2751,11 @@ if ($application_submitted) {
   });
   sellerOtpVerifyButton.addEventListener('click', verifySellerOtp);
   sellerOtpResendButton.addEventListener('click', resendSellerOtp);
-  sellerOtpChangeEmail.addEventListener('click', cancelSellerOtp);
+  sellerOtpChangeEmail.addEventListener('click', () => {
+    cancelSellerOtp();
+    const field = document.getElementById('email');
+    window.requestAnimationFrame(() => { field?.focus({preventScroll:true}); field?.select(); });
+  });
   document.querySelectorAll('[data-otp-close]').forEach(control => {
     control.addEventListener('click', cancelSellerOtp);
   });
@@ -2601,12 +2774,34 @@ if ($application_submitted) {
       }
     }
     currentStep = step + 1;
+    furthestCompletedStep = Math.max(furthestCompletedStep, currentStep);
     updateForm();
   }
   function prevStep(step) {
     currentStep = step - 1;
     updateForm();
   }
+  async function goToCompletedStep(target) {
+    if (!Number.isInteger(target) || target < 1 || target > furthestCompletedStep || target === currentStep) return;
+    if (target > currentStep) {
+      for (let step = currentStep; step < target; step++) {
+        if (step !== currentStep) { currentStep = step; updateForm(); }
+        if (!validateStep(step)) return;
+        if (step === 1) {
+          const email = document.getElementById('email').value.trim();
+          if (!emailVerified || verifiedEmail.toLowerCase() !== email.toLowerCase()) {
+            await startSellerEmailVerification();
+            return;
+          }
+        }
+      }
+    }
+    currentStep = target;
+    updateForm();
+  }
+  document.querySelectorAll('[data-progress-step]').forEach(button => {
+    button.addEventListener('click', () => goToCompletedStep(Number(button.dataset.progressStep)));
+  });
   function getMissingPasswordRules(value) {
     const missing = [];
     if (value.length < 8) missing.push('8+ characters');
@@ -2640,34 +2835,64 @@ if ($application_submitted) {
   });
   const phoneInput = document.getElementById('phone');
   function normalizePhone(value) {
-    let digits = value.replace(/\D/g, '');
-    if (digits.startsWith('63')) digits = '0' + digits.slice(2);
+    let digits = String(value || '').replace(/\D/g, '');
+    if (digits.startsWith('63') && digits.length >= 3) digits = '0' + digits.slice(2);
     else if (digits.startsWith('9')) digits = '0' + digits;
-    if (!digits.startsWith('09')) return '09';
-    return digits.slice(0,11);
+    return digits.slice(0, 11);
   }
   phoneInput.value = normalizePhone(phoneInput.value);
-  phoneInput.addEventListener('paste', event => {
-    const raw = event.clipboardData?.getData('text') || '';
-    event.preventDefault();
-    phoneInput.value = normalizePhone(raw);
-    phoneInput.dispatchEvent(new Event('input', {bubbles:true}));
-  });
-  phoneInput.addEventListener('beforeinput', event => {
-    if (event.inputType === 'insertText' && event.data && /[^0-9]/.test(event.data)) event.preventDefault();
-  });
   phoneInput.addEventListener('input', () => {
-    phoneInput.value = normalizePhone(phoneInput.value);
-    if (/^09\d{9}$/.test(phoneInput.value)) clearFieldError('phone');
-  });
-  phoneInput.addEventListener('focus', () => {
-    if (!phoneInput.value.startsWith('09')) phoneInput.value = '09';
+    const normalized = normalizePhone(phoneInput.value);
+    if (phoneInput.value !== normalized) phoneInput.value = normalized;
+    if (/^09\d{9}$/.test(normalized)) clearFieldError('phone');
   });
   phoneInput.addEventListener('blur', () => {
-    if (!/^09\d{9}$/.test(phoneInput.value)) setFieldError('phone', 'Enter a complete 11-digit mobile number.');
+    if (phoneInput.value && !/^09\d{9}$/.test(phoneInput.value)) setFieldError('phone', 'Enter a complete 11-digit mobile number starting with 09.');
     else clearFieldError('phone');
   });
-  // Taguig-only barangay suggestions; the selected value controls a read-only ZIP.
+  // Smart dropdown placement: pick the roomier side of the visible viewport.
+  // Supports scrolling, browser zoom, mobile keyboards and orientation changes.
+  function positionSellerDropdown(menu, trigger, preferredHeight) {
+    if (!menu || !trigger || menu.hidden) return;
+    const viewport = window.visualViewport;
+    const visibleTop = viewport ? viewport.offsetTop : 0;
+    const visibleBottom = visibleTop + (viewport ? viewport.height : window.innerHeight);
+    const anchor = trigger.getBoundingClientRect();
+    const edge = 12;
+    const gap = 5;
+    const availableAbove = Math.max(0, anchor.top - visibleTop - edge - gap);
+    const availableBelow = Math.max(0, visibleBottom - anchor.bottom - edge - gap);
+    const openUp = availableBelow < Math.min(preferredHeight, 150) && availableAbove > availableBelow;
+    const available = openUp ? availableAbove : availableBelow;
+    menu.classList.toggle('opens-up', openUp);
+    menu.style.setProperty('--seller-dropdown-max-height', `${Math.max(0, Math.floor(Math.min(preferredHeight, available)))}px`);
+  }
+  let sellerPositionFrame = 0;
+  function scheduleSellerDropdownPosition() {
+    if (sellerPositionFrame) return;
+    sellerPositionFrame = window.requestAnimationFrame(() => {
+      sellerPositionFrame = 0;
+      if (!barangayOptions.hidden) positionSellerDropdown(barangayOptions, barangayInput, 220);
+      if (!categoryOptions.hidden) positionSellerDropdown(categoryOptions, categoryToggle, 230);
+    });
+  }
+  // The visual viewport shrinks independently of the layout viewport on many mobile browsers.
+  function syncSellerVisualViewport() {
+    const viewport = window.visualViewport;
+    const height = viewport ? viewport.height : window.innerHeight;
+    const top = viewport ? viewport.offsetTop : 0;
+    document.documentElement.style.setProperty('--seller-visual-height', `${Math.round(height)}px`);
+    document.documentElement.style.setProperty('--seller-visual-top', `${Math.round(top)}px`);
+    scheduleSellerDropdownPosition();
+  }
+  window.addEventListener('resize', syncSellerVisualViewport, {passive:true});
+  window.addEventListener('scroll', scheduleSellerDropdownPosition, {passive:true, capture:true});
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncSellerVisualViewport, {passive:true});
+    window.visualViewport.addEventListener('scroll', syncSellerVisualViewport, {passive:true});
+  }
+  syncSellerVisualViewport();
+  // Barangay suggests a ZIP, but applicants may correct the 4-digit ZIP manually.
   const barangayInput = document.getElementById('barangay');
   const barangayOptions = document.getElementById('barangaySuggestions');
   const zipInput = document.getElementById('zipcode');
@@ -2675,12 +2900,14 @@ if ($application_submitted) {
   let barangayActiveIndex = -1;
   function hideBarangaySuggestions() {
     barangayOptions.hidden = true;
+    barangayOptions.classList.remove('opens-up');
+    barangayOptions.style.removeProperty('--seller-dropdown-max-height');
     barangayInput.setAttribute('aria-expanded','false');
     barangayActiveIndex = -1;
   }
-  function selectBarangay(name) {
+  function selectBarangay(name, updateZip = true) {
     barangayInput.value = name;
-    zipInput.value = TAGUIG_BARANGAYS[name];
+    if (updateZip) zipInput.value = TAGUIG_BARANGAYS[name];
     clearFieldError('barangay');
     clearFieldError('zipcode');
     hideBarangaySuggestions();
@@ -2702,6 +2929,8 @@ if ($application_submitted) {
     barangayOptions.hidden = matching.length === 0;
     barangayInput.setAttribute('aria-expanded', String(matching.length > 0));
     barangayActiveIndex = -1;
+    if (matching.length) positionSellerDropdown(barangayOptions, barangayInput, 220);
+    else hideBarangaySuggestions();
   }
   barangayInput.addEventListener('input', () => {
     barangayInput.value = [...barangayInput.value].slice(0,25).join('');
@@ -2727,10 +2956,14 @@ if ($application_submitted) {
   barangayInput.addEventListener('blur', () => {
     window.setTimeout(hideBarangaySuggestions, 120);
     const exact = barangayNames.find(name => name.toLocaleLowerCase() === barangayInput.value.trim().toLocaleLowerCase());
-    if (exact) selectBarangay(exact);
+    if (exact) selectBarangay(exact, false);
     else if (barangayInput.value.trim()) { zipInput.value=''; setFieldError('barangay','Choose a barangay from Taguig.'); }
   });
-  if (TAGUIG_BARANGAYS[barangayInput.value]) zipInput.value = TAGUIG_BARANGAYS[barangayInput.value];
+  zipInput.addEventListener('input', () => {
+    zipInput.value = zipInput.value.replace(/\D/g, '').slice(0, 4);
+    if (/^\d{4}$/.test(zipInput.value)) clearFieldError('zipcode');
+  });
+  if (TAGUIG_BARANGAYS[barangayInput.value] && !zipInput.value) zipInput.value = TAGUIG_BARANGAYS[barangayInput.value];
   const categoryHidden = document.getElementById('craft_category');
   const categoryToggle = document.getElementById('categoryToggle');
   const categoryOptions = document.getElementById('categoryOptions');
@@ -2749,6 +2982,11 @@ if ($application_submitted) {
   function toggleCategoryMenu(open) {
     categoryOptions.hidden = !open;
     categoryToggle.setAttribute('aria-expanded',String(open));
+    if (open) positionSellerDropdown(categoryOptions, categoryToggle, 230);
+    else {
+      categoryOptions.classList.remove('opens-up');
+      categoryOptions.style.removeProperty('--seller-dropdown-max-height');
+    }
   }
   categoryToggle.addEventListener('click', () => toggleCategoryMenu(categoryOptions.hidden));
   categoryChecks.forEach(box => box.addEventListener('change', () => syncCategorySelection(box)));
@@ -2769,23 +3007,31 @@ if ($application_submitted) {
     if (count < 20 || count > 300) setFieldError('business_description','Use 20 to 300 characters.');
     else clearFieldError('business_description');
   });
-  document.querySelectorAll('[data-jump-to]').forEach(button => button.addEventListener('click', () => {
-    const field = document.getElementById(button.dataset.jumpTo);
-    field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    field?.focus({ preventScroll: true });
-  }));
-  document.querySelectorAll('[data-select-id]').forEach(button => button.addEventListener('click', () => {
-    const field = document.getElementById('valid_id_type');
-    field.value = button.dataset.selectId;
-    field.dispatchEvent(new Event('change',{bubbles:true}));
-    field.scrollIntoView({behavior:'smooth',block:'center'});
-  }));
-  document.querySelectorAll('[data-select-business]').forEach(button => button.addEventListener('click', () => {
-    const field = document.getElementById('business_document_type');
-    field.value = button.dataset.selectBusiness;
-    field.dispatchEvent(new Event('change',{bubbles:true}));
-    field.scrollIntoView({behavior:'smooth',block:'center'});
-  }));
+  const sellerGuideModal = document.getElementById('sellerGuideModal');
+  const sellerGuideTitle = document.getElementById('sellerGuideTitle');
+  let guideTrigger = null;
+  function closeSellerGuide() {
+    sellerGuideModal.classList.remove('open');
+    sellerGuideModal.setAttribute('aria-hidden', 'true');
+    closeSellerPopupHistory('sellerGuideModal');
+    if (!document.querySelector('.policy-modal.open') && !documentPreviewModal?.classList.contains('open') && !sellerOtpModal?.classList.contains('open')) document.body.style.overflow = '';
+    guideTrigger?.focus({preventScroll:true});
+  }
+  document.querySelectorAll('[data-open-guide]').forEach(button => {
+    button.addEventListener('click', () => {
+      const kind = button.dataset.openGuide;
+      guideTrigger = button;
+      sellerGuideTitle.textContent = kind === 'id' ? 'Valid ID Document Guide' : 'Business Document Guide';
+      sellerGuideModal.querySelectorAll('[data-guide-panel]').forEach(panel => { panel.hidden = panel.dataset.guidePanel !== kind; });
+      openSellerPopupHistory('sellerGuideModal');
+      sellerGuideModal.classList.add('open');
+      sellerGuideModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      sellerGuideModal.querySelector('[data-close-guide]')?.focus({preventScroll:true});
+    });
+  });
+  sellerGuideModal.querySelector('[data-close-guide]').addEventListener('click', closeSellerGuide);
+  sellerGuideModal.addEventListener('click', event => { if (event.target === sellerGuideModal) closeSellerGuide(); });
   const simpleLiveFields = [
     'business_name',
     'craft_category',
@@ -3001,10 +3247,10 @@ if ($application_submitted) {
       const barangayName = barangayInput.value.trim();
       const selected = barangayNames.find(name=>name.toLowerCase()===barangayName.toLowerCase());
       if (!selected) { setFieldError('barangay','Select a Taguig barangay from the suggestions.'); invalidFields.push('barangay'); }
-      else { selectBarangay(selected); clearFieldError('barangay'); }
+      else { barangayInput.value = selected; clearFieldError('barangay'); }
       if (document.getElementById('city').value !== 'Taguig City') { setFieldError('city','Taguig City only.'); invalidFields.push('city'); }
       else clearFieldError('city');
-      if (!selected || zipInput.value !== TAGUIG_BARANGAYS[selected]) { setFieldError('zipcode','ZIP code will fill when barangay is selected.'); invalidFields.push('zipcode'); }
+      if (!/^\d{4}$/.test(zipInput.value)) { setFieldError('zipcode','Enter a valid 4-digit ZIP code.'); invalidFields.push('zipcode'); }
       else clearFieldError('zipcode');
     }
     if (invalidFields.length) {
@@ -3021,11 +3267,11 @@ if ($application_submitted) {
     for (let i = 1; i <= 4; i++) {
       const stepElement = document.getElementById(`step${i}`);
       stepElement.classList.remove('active', 'completed');
-      if (i < currentStep) {
-        stepElement.classList.add('completed');
-      } else if (i === currentStep) {
-        stepElement.classList.add('active');
-      }
+      if (i === currentStep) stepElement.classList.add('active');
+      else if (i < furthestCompletedStep) stepElement.classList.add('completed');
+      stepElement.disabled = i > furthestCompletedStep;
+      if (i === currentStep) stepElement.setAttribute('aria-current', 'step');
+      else stepElement.removeAttribute('aria-current');
       const line = stepElement.nextElementSibling;
       if (line && line.classList.contains('progress-line')) {
         line.classList.remove('active');
@@ -3037,7 +3283,7 @@ if ($application_submitted) {
     if (currentStep === 4) {
       updateReview();
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
   function updateReview() {
     const form = document.getElementById('sellerForm');
@@ -3191,52 +3437,97 @@ if ($application_submitted) {
     clearFieldError(input.id);
   }
   const documentPreviewModal = document.getElementById('documentPreviewModal');
+  const documentPreviewDialog = documentPreviewModal?.querySelector('.document-preview-dialog');
   const documentPreviewImage = document.getElementById('documentPreviewImage');
   const documentPreviewPdf = document.getElementById('documentPreviewPdf');
   const documentPreviewFileName = document.getElementById('documentPreviewFileName');
+  const documentPreviewMediaKind = document.getElementById('documentPreviewMediaKind');
+  const documentPreviewOpenPdf = document.getElementById('documentPreviewOpenPdf');
+  let documentPreviewReturnFocus = null;
+  function useNativeMobilePdfViewer() {
+    // iOS browsers often cannot scroll through every page in an embedded PDF.
+    return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
   function openDocumentPreview(inputId) {
     const state = documentFileState.get(inputId);
     if (!state || !documentPreviewModal) return;
-    documentPreviewFileName.textContent = state.file.name;
-    if (fileLooksLikeImage(state.file)) {
-      documentPreviewImage.src = state.url;
-      documentPreviewImage.hidden = false;
-      documentPreviewPdf.hidden = true;
-      documentPreviewPdf.removeAttribute('src');
-    } else {
+    const isImage = fileLooksLikeImage(state.file);
+    const isPdf = fileLooksLikePdf(state.file);
+    if (!isImage && !isPdf) return;
+    if (isPdf && useNativeMobilePdfViewer()) {
+      const link = document.createElement('a');
+      link.href = state.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+    documentPreviewReturnFocus = document.activeElement;
+    documentPreviewFileName.textContent = state.file.name || 'File Preview';
+    documentPreviewMediaKind.textContent = isPdf ? 'PDF document' : 'Full image';
+    documentPreviewDialog.classList.toggle('is-pdf', isPdf);
+    documentPreviewOpenPdf.hidden = !isPdf;
+    if (isPdf) {
+      documentPreviewOpenPdf.href = state.url;
       documentPreviewImage.hidden = true;
       documentPreviewImage.removeAttribute('src');
       documentPreviewPdf.src = state.url;
       documentPreviewPdf.hidden = false;
+    } else {
+      documentPreviewOpenPdf.removeAttribute('href');
+      documentPreviewPdf.hidden = true;
+      documentPreviewPdf.removeAttribute('src');
+      documentPreviewImage.alt = 'Full image of ' + state.file.name;
+      documentPreviewImage.src = state.url;
+      documentPreviewImage.hidden = false;
     }
+    openSellerPopupHistory('documentPreviewModal');
     documentPreviewModal.classList.add('open');
     documentPreviewModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('document-preview-open');
     document.body.style.overflow = 'hidden';
+    documentPreviewModal.querySelector('.document-preview-close')?.focus({preventScroll: true});
   }
   function closeDocumentPreview() {
-    if (!documentPreviewModal) return;
+    if (!documentPreviewModal || !documentPreviewModal.classList.contains('open')) return;
     documentPreviewModal.classList.remove('open');
     documentPreviewModal.setAttribute('aria-hidden', 'true');
+    closeSellerPopupHistory('documentPreviewModal');
     document.body.classList.remove('document-preview-open');
+    documentPreviewDialog.classList.remove('is-pdf');
     documentPreviewImage.hidden = true;
     documentPreviewImage.removeAttribute('src');
     documentPreviewPdf.hidden = true;
     documentPreviewPdf.removeAttribute('src');
+    documentPreviewOpenPdf.hidden = true;
+    documentPreviewOpenPdf.removeAttribute('href');
     if (
       !document.querySelector('.policy-modal.open')
       && !sellerOtpModal?.classList.contains('open')
+      && !sellerGuideModal?.classList.contains('open')
     ) {
       document.body.style.overflow = '';
     }
+    if (documentPreviewReturnFocus?.isConnected) {
+      documentPreviewReturnFocus.focus({preventScroll: true});
+    }
+    documentPreviewReturnFocus = null;
   }
   function renderReviewDocument(inputId, containerId, label) {
     const container = document.getElementById(containerId);
     const state = documentFileState.get(inputId);
     if (!container) return;
     container.replaceChildren();
-    const preview = document.createElement('div');
+    const preview = document.createElement(state ? 'button' : 'div');
     preview.className = 'review-doc-preview';
+    if (state) {
+      preview.type = 'button';
+      preview.dataset.fileView = inputId;
+      preview.setAttribute('aria-label', `View ${label}`);
+    }
     if (state && fileLooksLikeImage(state.file)) {
       const image = document.createElement('img');
       image.className = 'review-doc-thumb';
@@ -3267,14 +3558,6 @@ if ($application_submitted) {
       info.appendChild(size);
     }
     container.append(preview, info);
-    if (state) {
-      const viewButton = document.createElement('button');
-      viewButton.type = 'button';
-      viewButton.className = 'review-document-view';
-      viewButton.textContent = 'View file';
-      viewButton.dataset.fileView = inputId;
-      container.appendChild(viewButton);
-    }
   }
   document.querySelectorAll('.document-file-input').forEach(input => {
     input.addEventListener('change', () => handleDocumentSelection(input));
@@ -3298,6 +3581,16 @@ if ($application_submitted) {
   });
   document.querySelectorAll('[data-document-preview-close]').forEach(control => {
     control.addEventListener('click', closeDocumentPreview);
+  });
+  documentPreviewModal?.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || !documentPreviewModal.classList.contains('open')) return;
+    const focusable = Array.from(documentPreviewDialog.querySelectorAll('button:not([disabled]), a[href]'))
+      .filter(element => !element.hidden);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
   const validIdTypeSelect = document.getElementById('valid_id_type');
   const validIdBackCard = document.getElementById('validIdBackCard');
@@ -3336,12 +3629,12 @@ if ($application_submitted) {
   updateBusinessDocumentFields();
   const policyModal = document.getElementById('policy-modal');
   const sellerAgreementModal = document.getElementById('seller-agreement-modal');
-  const policyContent = document.getElementById('policy-content');
   const policyTitle = document.getElementById('policy-title');
   document.querySelectorAll('.terms-checkbox a').forEach((link) => {
     link.addEventListener('click', function(event) {
       event.preventDefault();
       if (link.dataset.policy === 'seller-agreement') {
+        openSellerPopupHistory('seller-agreement-modal');
         sellerAgreementModal.classList.add('open');
         document.body.classList.add('policy-modal-open');
         document.body.style.overflow = 'hidden';
@@ -3349,6 +3642,7 @@ if ($application_submitted) {
       }
       const isTerms = link.dataset.policy === 'terms';
       policyTitle.textContent = isTerms ? 'Terms and Conditions' : 'Privacy Policy';
+      openSellerPopupHistory('policy-modal');
       policyModal.classList.add('open');
       document.body.classList.add('policy-modal-open');
       document.body.style.overflow = 'hidden';
@@ -3358,6 +3652,7 @@ if ($application_submitted) {
   });
   function closePolicyModal(modal) {
     modal.classList.remove('open');
+    closeSellerPopupHistory(modal.id);
     if (!document.querySelector('.policy-modal.open')) {
       document.body.classList.remove('policy-modal-open');
     }
@@ -3377,14 +3672,17 @@ if ($application_submitted) {
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      if (sellerGuideModal?.classList.contains('open')) { closeSellerGuide(); return; }
       if (sellerOtpModal?.classList.contains('open')) {
         cancelSellerOtp();
         return;
       }
       if (documentPreviewModal?.classList.contains('open')) {
         closeDocumentPreview();
+        return;
       }
-      document.querySelectorAll('.policy-modal.open').forEach((modal) => closePolicyModal(modal));
+      const openPolicy = document.querySelector('.policy-modal.open');
+      if (openPolicy) closePolicyModal(openPolicy);
     }
   });
   const emailInput = document.getElementById('email');
@@ -3434,6 +3732,12 @@ if ($application_submitted) {
     }
   });
   emailInput.addEventListener('blur', () => { clearTimeout(emailCheckTimer); checkSellerEmail(); });
+  document.getElementById('sellerForm').addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' && !event.isComposing && event.target.matches('input:not([type="checkbox"]):not([type="file"])')) {
+      // Text fields should never submit the entire multi-step form or bypass OTP.
+      event.preventDefault();
+    }
+  });
   document.getElementById('sellerForm').addEventListener('submit', function(e) {
     for (const step of [1, 2, 3]) {
       if (!validateStep(step)) {
