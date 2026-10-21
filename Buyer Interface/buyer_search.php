@@ -206,19 +206,27 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     outline-offset: 2px;
   }
   .buyer-notification-item:disabled { cursor: default; opacity: .6; }
+  /* Only the status SVG carries color: no colored icon tile beside the notification. */
   .buyer-notification-item-icon {
     display: grid;
     place-items: center;
     flex: 0 0 36px;
     width: 36px;
     height: 36px;
-    border-radius: 11px;
-    background: #ffecd8;
-    color: #c47732;
+    background: transparent;
+    color: #A55325;
   }
-  .buyer-notification-item.is-success .buyer-notification-item-icon { background: #e7f5e9; color: #338449; }
-  .buyer-notification-item.is-rejected .buyer-notification-item-icon { background: #fff0ee; color: #be6658; }
-  .buyer-notification-item.is-payment .buyer-notification-item-icon { background: #fff2da; color: #ad731c; }
+  .buyer-notification-item-icon svg {
+    display: block;
+    width: 25px;
+    height: 25px;
+    stroke-width: 2.6;
+  }
+  .buyer-notification-item.is-success .buyer-notification-item-icon { color: #008A34; }
+  .buyer-notification-item.is-rejected .buyer-notification-item-icon { color: #E00020; }
+  .buyer-notification-item.is-payment .buyer-notification-item-icon { color: #C2410C; }
+  .buyer-notification-item.is-reminder .buyer-notification-item-icon { color: #B45309; }
+  .buyer-notification-item.is-progress .buyer-notification-item-icon { color: #1D4ED8; }
   .buyer-notification-item-details { display: block; min-width: 0; flex: 1; }
   .buyer-notification-item-title {
     display: block;
@@ -293,12 +301,19 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
   .buyer-avatar-button {
     width: 40px;
     height: 40px;
-    border: 0;
+    border: 1px solid rgba(116, 46, 18, .22);
     border-radius: 50%;
-    background: #583121;
-    color: #fff;
+    background: linear-gradient(135deg, #A55325, #C2692E);
+    color: #FFF8ED;
     font-weight: 800;
+    box-shadow: inset 0 1px 1px rgba(255,248,237,.14),
+                0 2px 6px rgba(102,46,19,.16);
+    transition: box-shadow .18s ease;
     cursor: pointer;
+  }
+  .buyer-avatar-button:hover {
+    box-shadow: inset 0 1px 1px rgba(255,248,237,.18),
+                0 3px 8px rgba(102,46,19,.20);
   }
   .buyer-account-menu {
     position: absolute;
@@ -331,9 +346,12 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     flex: 0 0 42px;
     width: 42px;
     height: 42px;
+    border: 1px solid rgba(116, 46, 18, .22);
     border-radius: 50%;
-    background: #583121;
-    color: white;
+    background: linear-gradient(135deg, #A55325, #C2692E);
+    color: #FFF8ED;
+    box-shadow: inset 0 1px 1px rgba(255,248,237,.14),
+                0 2px 6px rgba(102,46,19,.14);
     font-size: .76rem;
     font-weight: 800;
   }
@@ -408,10 +426,13 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     line-height: 1.3;
   }
   .buyer-account-chevron { color: #b0a095; font-size: 1rem; }
-  .buyer-account-switch { background: #fff1e5; }
+  /* Switch role uses the same neutral appearance as other items until hovered/focused. */
+  .buyer-account-switch { background: transparent; }
   .buyer-account-switch:hover, .buyer-account-switch:focus-visible { background: #ffe9d4; }
-  .buyer-account-switch .buyer-account-item-icon { background: #ffe3c9; color: #bc742c; }
-  .buyer-account-switch .buyer-account-item-copy strong { color: #a65f24; }
+  .buyer-account-switch:hover .buyer-account-item-icon,
+  .buyer-account-switch:focus-visible .buyer-account-item-icon { background: #ffe3c9; color: #bc742c; }
+  .buyer-account-switch:hover .buyer-account-item-copy strong,
+  .buyer-account-switch:focus-visible .buyer-account-item-copy strong { color: #a65f24; }
   .buyer-account-footer { margin: 0 8px 8px; padding-top: 7px; border-top: 1px solid #f0e7df; }
   .buyer-account-logout .buyer-account-item-icon { background: #fff0ef; color: #b76b60; }
   .filter-box {
@@ -458,12 +479,19 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
   .search-icon {
     display: grid;
     place-items: center;
-    width: 18px;
-    height: 18px;
+    flex: 0 0 26px;
+    width: 26px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: #7b7b7b;
-    flex-shrink: 0;
+    cursor: pointer;
   }
-  .search-icon svg { display: block; width: 18px; height: 18px; }
+  .search-icon svg { display: block; width: 20px; height: 20px; }
+  .search-icon .search-close-glyph { display: none; }
+  .search-icon:hover { color: #616161; }
+  .search-icon:focus-visible { outline: 2px solid #929292; outline-offset: 2px; border-radius: 8px; }
   .filter-box input {
     background: transparent;
     border: none;
@@ -616,9 +644,9 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
   }
   .filter-box:focus-within {
-    border-color: #e2b88f;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(234,138,58,.10);
+    border-color: #e5e2df;
+    background: #f8f6f3;
+    box-shadow: none;
   }
   .buyer-menu-toggle,
   .buyer-notification {
@@ -640,6 +668,67 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
       border-radius: 0 0 18px 18px;
     }
   }
+  /* Marketplace header follows the For You page's exact creamy-white background. */
+  .buyer-header-tools.marketplace-header { background: #FFF8ED; }
+
+  /* Compact search on phones: icon first, animated input on tap. */
+  @media (max-width: 600px) {
+    .buyer-search-layout { display: flex; justify-content: flex-end; }
+    .buyer-search-layout .filters {
+      display: flex;
+      flex: 0 1 auto;
+      width: 40px;
+      min-width: 0;
+      max-width: 100%;
+      transition: width .28s cubic-bezier(.2,.75,.25,1);
+    }
+    .buyer-search-layout .filter-box.search {
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      min-height: 40px;
+      padding: 0;
+      gap: 0;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+      overflow: hidden;
+      transition: background .2s ease, border-color .2s ease;
+    }
+    .buyer-search-layout .search-icon {
+      flex: 0 0 40px;
+      width: 40px;
+      height: 40px;
+    }
+    .buyer-search-layout .filter-box input {
+      flex: 1 1 0;
+      width: 0;
+      min-width: 0;
+      padding: 0;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .16s ease;
+    }
+    .buyer-search-layout.is-expanded .filters { width: 100%; }
+    .buyer-search-layout.is-expanded .filter-box.search {
+      background: #f8f6f3;
+      border-color: #e5e2df;
+    }
+    .buyer-search-layout.is-expanded .filter-box input {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .buyer-search-layout.is-expanded .search-magnify-glyph { display: none; }
+    .buyer-search-layout.is-expanded .search-icon .search-close-glyph { display: block; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .buyer-search-layout .filters, .buyer-search-layout .filter-box.search,
+    .buyer-search-layout .filter-box input, .buyer-avatar-button {
+      transition: none;
+    }
+  }
 </style>
 
 <div class="buyer-header-tools <?php echo ($activePage ?? '') === 'marketplace' ? 'marketplace-header' : ''; ?>">
@@ -656,7 +745,11 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
   <div class="buyer-search-layout">
     <div class="filters" id="buyerFilters">
       <div class="filter-box search">
-        <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg></span>
+        <button class="search-icon" id="buyerSearchToggle" type="button"
+          aria-label="Focus search" aria-controls="productSearch" aria-expanded="false">
+          <svg class="search-magnify-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+          <svg class="search-close-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg>
+        </button>
         <input
           id="productSearch"
           type="search"
@@ -749,8 +842,8 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
 <template id="buyerNotificationItemTemplate">
   <button class="buyer-notification-item" type="button">
     <span class="buyer-notification-item-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
-        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="6" width="18" height="15" rx="2"/><path d="M3 10h18M8 3v3M16 3v3"/>
       </svg>
     </span>
@@ -785,6 +878,9 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
 (function () {
   document.querySelector('.buyer-header-tools')?.closest('.content')?.classList.add('buyer-header-search-only');
   const productSearch = document.getElementById('productSearch');
+  const buyerSearchToggle = document.getElementById('buyerSearchToggle');
+  const buyerSearchLayout = document.querySelector('.buyer-search-layout');
+  const compactBuyerSearch = window.matchMedia('(max-width: 600px)');
   function applyBuyerSearch() {
     const searchTerm = String(productSearch?.value || '').trim().toLowerCase();
     const cards = document.querySelectorAll('.product-grid .product-card');
@@ -804,6 +900,56 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
   if (document.querySelector('.buyer-header-tools')?.classList.contains('marketplace-header')) {
     productSearch?.addEventListener('input', applyBuyerSearch);
   }
+  function closeCompactBuyerSearch() {
+    if (!buyerSearchLayout?.classList.contains('is-expanded')) return;
+    buyerSearchLayout.classList.remove('is-expanded');
+    productSearch?.blur();
+    // A hidden search must not leave product cards filtered without any visible query.
+    if (productSearch && productSearch.value !== '') {
+      productSearch.value = '';
+      applyBuyerSearch();
+    }
+    buyerSearchToggle?.setAttribute('aria-label', 'Open search');
+    buyerSearchToggle?.setAttribute('aria-expanded', 'false');
+  }
+  buyerSearchToggle?.addEventListener('click', () => {
+    if (!compactBuyerSearch.matches) {
+      productSearch?.focus();
+      return;
+    }
+    if (buyerSearchLayout?.classList.contains('is-expanded')) {
+      closeCompactBuyerSearch();
+      return;
+    }
+    buyerSearchLayout?.classList.add('is-expanded');
+    buyerSearchToggle.setAttribute('aria-label', 'Close search');
+    buyerSearchToggle.setAttribute('aria-expanded', 'true');
+    window.requestAnimationFrame(() => productSearch?.focus({preventScroll: true}));
+  });
+  productSearch?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && compactBuyerSearch.matches) {
+      event.preventDefault();
+      closeCompactBuyerSearch();
+      buyerSearchToggle?.focus();
+    }
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (compactBuyerSearch.matches && buyerSearchLayout?.classList.contains('is-expanded')
+        && !buyerSearchLayout.contains(event.target)) closeCompactBuyerSearch();
+  });
+  const syncCompactBuyerSearch = () => {
+    if (!compactBuyerSearch.matches) {
+      buyerSearchLayout?.classList.remove('is-expanded');
+      buyerSearchToggle?.setAttribute('aria-label', 'Focus search');
+      buyerSearchToggle?.removeAttribute('aria-expanded');
+      return;
+    }
+    buyerSearchToggle?.setAttribute('aria-label', 'Open search');
+    buyerSearchToggle?.setAttribute('aria-expanded', 'false');
+  };
+  if (compactBuyerSearch.addEventListener) compactBuyerSearch.addEventListener('change', syncCompactBuyerSearch);
+  else compactBuyerSearch.addListener(syncCompactBuyerSearch);
+  syncCompactBuyerSearch();
   // Shared Buyer notifications: reads from buyer_notifications.php; does not create order events.
   const notificationToggle = document.getElementById('buyerNotificationsToggle');
   const notificationRoot = document.getElementById('buyerNotifications');
@@ -918,6 +1064,21 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     return date.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
   }
 
+  function notificationVisual(item) {
+    const label = `${String(item.type || '')} ${String(item.title || '')}`.toLowerCase();
+    if (/reject|declin|cancel|fail/.test(label)) return {status: 'rejected', icon: 'rejected'};
+    if (/pay.?now|remind|payment.?due|awaiting.?payment|pending.?payment/.test(label))
+      return {status: 'reminder', icon: 'reminder'};
+    if (/payment|qr.?ph|paid|receipt/.test(label)) {
+      if (/confirm|success|received|completed|paid/.test(label)) return {status: 'success', icon: 'paid'};
+      return {status: 'payment', icon: 'payment'};
+    }
+    if (/deliver|courier|ship/.test(label)) return {status: 'progress', icon: 'delivery'};
+    if (/prepar|process|pack/.test(label)) return {status: 'progress', icon: 'progress'};
+    if (/approv|complet|accept|ready|received|confirm/.test(label))
+      return {status: 'success', icon: 'accepted'};
+    return {status: 'info', icon: 'info'};
+  }
   function renderBuyerNotifications(items) {
     if (!notificationList || !notificationTemplate || !notificationStatus) return;
     notificationList.replaceChildren();
@@ -928,10 +1089,8 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     const fragment = document.createDocumentFragment();
     items.forEach((item) => {
       const button = notificationTemplate.content.firstElementChild.cloneNode(true);
-      const type = String(item.type || '').toLowerCase();
-      if (type.includes('reject')) button.classList.add('is-rejected');
-      else if (type.includes('complet') || type.includes('approv')) button.classList.add('is-success');
-      else if (type.includes('pay')) button.classList.add('is-payment');
+      const visual = notificationVisual(item);
+      button.classList.add(`is-${visual.status}`);
       if (!item.read) button.classList.add('is-unread');
       button.querySelector('.buyer-notification-item-title').textContent = String(item.title || 'Order update');
       button.querySelector('.buyer-notification-item-message').textContent = String(item.message || '');

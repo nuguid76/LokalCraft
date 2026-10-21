@@ -823,7 +823,7 @@ $activePage = 'profile';
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LokalCraft | Seller Application</title>
 <style>
-:root{--app-orange:#e98b40;--app-dark:#a85e26;--app-ink:#352e28;--app-muted:#81766d;--app-line:#eadfd5;--app-cream:#f8f0e8;--app-bg:#f7f6f4;--app-error:#b83939;--app-success:#28794b}
+:root{--app-orange:#a55325;--app-dark:#85401e;--app-ink:#352e28;--app-muted:#81766d;--app-line:#eadfd5;--app-cream:#fff1e7;--app-bg:#fff8ed;--app-error:#b83939;--app-success:#28794b}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:var(--app-bg);color:var(--app-ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
 button,input,textarea,select{font:inherit}
@@ -975,7 +975,7 @@ body.app-modal-open{overflow:hidden}
   min-height:0!important;margin:0!important;padding:88px 26px 45px!important;
   overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch;
 }
-.app-wrap{max-width:1080px}
+.app-wrap{max-width:1600px}
 .app-top{margin:0 0 21px;gap:14px;min-width:0}
 .app-top-copy{min-width:0}
 .app-eyebrow{display:block;margin:0 0 5px;color:#b57945;font-size:.67rem;font-weight:800;letter-spacing:.15em}
@@ -1122,6 +1122,59 @@ body.app-modal-open{overflow:hidden}
 .category-toggle.is-invalid{border:2px solid #cf5449!important;background:#fff7f5}
 .field-feedback:not(:empty){font-weight:700}
 @media(max-width:760px){.document-viewer{padding:0}.document-viewer-panel{width:100%;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;border:0;border-radius:0}.document-viewer-stage{padding:calc(57px + env(safe-area-inset-top)) 9px 8px}.document-viewer-panel.is-pdf .document-viewer-stage{padding:calc(57px + env(safe-area-inset-top)) 8px 8px}.document-viewer-close{top:calc(12px + env(safe-area-inset-top));right:13px}.document-viewer-footer{padding:12px 14px calc(13px + env(safe-area-inset-bottom));min-height:59px;gap:8px}.document-viewer-footer #viewerMediaKind{display:none}}
+
+/* Seller Application colors matched to Buyer Profile / For You.
+   Local to this module: do not change the shared Buyer header stylesheet. */
+body, .page, .page > .content.buyer-seller-application-content {
+  background: #FFF8ED !important;
+}
+.page > .content.buyer-seller-application-content .buyer-header-tools {
+  background: rgba(255, 248, 237, .98) !important;
+  border-bottom-color: #eadfd2 !important;
+}
+.page > .content.buyer-seller-application-content .buyer-header-tools .filter-box {
+  background: #FFFAF5 !important;
+  border-color: #e8d9c9 !important;
+}
+.page > .content.buyer-seller-application-content .buyer-header-tools .filter-box:focus-within {
+  background: #FFFEFB !important;
+}
+/* Reuse the exact brand gradient from Buyer Profile on primary actions
+   and the banner icon, leaving Back, Cancel, and secondary actions neutral. */
+.app-intro-icon,
+.app-actions button.primary,
+.app-status a.primary,
+.step-label.active .number,
+.step-label.done .number {
+  background: linear-gradient(135deg, #A55325 0%, #C2692E 100%);
+  border-color: #A55325;
+  color: #fff;
+}
+.app-intro-icon {
+  box-shadow: 0 8px 22px rgba(165, 83, 37, .19);
+}
+.app-actions button.primary,
+.app-status a.primary {
+  transition: filter .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.app-actions button.primary:hover:not(:disabled),
+.app-status a.primary:hover {
+  background: linear-gradient(135deg, #A55325 0%, #C2692E 100%);
+  border-color: #A55325;
+  color: #fff;
+  filter: brightness(.94);
+  box-shadow: 0 7px 17px rgba(165, 83, 37, .16);
+}
+.app-actions button.primary:focus-visible,
+.app-status a.primary:focus-visible {
+  outline: 3px solid rgba(165, 83, 37, .35);
+  outline-offset: 3px;
+}
+.step-label.active::before {
+  background: linear-gradient(180deg, #A55325 0%, #C2692E 100%);
+}
+.category-choice input,
+.agreement input { accent-color: #A55325; }
 </style>
 </head>
 <body>

@@ -93,12 +93,6 @@ function buyerHasSellerOrder(mysqli $conn, int $buyerId, int $sellerId): bool
     return $exists;
 }
 
-/**
- * Recover the buyer's turn only when a real, order-linked proposal was sent
- * by this seller. Do not infer consent from filled fields alone. A later buyer
- * change request or unsent arrangement edit invalidates the older proposal.
- * This read-only check never alters seller records on page load.
- */
 function buyerHasCurrentSellerProposal(
     mysqli $conn,
     int $orderId,
@@ -802,7 +796,7 @@ function getMessages(mysqli $conn, int $buyerId, int $sellerId, int $afterId = 0
     $stmt->close();
     return $messages;
 }
-function markRead(mysqli $conn, int $buyerId, int $sellerId): void
+function markRead(mysqli $conn, int $buyerId, int $sellerId, int $focusOrderId = 0): void
 {
     $includeDirect = (buyerDirectThreadState(
         $conn,
@@ -825,18 +819,16 @@ function markRead(mysqli $conn, int $buyerId, int $sellerId): void
                 OR
                 (? = 1 AND m.order_id IS NULL)
           )
+          ' . ($focusOrderId > 0 ? ' AND m.order_id = ?' : '') . '
     ');
     if (!$stmt) {
         return;
     }
-    $stmt->bind_param(
-        'iiiii',
-        $buyerId,
-        $sellerId,
-        $buyerId,
-        $sellerId,
-        $includeDirect
-    );
+    if ($focusOrderId > 0) {
+        $stmt->bind_param('iiiiii', $buyerId, $sellerId, $buyerId, $sellerId, $includeDirect, $focusOrderId);
+    } else {
+        $stmt->bind_param('iiiii', $buyerId, $sellerId, $buyerId, $sellerId, $includeDirect);
+    }
     $stmt->execute();
     $stmt->close();
 }
@@ -1351,6 +1343,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $shop=buyerChatStoreSeller($conn,$sellerId);
                 if (!$shop) throw new RuntimeException('This store is currently unavailable.');
                 $reviewsReady=buyerChatReviewsAvailable($conn);
+                // Show the store's real review rating (weighted across all its products).
+                $shop['review_count']=0;
+                $shop['avg_rating']=0.0;
+                if ($reviewsReady) {
+                    try {
+                        $shopReviews=$conn->prepare('SELECT COUNT(*),COALESCE(AVG(r.rating),0) FROM reviews r INNER JOIN products p ON p.product_id=r.product_id WHERE p.seller_id=?');
+                        if ($shopReviews) {
+                            $shopReviews->bind_param('i',$sellerId);
+                            $shopReviews->execute();
+                            $storeReviewCount=0;
+                            $storeAvgRating=0.0;
+                            $shopReviews->bind_result($storeReviewCount,$storeAvgRating);
+                            $shopReviews->fetch();
+                            $shopReviews->close();
+                            $shop['review_count']=(int)$storeReviewCount;
+                            $shop['avg_rating']=$storeReviewCount>0?round((float)$storeAvgRating,1):0.0;
+                        }
+                    } catch (Throwable $reviewError) {
+                        error_log('LokalCraft Buyer Messages store rating: '.$reviewError->getMessage());
+                    }
+                }
                 $reviewJoin=$reviewsReady ? ' LEFT JOIN (SELECT product_id,AVG(rating) AS avg_rating,COUNT(*) AS review_count FROM reviews GROUP BY product_id) rs ON rs.product_id=p.product_id ' : '';
                 $reviewFields=$reviewsReady ? 'COALESCE(rs.avg_rating,0) AS avg_rating,COALESCE(rs.review_count,0) AS review_count' : '0 AS avg_rating,0 AS review_count';
                 $sql='SELECT p.product_id,p.product_photo,p.product_name,p.craft_category,p.description,p.cost,p.stock,p.reserved_stock,p.status,GREATEST(p.stock-p.reserved_stock,0) AS available_stock,sp.saved_id,'.$reviewFields
@@ -1520,6 +1533,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $save->bind_param('iiiiiis', $orderItemId, $orderId, $productId, $buyerId, $sellerId, $rating, $reviewText);
                     $save->execute();
                     $save->close();
+                    lokalcraftCreateNotification(
+                        $conn,
+                        $sellerId,
+                        'seller_product_review',
+                        'New Product Review',
+                        'A buyer rated a product in Order #' . $orderId . ' with ' . $rating
+                            . ($rating === 1 ? ' star.' : ' stars.'),
+                        'order',
+                        $orderId,
+                        'seller-product-review-order-' . $orderId . '-item-' . $orderItemId
+                    );
                     $conn->commit();
                     echo json_encode(['success' => true, 'message' => 'Review submitted.'], JSON_UNESCAPED_UNICODE);
                     exit;
@@ -2583,7 +2607,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!sellerExists($conn, $sellerId)) {
                     throw new RuntimeException('Seller conversation not found.');
                 }
-                markRead($conn, $buyerId, $sellerId);
+                $focusOrderId = max(0, (int)($_POST['focus_order_id'] ?? 0));
+                if ($focusOrderId > 0 && !validOrder($conn, $buyerId, $sellerId, $focusOrderId)) {
+                    throw new RuntimeException('Order not found in this buyer conversation.');
+                }
+                markRead($conn, $buyerId, $sellerId, $focusOrderId);
                 echo json_encode(['success' => true]);
                 exit;
             }
@@ -2731,7 +2759,12 @@ if ($buyerId > 0) {
             }
             if ($selectedPartner) {
                 $chatMessages = getMessages($conn, $buyerId, $selectedPartnerId);
-                markRead($conn, $buyerId, $selectedPartnerId);
+                // A notification deep link only marks this order's messages as read.
+                $focusedReadOrderId = (int)($_GET['order_id'] ?? 0) === $selectedOrderId
+                    && $selectedOrderId > 0
+                    && validOrder($conn, $buyerId, $selectedPartnerId, $selectedOrderId)
+                    ? $selectedOrderId : 0;
+                markRead($conn, $buyerId, $selectedPartnerId, $focusedReadOrderId);
                 if ($selectedOrderId > 0) {
                     $selectedOrder = getBuyerOrderDetails(
                         $conn,
@@ -4640,6 +4673,19 @@ if ($selectedProductName !== '') {
   <style id="buyerMessagesSellerMatchedDesign">
     /* Match Seller Profile/Seller Messages typography without changing actions. */
     .chat-body { scroll-behavior:auto !important; }
+    /* Notification deep links isolate the requested order without hiding the rest of the inbox permanently. */
+    .lc-linked-order-filter[hidden] { display:none !important; }
+    .lc-linked-order-filter { display:flex; align-items:center; justify-content:space-between;
+      gap:10px; padding:9px 14px; border-bottom:1px solid #eadfd5;
+      background:#fff8ed; color:#62564d;
+      font:500 12px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    .lc-linked-order-filter strong { color:#a55325; font-weight:800; }
+    .lc-linked-order-filter button { flex:0 0 auto; min-height:36px;
+      border:1px solid #dfc8b5; background:#fffcf8; color:#a55325;
+      border-radius:9px; padding:7px 11px; font-family:inherit; font-size:12px; line-height:1.3; font-weight:700; cursor:pointer; }
+    .lc-linked-order-filter button:hover { background:#fff2e4; }
+    @media(max-width:400px) { .lc-linked-order-filter { padding:8px 10px; gap:7px; font-size:11px; }
+      .lc-linked-order-filter button { font-size:11px; padding:6px 9px; } }
     .message-row.focused-order .order-chat-card {
       border-color:#e9b17b; box-shadow:0 0 0 2px rgba(234,138,58,.11),0 5px 18px rgba(52,36,23,.05);
     }
@@ -5228,7 +5274,7 @@ if ($selectedProductName !== '') {
 .lc-store-close{float:none;position:relative;flex:0 0 40px}
 .lc-store-content{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:20px}
 .lc-store-summary{display:flex;align-items:center;gap:14px;padding:21px;border:1px solid #ead8c7;border-radius:16px;background:linear-gradient(116deg,#fffdfa,#ffeedb)}
-.lc-store-avatar{display:grid;place-items:center;flex:0 0 60px;width:60px;height:60px;border-radius:17px;border:3px solid #fff;background:linear-gradient(135deg,#f6ba80,#d88037);color:#fff;font-size:1.4rem;font-weight:800}
+.lc-store-avatar{display:grid;place-items:center;flex:0 0 60px;width:60px;height:60px;border-radius:17px;border:3px solid #fff;background:linear-gradient(135deg,#A55325,#C2692E);color:#FFF8ED;font-size:1.4rem;font-weight:800}
 .lc-store-summary-name{font-size:1.1rem;font-weight:850;color:#493225;overflow-wrap:anywhere}
 .lc-store-summary-meta{font-size:.8rem;color:#8e7764;margin-top:5px}
 .lc-store-details-toggle{max-width:190px;margin:12px 0 0}
@@ -5292,7 +5338,7 @@ if ($selectedProductName !== '') {
 .seller-details-title svg,.product-reviews-title svg{width:18px;height:18px;color:#bd783c;flex:none}
 .seller-details-row{align-items:center;gap:10px}
 .seller-details-person{flex:1 1 auto;min-width:0}
-.seller-avatar{width:44px;height:44px;border:2px solid #fff;border-radius:13px;background:linear-gradient(135deg,#f7ba7c,#e88a3e);box-shadow:0 4px 12px rgba(177,98,34,.14);color:#fff}
+.seller-avatar{width:44px;height:44px;border:2px solid #fff;border-radius:13px;background:linear-gradient(135deg,#A55325,#C2692E);box-shadow:0 4px 12px rgba(177,98,34,.14);color:#FFF8ED}
 .seller-avatar svg{width:22px;height:22px}
 .seller-details-name{font-size:.84rem}
 .seller-details-location{font-size:.73rem;line-height:1.5;color:#877262}
@@ -5576,12 +5622,180 @@ body.lc-messages-modal-open{overflow:hidden}
 .outgoing .lc-chat-link{color:#fff;text-decoration-color:rgba(255,255,255,.85)}
 .lc-chat-link:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:2px}
 </style>
+
+<style id="buyerMessagesMarketplaceConsistency2026">
+/* Buyer Messages: final For You / Saved palette, scoped to this page only. */
+:root{
+  --bg:#FFF8ED;
+  --msg-bg:#FFF8ED;
+  --msg-panel:#FFFEFC;
+  --msg-panel-soft:#fffaf4;
+  --msg-accent:#A55325;
+  --msg-accent-dark:#A55325;
+  --msg-accent-soft:#fff1e2;
+  --lc-brand:#A55325;
+  --lc-brand-deep:#A55325;
+  --lc-cream:#FFF8ED;
+  --lc-msg-header-height:74px;
+}
+html,body,.page{background:#FFF8ED;color:#342d27}
+.page .buyer-header-tools{background:#FFF8ED}
+.page>.content{
+  padding-top:var(--lc-msg-header-height,74px)!important;
+  background:#FFF8ED;
+}
+/* Remove the unwanted gap between the shared header and the message panels. */
+.messages-wrap{padding:0!important;background:#FFF8ED}
+.messages-shell{border:0;border-top:1px solid #e8ddd2;background:#FFFEFC}
+.conversation-list{background:#FFFEFC}
+.conversation-header{background:#fffaf4;border-color:#eaded3}
+#conversationItems{background:#FFFEFC}
+.conversation-item:hover{background:#fff6ec}
+.conversation-item.active{background:#fff0e1}
+.conversation-item.active::before{background:#A55325}
+.conversation-unread{background:#A55325;color:#fff}
+.chat-panel{background:#FFFEFC}
+.chat-header{background:#fffaf4;border-color:#eaded3}
+.chat-body{background:linear-gradient(180deg,#FFF8ED 0%,#fffbf5 100%)}
+.outgoing .bubble{background:linear-gradient(135deg,#A55325,#C2692E);color:#fff}
+.chat-input-wrap,.quick-replies{background:#FFFEFC;border-color:#eaded3}
+.send-btn:not(:disabled){background:linear-gradient(135deg,#A55325,#C2692E);color:#FFF8ED}
+.send-btn:hover:not(:disabled){background:linear-gradient(135deg,#C2692E,#A55325)}
+.quick-reply:hover,.chat-back:hover{background:#fff0e1;color:#A55325}
+/* Chat avatars match buyer_search.php exactly; store tiles keep their own shapes. */
+.conversation-item .avatar,.chat-header .avatar,#chatAvatar{
+  border:1px solid rgba(116,46,18,.22);
+  border-radius:50%;
+  background:linear-gradient(135deg,#A55325,#C2692E);
+  color:#FFF8ED;
+  font-weight:800;
+  text-shadow:none;
+  box-shadow:inset 0 1px 1px rgba(255,248,237,.14),0 2px 6px rgba(102,46,19,.16);
+}
+.conversation-item:hover .avatar,.conversation-item:focus-visible .avatar,#chatAvatar:hover,#chatAvatar:focus-visible{
+  box-shadow:inset 0 1px 1px rgba(255,248,237,.18),0 3px 8px rgba(102,46,19,.20);
+}
+#chatAvatar{border:1px solid rgba(116,46,18,.22)!important}
+/* Product Details seller icon: 13px rounded square. Store Profile: 20px desktop,
+   17px mobile, 14px narrow. Both use their preexisting tile styling. */
+.seller-avatar svg{color:#FFF8ED}
+/* Product/Store dialogs keep the warm neutral Marketplace visual language. */
+.lc-store-panel,.product-details-panel,.lc-photo-panel{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#342d27;background:#FFFEFC}
+.lc-store-header,.lc-product-info-scroll{background:#FFFEFC}
+.product-details-name{color:#3b2d23}
+.product-details-price,.lc-store-product-meta .lc-store-item-price{color:#b86629}
+.product-details-category,.lc-store-item-category,.lc-store-product-meta .lc-store-item-category{color:#A55325!important}
+.lc-store-role,.lc-eyebrow,.lc-store-heading h2,.lc-store-summary-name{color:#A55325}
+.product-details-save.is-saved,.product-details-save:hover,.lc-store-save-btn.is-saved{color:#A55325;background:#fff0e1;border-color:#d2a98a}
+.product-details-save.is-saved svg{fill:currentColor}
+.lc-store-save-btn.is-saved{background:#fff2e5}
+.product-details-cart,.product-details-cart.is-complete,.lc-view-store{
+  background:linear-gradient(135deg,#A55325,#C2692E)!important;
+  border-color:#A55325!important;
+  color:#FFF8ED!important;
+}
+.product-details-cart:hover:not(:disabled),.lc-view-store:hover{
+  background:linear-gradient(135deg,#C2692E,#A55325)!important;
+  border-color:#C2692E!important;
+  color:#FFF8ED!important;
+}
+.seller-action-btn:not(.lc-view-store),.lc-see-more,.lc-store-details-toggle{color:#A55325}
+.lc-store-fact-icon,.seller-details-title svg,.product-reviews-title svg{color:#A55325}
+.lc-store-product{background:#FFFEFC;border-color:#eae0d7}
+.lc-store-product:hover{border-color:#d7aa88;background:#fffaf5}
+.lc-store-product-meta strong{color:#433529}
+.lc-store-product-meta .lc-store-item-rating{color:#897363}
+/* Genuine overall reviews directly below the store avatar. */
+.lc-store-summary{grid-template-columns:136px minmax(0,1fr) auto}
+.lc-store-identity{grid-area:avatar;display:flex;align-items:center;justify-content:center;align-self:center;flex-direction:column;gap:9px;width:136px;min-width:0}
+.lc-store-identity .lc-store-avatar{grid-area:auto;align-self:center;justify-self:center;margin:0}
+.lc-store-reviews{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px 5px;max-width:100%;color:#624937;text-align:center;font-size:.73rem;font-weight:800;line-height:1.35;font-variant-numeric:tabular-nums}
+.lc-store-review-star{color:#e3a22e;font-size:1.03rem;line-height:1}
+/* Keep Add to Cart feedback at the BOTTOM of the visible viewport, above popups and keyboards. */
+.marketplace-toast{
+  position:fixed!important;
+  z-index:2147483000!important;
+  top:auto!important;
+  bottom:calc(var(--lc-toast-bottom-inset,0px) + max(16px,env(safe-area-inset-bottom)))!important;
+  left:50%;right:auto;
+  width:max-content;max-width:min(440px,calc(100vw - 24px));
+  transform:translate(-50%,16px);
+  padding:12px 16px;
+  border:1px solid #e3c7ad;
+  border-radius:14px;
+  background:#3e332b;color:#fff;
+  box-shadow:0 14px 32px rgba(38,22,11,.25);
+  font:700 .79rem/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  text-align:center;
+  overflow-wrap:anywhere;
+}
+.marketplace-toast.show{transform:translate(-50%,0)}
+.marketplace-toast.show.has-action{pointer-events:auto}
+.marketplace-toast.success{background:#2e6544;border-color:#b9d2c2}
+.marketplace-toast.error{background:#883e36;border-color:#e7bcb6}
+.lc-toast-action{color:#fff}
+/* Keep the message composer above software keyboards on Safari/Chrome/Edge. */
+.chat-panel,.messages-shell,.chat-body{min-height:0}
+.chat-input-wrap{position:relative;flex:0 0 auto;z-index:25;padding-bottom:max(10px,env(safe-area-inset-bottom));background:#FFFEFC}
+.chat-input textarea{font-size:16px!important;line-height:1.45;max-height:110px}
+.chat-input,.send-btn,.attach-label{touch-action:manipulation}
+@media(max-width:760px){
+  .page>.content{padding-top:var(--lc-msg-header-height,74px)!important}
+  .messages-wrap{
+    position:fixed;
+    top:var(--lc-msg-header-height,74px);
+    right:0;bottom:var(--keyboard-inset,0px);left:0;
+    height:auto;min-height:0;padding:0!important;
+  }
+  .messages-shell{height:100%}
+  .chat-input-wrap{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+  body.keyboard-open .chat-body{height:auto!important;min-height:0!important;flex:1 1 auto!important}
+  body.keyboard-open .chat-input-wrap{padding-bottom:8px}
+  .lc-store-summary{grid-template-columns:100px minmax(0,1fr);grid-template-areas:"avatar details" "avatar status";gap:10px 12px}
+  .lc-store-identity{width:100px;justify-self:center;gap:6px}
+  .lc-store-reviews{font-size:.67rem}
+}
+@media(max-width:400px){
+  .lc-store-summary{grid-template-columns:78px minmax(0,1fr);column-gap:10px}
+  .lc-store-identity{width:78px}
+  .lc-store-reviews{font-size:.61rem;gap:1px 3px}
+  .lc-store-identity .lc-store-avatar{width:49px;height:49px;flex-basis:49px}
+}
+@media(prefers-reduced-motion:reduce){.marketplace-toast{transition:none!important}}
+
+/* Messages header label is page-local: buyer_search.php is not modified. */
+.buyer-header-tools .lc-messages-mobile-label{display:none}
+.conversation-item[hidden],#lcStoreSearchEmpty[hidden]{display:none!important}
+#buyerArrangementDialog .lc-order-review-link{
+  border:1px solid #A55325;background:linear-gradient(135deg,#A55325,#C2692E);
+  color:#FFF8ED;box-shadow:0 3px 10px rgba(122,64,31,.12);
+}
+#buyerArrangementDialog .lc-order-review-link:hover:not(:disabled){background:linear-gradient(135deg,#C2692E,#A55325)}
+@media(max-width:760px){
+  .buyer-header-tools .lc-messages-mobile-label{
+    display:block;flex:0 0 auto;overflow:hidden;white-space:nowrap;
+    max-width:110px;margin:0 2px 0 1px;color:#3b2d23;
+    font:800 16px/1.2 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+    opacity:1;transform:translateX(0);visibility:visible;
+    transition:max-width .23s ease,opacity .18s ease,transform .23s ease,margin .23s ease,visibility .23s ease;
+  }
+  .buyer-header-tools.lc-store-search-expanded .lc-messages-mobile-label{
+    max-width:0;margin:0;opacity:0;transform:translateX(-8px);visibility:hidden;
+  }
+  .buyer-header-tools{gap:6px}
+  /* The animated header title is already visible on phones. Keep one Messages title. */
+  .conversation-list .conversation-header{display:none!important}
+  body.lc-store-searching .messages-shell.chat-open .conversation-list{display:flex}
+  body.lc-store-searching .messages-shell.chat-open .chat-panel{display:none}
+}
+@media(prefers-reduced-motion:reduce){.buyer-header-tools .lc-messages-mobile-label{transition:none}}
+</style>
 </head>
 <body>
   <div class="page">
     <?php require __DIR__ . '/buyer_nav.php'; ?>
     <main class="content">
-      <?php require __DIR__ . '/buyer_search.php'; ?>
+      <?php $searchPlaceholder = 'Search chats by store name...'; require __DIR__ . '/buyer_search.php'; ?>
       <div class="messages-wrap">
         <h1 class="page-title">Messages</h1>
         <p class="page-subtitle">Buyer inbox · Chat with sellers about products</p>
@@ -5749,6 +5963,10 @@ body.lc-messages-modal-open{overflow:hidden}
 
                 </div>
               </header>
+              <div class="lc-linked-order-filter" id="linkedOrderFilter" hidden role="status">
+                <span id="linkedOrderFilterLabel">Viewing messages for <strong id="linkedOrderNumber"></strong></span>
+                <button type="button" id="linkedOrderToggle" aria-label="Show all messages in this seller conversation">View all messages</button>
+              </div>
               <div class="chat-body" id="chatBody">
                 <?php if (empty($chatMessages)): ?>
                   <div class="chat-empty" id="chatEmpty">
@@ -5843,6 +6061,7 @@ body.lc-messages-modal-open{overflow:hidden}
       <div class="buyer-arrangement-actions">
         <button class="buyer-arrangement-action secondary" id="buyerArrangementNotYet" type="button">Close</button>
         <button class="buyer-arrangement-action primary" id="buyerConfirmArrangement" type="button" hidden>Confirm Details</button>
+        <button class="buyer-arrangement-action lc-order-review-link" id="buyerArrangementReview" type="button" hidden>Rate &amp; Review</button>
         <button class="buyer-arrangement-action pay" id="buyerPayNowDialogButton" type="button" hidden>Pay with QR Ph</button>
       </div>
     </div>
@@ -5875,31 +6094,6 @@ body.lc-messages-modal-open{overflow:hidden}
         </div>
       </div>
     </div>
-  </dialog>
-  <dialog class="lc-review-dialog" id="buyerProductReviewDialog" aria-labelledby="buyerProductReviewTitle">
-    <form class="lc-review-panel" id="buyerProductReviewForm">
-      <div class="lc-review-top">
-        <h2 id="buyerProductReviewTitle">Rate Your Product</h2>
-        <button type="button" class="lc-review-close" id="buyerProductReviewClose" aria-label="Close review">×</button>
-      </div>
-      <label for="buyerReviewProductSelect">Product</label>
-      <select id="buyerReviewProductSelect" required></select>
-      <label>Your Rating</label>
-      <div class="lc-review-stars" id="buyerReviewStars" role="group" aria-label="Choose a rating from one to five stars">
-        <button type="button" data-rating="1" aria-label="1 star">☆</button>
-        <button type="button" data-rating="2" aria-label="2 stars">☆</button>
-        <button type="button" data-rating="3" aria-label="3 stars">☆</button>
-        <button type="button" data-rating="4" aria-label="4 stars">☆</button>
-        <button type="button" data-rating="5" aria-label="5 stars">☆</button>
-      </div>
-      <label for="buyerReviewComment">Comment <span>(optional)</span></label>
-      <textarea id="buyerReviewComment" rows="3" maxlength="500" placeholder="How was the product?"></textarea>
-      <div class="lc-review-feedback" id="buyerReviewFeedback" role="status" aria-live="polite"></div>
-      <div class="lc-review-actions">
-        <button type="button" class="lc-review-cancel" id="buyerReviewCancel">Cancel</button>
-        <button type="submit" class="lc-review-submit" id="buyerReviewSubmit" disabled>Submit Review</button>
-      </div>
-    </form>
   </dialog>
   <div class="product-details-modal" id="productDetailsModal" aria-hidden="true">
         <div class="product-details-backdrop" id="productDetailsBackdrop"></div>
@@ -6020,13 +6214,17 @@ body.lc-messages-modal-open{overflow:hidden}
        * Do not move the whole page. Calculate only the part covered
        * by the software keyboard and use it as a bottom inset.
        */
+      const layoutViewportHeight = Math.max(
+        window.innerHeight,
+        document.documentElement.clientHeight
+      );
+      // Inset only the area covered *inside* the layout viewport. When Chrome or
+      // Edge already shrinks the layout viewport, do not apply the inset twice.
       let keyboardInset = Math.max(
         0,
-        mobileViewportBaseline - visibleHeight - viewportTop
+        layoutViewportHeight - (visibleHeight + viewportTop)
       );
-      if (!inputFocused || keyboardInset < 100) {
-        keyboardInset = 0;
-      }
+      if (!inputFocused || keyboardInset < 40) keyboardInset = 0;
       document.documentElement.style.setProperty(
         '--keyboard-inset',
         Math.round(keyboardInset) + 'px'
@@ -6044,6 +6242,22 @@ body.lc-messages-modal-open{overflow:hidden}
         });
       }
     }
+    // Match Messages' top edge to the *actual* shared Buyer header height.
+    // Search/notification controls can wrap on narrow mobile devices.
+    function syncMessagesHeaderHeight() {
+      const header = document.querySelector('.buyer-header-tools');
+      if (!header) return;
+      const height = Math.ceil(header.getBoundingClientRect().height);
+      if (height > 0 && height < 200) {
+        document.documentElement.style.setProperty('--lc-msg-header-height', height+'px');
+      }
+    }
+    syncMessagesHeaderHeight();
+    if (window.ResizeObserver) {
+      const buyerHeader = document.querySelector('.buyer-header-tools');
+      if (buyerHeader) new ResizeObserver(syncMessagesHeaderHeight).observe(buyerHeader);
+    }
+    window.addEventListener('resize', syncMessagesHeaderHeight);
     syncAppViewport();
     window.addEventListener('resize', syncAppViewport);
     window.addEventListener('orientationchange', () => {
@@ -6083,6 +6297,11 @@ body.lc-messages-modal-open{overflow:hidden}
       return Number.isSafeInteger(value) && value > 0 && value === selectedOrderId
         ? value : 0;
     })();
+    // An explicit order link is focused only if the server confirmed this buyer owns that order.
+    const validLinkedOrderId = <?php echo $selectedOrder && (int)$selectedOrder['order_id'] === (int)($_GET['order_id'] ?? 0) ? (int)$selectedOrder['order_id'] : 0; ?>;
+    let focusedOrderId = linkedOrderId === validLinkedOrderId ? linkedOrderId : 0;
+    let showAllSellerMessages = false;
+    let fullConversationMessages = [];
     let activeOrderDetails = <?php echo json_encode($selectedOrder, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); ?>;
     let selectedSellerName = <?php echo json_encode($selectedSellerName, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); ?>;
     const messagesCsrf = <?php echo json_encode($_SESSION['buyer_messages_csrf'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
@@ -6097,7 +6316,50 @@ body.lc-messages-modal-open{overflow:hidden}
     const initialConversations = <?php echo json_encode($conversations, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); ?>;
     const messagesShell = document.getElementById('messagesShell');
     const conversationItems = document.getElementById('conversationItems');
+    const storeSearchInput = document.getElementById('productSearch');
+    function filterStoresInConversations() {
+      const query = String(storeSearchInput?.value || '').trim().toLocaleLowerCase();
+      if (!conversationItems) return;
+      let found = 0;
+      conversationItems.querySelectorAll('.conversation-item').forEach(item => {
+        const storeName = String(item.dataset.storeName || '').toLocaleLowerCase();
+        const matches = !query || storeName.includes(query);
+        item.hidden = !matches;
+        if (matches) found++;
+      });
+      const empty = document.getElementById('lcStoreSearchEmpty');
+      if (empty) empty.hidden = !query || found > 0;
+    }
+    storeSearchInput?.addEventListener('input', filterStoresInConversations);
+    document.getElementById('buyerSearchToggle')?.addEventListener('click', () => queueMicrotask(filterStoresInConversations));
+    document.addEventListener('pointerdown', () => queueMicrotask(filterStoresInConversations));
+    storeSearchInput?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') queueMicrotask(filterStoresInConversations);
+    });
     const chatBody = document.getElementById('chatBody');
+    const linkedOrderFilter = document.getElementById('linkedOrderFilter');
+    const linkedOrderFilterLabel = document.getElementById('linkedOrderFilterLabel');
+    const linkedOrderNumber = document.getElementById('linkedOrderNumber');
+    const linkedOrderToggle = document.getElementById('linkedOrderToggle');
+    function orderFocusActive() { return focusedOrderId > 0 && !showAllSellerMessages; }
+    function syncLinkedOrderFilter() {
+      if (!linkedOrderFilter) return;
+      linkedOrderFilter.hidden = focusedOrderId <= 0;
+      if (linkedOrderNumber) linkedOrderNumber.textContent = 'Order #' + focusedOrderId;
+      if (linkedOrderFilterLabel) linkedOrderFilterLabel.hidden = showAllSellerMessages;
+      if (linkedOrderToggle) {
+        linkedOrderToggle.textContent = showAllSellerMessages ? 'Focus on Order #' + focusedOrderId : 'View all messages';
+        linkedOrderToggle.setAttribute('aria-label', linkedOrderToggle.textContent);
+      }
+    }
+    linkedOrderToggle?.addEventListener('click', () => {
+      showAllSellerMessages = !showAllSellerMessages;
+      syncLinkedOrderFilter();
+      renderMessages(fullConversationMessages, true, orderFocusActive() ? focusedOrderId : 0);
+      const activeConversation = getCachedConversation(selectedSellerId);
+      if (activeConversation) updateHeader(activeConversation);
+      if (!orderFocusActive()) markConversationRead(selectedSellerId);
+    });
     const chatName = document.getElementById('chatName');
     const chatAvatar = document.getElementById('chatAvatar');
     const chatProduct = document.getElementById('chatProduct');
@@ -6128,6 +6390,7 @@ body.lc-messages-modal-open{overflow:hidden}
     const reviewsEnabled = <?php echo buyerChatReviewsAvailable($conn) ? 'true' : 'false'; ?>;
     let reviewRating = 0;
     let reviewBusy = false;
+    let reviewOpenGeneration = 0;
     const messageForm = document.getElementById('messageForm');
     const messageInput = document.getElementById('messageInput');
     const sendButton = document.getElementById('sendButton');
@@ -6153,6 +6416,7 @@ body.lc-messages-modal-open{overflow:hidden}
     const buyerArrangementNotYet = document.getElementById('buyerArrangementNotYet');
     const buyerArrangementFeedback = document.getElementById('buyerArrangementFeedback');
     const buyerConfirmArrangement = document.getElementById('buyerConfirmArrangement');
+    const buyerArrangementReview = document.getElementById('buyerArrangementReview');
     const buyerPayNowDialogButton = document.getElementById('buyerPayNowDialogButton');
     const buyerArrangementProduct = document.getElementById('buyerArrangementProduct');
     const buyerArrangementOrderNumber = document.getElementById('buyerArrangementOrderNumber');
@@ -6204,6 +6468,10 @@ body.lc-messages-modal-open{overflow:hidden}
       return true;
     }
     function showLatestMessage(orderId = 0) {
+      if (orderFocusActive()) {
+        if (!jumpToOrderMessage(focusedOrderId)) scrollToBottom(true);
+        return;
+      }
       if (!jumpToOrderMessage(orderId)) scrollToBottom(true);
     }
     function clearChatBody() {
@@ -6302,9 +6570,9 @@ body.lc-messages-modal-open{overflow:hidden}
       const body = String(message.message_text || '');
       const fromSeller = Number(message.sender_id) === Number(selectedSellerId);
       const fromBuyer = !fromSeller;
+      if (fromBuyer && /^Buyer requested changes to Order #\d+\./.test(body)) return 'changes';
       if (fromBuyer && message.is_order_opening) return 'request';
       if (fromSeller && /^Order #\d+ .*details are ready\./.test(body)) return 'details';
-      if (fromBuyer && /^Buyer requested changes to Order #\d+\./.test(body)) return 'changes';
       if (fromBuyer && /^Buyer confirmed the order details for Order #\d+\./.test(body)) return 'confirmed';
       if (fromSeller && /^Order #\d+ was accepted by the seller\./.test(body)) return 'accepted';
       if (fromSeller && /started processing Order #\d+/i.test(body)) return 'processing';
@@ -6359,7 +6627,7 @@ body.lc-messages-modal-open{overflow:hidden}
         ? 'Review & Confirm' : 'View Order Details';
     }
     function orderEventLabel(kind) {
-      return ({request:'Order Requested',details:'Details Sent',changes:'Changes Requested',
+      return ({request:'Order Requested',details:'Details Sent',changes:'Change Requested',
         confirmed:'Details Confirmed',accepted:'Order Accepted',processing:'Processing',completed:'Completed',paid:'Payment Confirmed',
         cancelled:'Order Cancelled',rejected:'Order Rejected'})[kind] || 'Order';
     }
@@ -6437,20 +6705,25 @@ body.lc-messages-modal-open{overflow:hidden}
     }
     function renderMessages(messages, forceScroll = true, focusOrderId = 0) {
       if (!chatBody) return;
+      // Keep every message in memory for View all, and advance the polling cursor
+      // past unrelated seller messages even while displaying just one order.
+      fullConversationMessages = Array.isArray(messages) ? messages.slice() : [];
       clearChatBody();
-      lastMessageId = 0;
-      if (!messages.length) {
-        const empty = createElement(
-          'div',
-          'chat-empty',
-          'Start the conversation with this seller.'
-        );
+      lastMessageId = fullConversationMessages.reduce((max, message) =>
+        Math.max(max, Number(message.message_id) || 0), 0);
+      const visibleMessages = orderFocusActive()
+        ? fullConversationMessages.filter(message => Number(message.order_id) === focusedOrderId)
+        : fullConversationMessages;
+      if (!visibleMessages.length) {
+        const empty = createElement('div', 'chat-empty', orderFocusActive()
+          ? 'No messages are linked to this order yet. You can view all seller messages for more context.'
+          : 'Start the conversation with this seller.');
         chatBody.appendChild(empty);
         return;
       }
       let previousDate = '';
-      const latestOrderEvents = latestOrderEventMessages(messages);
-      messages.forEach((message) => {
+      const latestOrderEvents = latestOrderEventMessages(visibleMessages);
+      visibleMessages.forEach((message) => {
         const currentDate = message.date_label || '';
         if (currentDate && currentDate !== previousDate) {
           chatBody.appendChild(
@@ -6521,9 +6794,10 @@ body.lc-messages-modal-open{overflow:hidden}
         chatAvatar.textContent = conversation.initials || 'S';
       }
       if (chatProduct) {
-        chatProduct.textContent = conversation.product
-          ? 'Product: ' + conversation.product
-          : (conversation.location || 'Marketplace conversation');
+        chatProduct.textContent = orderFocusActive()
+          ? 'Messages for Order #' + focusedOrderId
+          : (conversation.product ? 'Product: ' + conversation.product
+            : (conversation.location || 'Marketplace conversation'));
       }
     }
     function money(value) {
@@ -7010,6 +7284,12 @@ body.lc-messages-modal-open{overflow:hidden}
       // the buyer can still request corrections instead of seeing no action.
       buyerConfirmArrangement.hidden = !awaitingBuyer;
       buyerConfirmArrangement.disabled = !canConfirm;
+      if (buyerArrangementReview) {
+        const canReview = reviewsEnabled && String(order.order_status || '').toLowerCase() === 'completed'
+          && Number(order.review_remaining ?? 0) > 0;
+        buyerArrangementReview.hidden = !canReview;
+        buyerArrangementReview.disabled = !canReview;
+      }
       const canPay = canPayWithPayMongo(order);
       buyerPayNowDialogButton.hidden = !canPay;
       buyerPayNowDialogButton.disabled = !canPay;
@@ -7084,12 +7364,16 @@ body.lc-messages-modal-open{overflow:hidden}
     }
     async function refreshReviewProducts() {
       const order = activeOrderDetails;
-      if (!order || String(order.order_status).toLowerCase() !== 'completed') return;
+      const reviewSellerId = Number(selectedSellerId);
+      if (!order || String(order.order_status).toLowerCase() !== 'completed') return false;
       const form = new FormData();
       form.append('action','review_products');
       form.append('seller_id',String(selectedSellerId));
       form.append('order_id',String(order.order_id));
       const result = await postRequest(form);
+      // Ignore an old review response if the buyer switched sellers or orders meanwhile.
+      if (Number(selectedSellerId) !== reviewSellerId
+          || Number(activeOrderDetails?.order_id) !== Number(order.order_id)) return false;
       reviewSelect.replaceChildren();
       (result.products || []).filter(item => !item.reviewed).forEach(item => {
         const option = document.createElement('option');
@@ -7106,19 +7390,7 @@ body.lc-messages-modal-open{overflow:hidden}
       if (!available) setReviewFeedback('All products in this order have been reviewed.', true);
       return available;
     }
-    buyerLeaveReview?.addEventListener('click', async () => {
-      if (!reviewsEnabled || !activeOrderDetails || reviewBusy || !reviewDialog) return;
-      reviewRating = 0;
-      if (reviewComment) reviewComment.value = '';
-      setReviewFeedback();
-      paintReviewStars();
-      try {
-        const hasProducts = await refreshReviewProducts();
-        if (!hasProducts) return;
-        reviewDialog.showModal();
-        reviewSelect?.focus();
-      } catch(error) { showChatError(error.message); }
-    });
+    buyerLeaveReview?.addEventListener('click', openReviewInOrders);
     reviewStars?.addEventListener('click', (event) => {
       const star = event.target.closest('[data-rating]');
       if (!star) return;
@@ -7193,6 +7465,7 @@ body.lc-messages-modal-open{overflow:hidden}
           buyerPayNowButton.hidden = true;
           buyerPayNowButton.disabled = true;
         }
+        if (buyerArrangementReview) buyerArrangementReview.hidden = true;
         if (buyerPayNowDialogButton) {
           buyerPayNowDialogButton.hidden = true;
           buyerPayNowDialogButton.disabled = true;
@@ -7634,6 +7907,7 @@ body.lc-messages-modal-open{overflow:hidden}
       const formData = new FormData();
       formData.append('action', 'mark_read');
       formData.append('seller_id', String(sellerId));
+      if (orderFocusActive()) formData.append('focus_order_id', String(focusedOrderId));
       try {
         await postRequest(formData);
       } catch (error) {
@@ -7651,12 +7925,18 @@ body.lc-messages-modal-open{overflow:hidden}
       return candidate ? Number(candidate.order_id) : 0;
     }
     async function openSellerConversation(sellerId, options = {}) {
+      const reviewGeneration = ++reviewOpenGeneration;
+      if (reviewDialog?.open) reviewDialog.close();
       const forceScroll = options.forceScroll !== false;
       const shouldPrefill = options.prefill === true;
       const requestedOrderId = Number(options.orderId || 0);
       selectedSellerId = Number(sellerId);
       selectedOrderId = requestedOrderId;
       manuallySelectedOrder = requestedOrderId > 0 && options.manualSelection === true;
+      // Switching to a normal conversation must not carry over a notification's order filter.
+      focusedOrderId = options.focusOrderId > 0 && options.focusOnly === true ? Number(options.focusOrderId) : 0;
+      showAllSellerMessages = false;
+      syncLinkedOrderFilter();
       if (!selectedSellerId) return;
       clearChatError();
       setActiveConversation(selectedSellerId);
@@ -7672,7 +7952,9 @@ body.lc-messages-modal-open{overflow:hidden}
         const formData = new FormData();
         formData.append('action', 'fetch_messages');
         formData.append('seller_id', String(selectedSellerId));
+        if (requestedOrderId > 0) formData.append('preferred_order_id', String(requestedOrderId));
         const data = await postRequest(formData);
+        if (reviewGeneration !== reviewOpenGeneration || Number(selectedSellerId) !== Number(sellerId)) return;
         const conversationMessages = data.messages || [];
         renderMessages(conversationMessages, forceScroll, Number(options.focusOrderId || 0));
         if (selectedOrderId <= 0) {
@@ -7722,11 +8004,20 @@ body.lc-messages-modal-open{overflow:hidden}
           await loadBuyerOrderDetails(selectedSellerId, awaitingOrderId);
         }
         if (newMessages.length) {
+          let visibleNewMessage = false;
           newMessages.forEach((message) => {
-            if (!chatBody.querySelector(
-              '[data-message-id="' + message.message_id + '"]'
-            )) {
+            const id = Number(message.message_id) || 0;
+            // Track the full conversation so the next poll does not retrieve
+            // another order's hidden messages indefinitely.
+            if (!fullConversationMessages.some(existing => Number(existing.message_id) === id)) {
+              fullConversationMessages.push(message);
+            }
+            lastMessageId = Math.max(lastMessageId, id);
+            if (orderFocusActive() && Number(message.order_id) !== focusedOrderId) return;
+            if (!chatBody.querySelector('[data-message-id="' + id + '"]')) {
+              if (chatBody.querySelector('.chat-empty')) clearChatBody();
               appendMessage(message, false);
+              visibleNewMessage = true;
             }
           });
           const newestOrderMessage = [...newMessages]
@@ -7743,6 +8034,7 @@ body.lc-messages-modal-open{overflow:hidden}
             );
             if (
               !buyerArrangementDialog?.open
+              && (!manuallySelectedOrder || incomingOrderId === selectedOrderId)
               && (sellerSentDetails || selectedOrderId <= 0 || incomingOrderId === selectedOrderId)
             ) {
               selectedOrderId = incomingOrderId;
@@ -7769,9 +8061,11 @@ body.lc-messages-modal-open{overflow:hidden}
               selectedOrderId
             );
           }
-          // Always keep the newest message in the latest message row.
-          // This applies to phone, laptop, and desktop/PC layouts.
-          scrollToBottom(true);
+          // Do not move away from the requested order when another order gets a message.
+          if (visibleNewMessage) {
+            if (orderFocusActive()) showLatestMessage(focusedOrderId);
+            else scrollToBottom(true);
+          }
           await markConversationRead(selectedSellerId);
         }
         if (!newMessages.length && selectedOrderId > 0
@@ -7843,6 +8137,7 @@ body.lc-messages-modal-open{overflow:hidden}
         );
         item.type = 'button';
         item.dataset.sellerId = conversation.partner_id;
+        item.dataset.storeName = conversation.name || conversation.person_name || '';
         const avatar = createElement(
           'span',
           'avatar',
@@ -7885,6 +8180,11 @@ body.lc-messages-modal-open{overflow:hidden}
         }
         conversationItems.appendChild(item);
       });
+      const empty = createElement('div', 'conversation-empty', 'No matching stores found.');
+      empty.id = 'lcStoreSearchEmpty';
+      empty.hidden = true;
+      conversationItems.appendChild(empty);
+      filterStoresInConversations();
     }
     function startPolling() {
       if (messagePoller) {
@@ -8001,6 +8301,17 @@ body.lc-messages-modal-open{overflow:hidden}
       'click',
       startPayMongoPayment
     );
+    function openReviewInOrders() {
+      const orderId = Number(activeOrderDetails?.order_id || 0);
+      if (!Number.isSafeInteger(orderId) || orderId <= 0
+          || String(activeOrderDetails?.order_status || '').toLowerCase() !== 'completed'
+          || Number(activeOrderDetails?.review_remaining ?? 0) <= 0) return;
+      const url = new URL('orders.php', window.location.href);
+      url.searchParams.set('order_id', String(orderId));
+      url.searchParams.set('open_review', '1');
+      window.location.assign(url.href);
+    }
+    buyerArrangementReview?.addEventListener('click', openReviewInOrders);
     buyerQrClose?.addEventListener(
       'click',
       () => {
@@ -8249,9 +8560,18 @@ body.lc-messages-modal-open{overflow:hidden}
         try {
           const data = await postRequest(formData);
           const message = data.message;
-          if (!chatBody.querySelector(
-            '[data-message-id="' + message.message_id + '"]'
-          )) {
+          if (!fullConversationMessages.some(existing => Number(existing.message_id) === Number(message.message_id))) {
+            fullConversationMessages.push(message);
+          }
+          lastMessageId = Math.max(lastMessageId, Number(message.message_id) || 0);
+          // Rejected/completed orders use ordinary direct replies (no order_id).
+          // Show the normal conversation after such a reply so it stays visible.
+          if (orderFocusActive() && Number(message.order_id) !== focusedOrderId) {
+            showAllSellerMessages = true;
+            syncLinkedOrderFilter();
+            renderMessages(fullConversationMessages, true);
+          } else if (!chatBody.querySelector('[data-message-id="' + message.message_id + '"]')) {
+            if (chatBody.querySelector('.chat-empty')) clearChatBody();
             appendMessage(message, true);
           }
           messageInput.value = '';
@@ -8273,9 +8593,9 @@ body.lc-messages-modal-open{overflow:hidden}
     }
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && selectedSellerId) {
-        pollMessages().finally(
-          () => scrollToBottom(true)
-        );
+        pollMessages().finally(() => {
+          if (!orderFocusActive()) scrollToBottom(true);
+        });
         if (
           activeQrSession
           && buyerQrDialog?.open
@@ -8286,9 +8606,9 @@ body.lc-messages-modal-open{overflow:hidden}
     });
     window.addEventListener('focus', () => {
       if (selectedSellerId) {
-        pollMessages().finally(
-          () => scrollToBottom(true)
-        );
+        pollMessages().finally(() => {
+          if (!orderFocusActive()) scrollToBottom(true);
+        });
         if (
           activeQrSession
           && buyerQrDialog?.open
@@ -8299,10 +8619,12 @@ body.lc-messages-modal-open{overflow:hidden}
     });
     window.addEventListener('resize', () => {
       syncAppViewport();
-      if (selectedSellerId) {
+      if (selectedSellerId && !orderFocusActive()) {
         scrollToBottom(true);
       }
     });
+    syncLinkedOrderFilter();
+    if (orderFocusActive() && chatProduct) chatProduct.textContent = 'Messages for Order #' + focusedOrderId;
     renderConversationList(initialConversations);
     if (initialMessages.length && selectedSellerId) {
       renderMessages(initialMessages, true, linkedOrderId);
@@ -8332,6 +8654,7 @@ body.lc-messages-modal-open{overflow:hidden}
         autoResizeTextarea();
         updateSendButton();
       }
+      ++reviewOpenGeneration;
     }
     window.addEventListener('beforeunload', () => {
       updateTypingState(false);
@@ -8344,6 +8667,27 @@ body.lc-messages-modal-open{overflow:hidden}
     });
     if (activeOrderDetails) { renderOrderProgress(activeOrderDetails); }
   </script>
+
+  <script id="lcMessagesStoreHeaderEnhancements">
+  (() => {
+    const header = document.querySelector('.buyer-header-tools');
+    const menu = document.getElementById('buyerSidebarToggle');
+    const layout = header?.querySelector('.buyer-search-layout');
+    if (!header || !menu || !layout) return;
+    const label = document.createElement('span');
+    label.className = 'lc-messages-mobile-label';
+    label.textContent = 'Messages';
+    label.setAttribute('aria-hidden', 'true');
+    menu.insertAdjacentElement('afterend', label);
+    const sync = () => {
+      const expanded = layout.classList.contains('is-expanded');
+      header.classList.toggle('lc-store-search-expanded', expanded);
+      document.body.classList.toggle('lc-store-searching', expanded);
+    };
+    new MutationObserver(sync).observe(layout, {attributes:true, attributeFilter:['class']});
+    sync();
+  })();
+  </script>
 <script id="buyerChatStoreProfileScript">
 (() => {
 'use strict';
@@ -8353,6 +8697,22 @@ const storeModal=$('lcStoreModal'), storeClose=$('lcStoreClose'), storeScroll=$(
 const photoModal=$('lcPhotoLightbox'),photoClose=$('lcPhotoClose'),photoEnlarged=$('lcPhotoEnlarged');
 const detailCart=$('productDetailsCart'), detailSave=$('productDetailsSave');
 const toast=$('marketplaceToast'),csrf=<?php echo json_encode($_SESSION['buyer_messages_csrf'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+// Keep the toast outside transformed/fixed page and popup containers.
+// Otherwise position:fixed can anchor to a scrolling container instead of the visible screen.
+if (toast && toast.parentElement !== document.body) document.body.appendChild(toast);
+function positionMarketplaceToast(){
+  if (!toast) return;
+  // visualViewport excludes the on-screen keyboard. Raise the bottom toast above it.
+  // When the browser resizes the layout viewport as well, this naturally becomes 0.
+  const visibleViewport = window.visualViewport;
+  const hiddenBelow = visibleViewport
+    ? Math.max(0, window.innerHeight - (visibleViewport.offsetTop + visibleViewport.height))
+    : 0;
+  document.documentElement.style.setProperty('--lc-toast-bottom-inset', Math.round(hiddenBelow) + 'px');
+}
+window.visualViewport?.addEventListener('resize', positionMarketplaceToast);
+window.visualViewport?.addEventListener('scroll', positionMarketplaceToast);
+window.addEventListener('resize', positionMarketplaceToast);
 let selectedProduct=null,toastTimeout=null;
 let selectedStoreId=0,storeFetchToken=0,reviewsFetchToken=0,reviewOffset=0,reviewBusy=false,reviewHasMore=false;
 const savedStates=new Map(),storeCache=new Map();
@@ -8367,6 +8727,7 @@ function productLocation(product){return [product?.barangay,product?.city].filte
 function stars(value){const n=Math.max(0,Math.min(5,Math.round(Number(value)||0)));return '★'.repeat(n)+'☆'.repeat(5-n);}
 function showToast(message,type='',action=null){
   clearTimeout(toastTimeout);
+  positionMarketplaceToast();
   toast.replaceChildren(document.createTextNode(message));
   if(action?.href && action?.label){
     const link=document.createElement('a');link.href=action.href;link.className='lc-toast-action';link.textContent=action.label;
@@ -8619,9 +8980,19 @@ function renderStore(data){
   const shop=data.shop||{},items=data.products||[],name=shop.businessname||shop.seller_name||'Local Store';
   $('lcStoreTitle').textContent='Store Profile';
   $('lcStoreSummary').replaceChildren();
+  const identity=document.createElement('div');identity.className='lc-store-identity';
   const avatar=document.createElement('div');avatar.className='lc-store-avatar';avatar.textContent=String(name).trim().slice(0,2).toUpperCase();
+  const reviewInfo=document.createElement('div');reviewInfo.className='lc-store-reviews';
+  const reviewCount=Math.max(0,Number(shop.review_count)||0);
+  if(reviewCount>0){
+    const star=document.createElement('span');star.className='lc-store-review-star';star.textContent='★';
+    const score=document.createElement('span');score.textContent=Number(shop.avg_rating||0).toFixed(1);
+    const count=document.createElement('span');count.textContent='('+reviewCount+' review'+(reviewCount===1?'':'s')+')';
+    reviewInfo.append(star,score,count);
+  }else{reviewInfo.textContent='No reviews yet';}
+  identity.append(avatar,reviewInfo);
   const meta=document.createElement('div');meta.className='lc-store-profile-details';const role=document.createElement('span');role.className='lc-store-role';role.textContent='VERIFIED LOCAL ARTISAN';const nameEl=document.createElement('div');nameEl.className='lc-store-summary-name';nameEl.textContent=name;
-  const sub=document.createElement('div');sub.className='lc-store-summary-meta';sub.textContent=[shop.craftcategory,shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(' · ');meta.append(role,nameEl,sub);const active=document.createElement('span');active.className='lc-store-active';active.innerHTML='<span class="lc-store-active-dot"></span>Active Store';$('lcStoreSummary').append(avatar,meta,active);
+  const sub=document.createElement('div');sub.className='lc-store-summary-meta';sub.textContent=[shop.craftcategory,shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(' · ');meta.append(role,nameEl,sub);const active=document.createElement('span');active.className='lc-store-active';active.innerHTML='<span class="lc-store-active-dot"></span>Active Store';$('lcStoreSummary').append(identity,meta,active);
   const facts=$('lcStoreFacts');facts.replaceChildren(storeFact('Seller Name',shop.seller_name),storeFact('Craft Category',shop.craftcategory),storeFact('Business Description',shop.description,true),storeFact('Business Location',[shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(', '),true));
   $('lcStoreMore').hidden=false;$('lcStoreProductCount').textContent=items.length+' items';
   const listing=$('lcStoreProducts');listing.replaceChildren();

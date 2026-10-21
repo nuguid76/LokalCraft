@@ -265,6 +265,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marketplace_action'])
                 $existing = $check->get_result()->fetch_assoc();
                 $check->close();
                 if ($existing) {
+                    // Never report an addition as successful when the cart is already at the stock limit.
+                    if ((int)$existing['quantity'] >= min(999, (int)$row['available_stock'])) {
+                        throw new RuntimeException('All available units are already in your cart.');
+                    }
                     $newQuantity = min(999, (int)$row['available_stock'], max(1, (int)$existing['quantity']) + $quantity);
                     $stmt = $conn->prepare('UPDATE cart SET quantity=? WHERE cart_id=? AND buyer_id=?');
                     $cartId = (int)$existing['cart_id'];
@@ -300,6 +304,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marketplace_action'])
                 'barangay'=>(string)$barangay,'city'=>(string)$city,
                 'is_active'=>strtolower(trim((string)$accountStatus)) === 'active'
             ];
+            // Store-wide rating: use every review across this seller's products,
+            // not an unweighted average of the product averages.
+            $shopReviewCount = 0;
+            $shopAverageRating = 0.0;
+            if (marketplaceReviewsReady($conn)) {
+                $shopReviewStmt = $conn->prepare('SELECT COUNT(*), COALESCE(AVG(r.rating), 0) FROM reviews r INNER JOIN products p ON p.product_id = r.product_id WHERE p.seller_id = ?');
+                if ($shopReviewStmt) {
+                    try {
+                        $shopReviewStmt->bind_param('i', $sellerId);
+                        $shopReviewStmt->execute();
+                        $shopReviewStmt->bind_result($shopReviewCount, $shopAverageRating);
+                        $shopReviewStmt->fetch();
+                    } finally {
+                        $shopReviewStmt->close();
+                    }
+                }
+            }
+            $shop['review_count'] = (int)$shopReviewCount;
+            $shop['avg_rating'] = $shopReviewCount > 0 ? round((float)$shopAverageRating, 1) : 0.0;
             $sql = savedDetailsQuery($conn) . ' WHERE p.seller_id=? AND LOWER(TRIM(p.status)) IN (\'available\',\'out of stock\') AND LOWER(TRIM(u.account_status))=\'active\' AND u.SellerOrNot=1 AND u.AdminOrNot=0 ORDER BY p.created_at DESC,p.product_id DESC';
             $stmt = $conn->prepare($sql);
             $stmt->bind_param('i', $sellerId);
@@ -356,7 +379,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marketplace_action'])
         jsonResponse(false, 'Unsupported Saved action.', [], 400);
     } catch (RuntimeException $e) {
         error_log('LokalCraft Saved action: ' . $e->getMessage());
-        $safeMessages = ['Product not found.', 'This product is currently unavailable.'];
+        $safeMessages = ['Product not found.', 'This product is currently unavailable.', 'All available units are already in your cart.'];
         $publicMessage = in_array($e->getMessage(), $safeMessages, true)
             ? $e->getMessage() : 'Unable to complete the request. Please try again.';
         jsonResponse(false, $publicMessage, [], 400);
@@ -3770,6 +3793,241 @@ body{background:#f8f7f5;color:var(--lc-ink)}
 #checkoutModal .lc-addon-popover .lc-custom-details{margin:9px 0 3px 26px}
 #checkoutModal .lc-addon-popover .lc-custom-details input{font-size:16px!important}
 @media(max-width:480px){#checkoutModal .lc-addon-trigger{min-height:44px;padding:10px 11px}#checkoutModal .lc-addon-popover-head{padding:9px 11px}#checkoutModal .lc-addon-popover-list{padding-left:11px;padding-right:11px}}
+
+/* Cart parity with the current For You / Saved Marketplace design.
+   Added last so older Cart-only rules cannot override the final palette. */
+:root {
+  --bg: #FFF8ED;
+  --orange: #A55325;
+  --orange-dark: #A55325;
+  --orange-soft: #FFF0E2;
+}
+html, body, .page { background-color: #FFF8ED; }
+.page > .content { background: #FFF8ED; }
+.cart-wrap { max-width: 1600px; min-width: 0; }
+.cart-card, .summary-card {
+  min-width: 0;
+  background: #FFFEFC;
+  border-color: #EAE0D7;
+  box-shadow: 0 8px 22px rgba(67, 44, 22, .045);
+}
+.cart-card-header { background: #FFFEFC; }
+.cart-header .page-title { color: #382C22; letter-spacing: -.04em; }
+.cart-card-title, .summary-title { color: #42352A; }
+.cart-item:hover:not(.is-unavailable) { background: #FFFAF5; }
+.cart-item.is-selected { background: #FFF8F0; box-shadow: inset 3px 0 0 #A55325; }
+.cart-item-price, .summary-total strong, .lc-example-final strong { color: #B76624; }
+.cart-edit-toggle { border-color: #E7D8C8; background: #FFFAF5; color: #87532C; }
+.cart-edit-toggle:hover, .cart-edit-toggle[aria-pressed="true"] {
+  background: #FFF0E2;
+  border-color: #DAAD88;
+}
+.cart-wrap.is-editing .cart-item.is-edit-selected { box-shadow: inset 3px 0 0 #A55325; }
+/* Brand gradient on the main cart CTA only; secondary controls stay subdued. */
+.summary-checkout-btn,
+#checkoutModal .checkout-btn.primary,
+#productDetailsModal .product-details-cart:not(.is-complete),
+.lc-view-store {
+  background: linear-gradient(135deg, #A55325 0%, #C2692E 100%);
+  border-color: #A55325;
+  color: #FFF8ED;
+}
+.summary-checkout-btn:hover:not(:disabled),
+#checkoutModal .checkout-btn.primary:hover:not(:disabled),
+#productDetailsModal .product-details-cart:hover:not(:disabled):not(.is-complete),
+.lc-view-store:hover:not(:disabled) {
+  background: linear-gradient(135deg, #90461F 0%, #A55325 100%);
+  border-color: #90461F;
+  color: #FFF8ED;
+}
+/* Preserve success styling rather than leaving the CTA gradient on completion. */
+#checkoutModal .checkout-btn.primary.is-request-sent:disabled,
+#productDetailsModal .product-details-cart.is-complete {
+  background: #E9F8F1;
+  border-color: #B7DFC8;
+  color: #20744B;
+}
+/* iPhone Safari: focused inputs smaller than 16px can trigger page auto-zoom.
+   touch-action:manipulation suppresses double-tap zoom on the +/- targets,
+   without disabling deliberate browser pinch-to-zoom. Chromium honors it too. */
+.cart-item .quantity-control { max-width: 100%; overflow: hidden; }
+.cart-item .quantity-control input.qty-input {
+  font-size: 16px !important;
+  line-height: normal;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  touch-action: manipulation;
+}
+.cart-item .quantity-control input.qty-input::-webkit-inner-spin-button,
+.cart-item .quantity-control input.qty-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.cart-item .quantity-control button.qty-plus,
+.cart-item .quantity-control button.qty-minus {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  font-size: 16px;
+  line-height: 1;
+}
+.cart-item .quantity-control input.qty-input:focus-visible,
+.cart-item .quantity-control button:focus-visible {
+  outline: 2px solid #B76624;
+  outline-offset: -2px;
+}
+/* Other editable checkout fields must not auto-zoom when focused on Safari. */
+#checkoutModal input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+#checkoutModal select, #checkoutModal textarea {
+  font-size: 16px !important;
+}
+@media (max-width: 840px) {
+  .cart-wrap { width: 100%; }
+}
+@media (max-width: 560px) {
+  .cart-item .quantity-control button.qty-plus,
+  .cart-item .quantity-control button.qty-minus { touch-action: manipulation; }
+  .cart-item .quantity-control { height: 40px; }
+  .cart-item .quantity-control button.qty-plus,
+  .cart-item .quantity-control button.qty-minus { width: 34px; flex: 0 0 34px; }
+}
+
+/* Cart header, product popups and shop: parity with final For You / Saved palette.
+   The shared buyer_search.php already defines the search control: only the Cart
+   header surface lacked the page-scoped cream override. */
+.page .buyer-header-tools { background: #FFF8ED; }
+:root {
+  --lc-accent-dark: #A55325;
+  --lc-accent-dark-hover: #C2692E;
+  --lc-action-cream: #FFF8ED;
+}
+/* Saved heart: dark CTA-brown icon on the original pale surface. */
+#productDetailsModal .product-details-save.is-saved,
+#productDetailsModal .product-details-save:hover,
+#lcStoreModal .lc-store-save-btn.is-saved { color: var(--lc-accent-dark); }
+#productDetailsModal .product-details-save.is-saved,
+#productDetailsModal .product-details-save:hover { background: #FFF0E1; border-color: #D2A98A; }
+#lcStoreModal .lc-store-save-btn.is-saved { background: #FFF2E5; }
+/* Brown-orange CTA actions, leaving nonprimary and completed-success buttons alone. */
+#productDetailsModal .product-details-buy:not(.is-complete),
+#productDetailsModal .product-details-cart:not(.is-complete),
+#productDetailsModal .lc-view-store,
+#lcStoreModal .lc-view-store {
+  background: linear-gradient(135deg,var(--lc-accent-dark),var(--lc-accent-dark-hover));
+  border-color: var(--lc-accent-dark);
+  color: var(--lc-action-cream);
+}
+#productDetailsModal .product-details-buy:hover:not(:disabled):not(.is-complete),
+#productDetailsModal .product-details-cart:hover:not(:disabled):not(.is-complete),
+#productDetailsModal .lc-view-store:hover:not(:disabled),
+#lcStoreModal .lc-view-store:hover:not(:disabled) {
+  background: linear-gradient(135deg,var(--lc-accent-dark-hover),var(--lc-accent-dark));
+  border-color: var(--lc-accent-dark-hover);
+  color: var(--lc-action-cream);
+}
+#productDetailsModal .seller-action-btn:not(.lc-view-store) { color: var(--lc-accent-dark); }
+/* Product seller and store identities use the same restrained CTA gradient. */
+#productDetailsModal .seller-avatar,
+#lcStoreModal .lc-store-avatar {
+  background: linear-gradient(135deg,var(--lc-accent-dark),var(--lc-accent-dark-hover));
+  color: var(--lc-action-cream);
+}
+#productDetailsModal .seller-details-title svg,
+#productDetailsModal .product-reviews-title svg,
+#lcStoreModal .lc-store-fact-icon { color: var(--lc-accent-dark); }
+#productDetailsModal .product-details-category,
+#lcStoreModal .lc-store-item-category,
+#lcStoreModal .lc-store-product-meta .lc-store-item-category,
+#lcStoreModal .lc-store-role,
+#lcStoreModal .lc-eyebrow { color: var(--lc-accent-dark) !important; }
+/* Shop-wide rating beneath the avatar (one count from all real seller reviews). */
+#lcStoreModal .lc-store-summary { grid-template-columns: 136px minmax(0,1fr) auto; }
+#lcStoreModal .lc-store-identity {
+  grid-area: avatar;
+  width: 136px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  align-self: center;
+}
+#lcStoreModal .lc-store-identity .lc-store-avatar {
+  grid-area: auto;
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+}
+#lcStoreModal .lc-store-reviews {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: 5px;
+  row-gap: 1px;
+  max-width: 100%;
+  text-align: center;
+  color: #624937;
+  font-size: .73rem;
+  font-weight: 800;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+#lcStoreModal .lc-store-review-star { color: #E3A22E; font-size: 1.02rem; line-height: 1; }
+/* Match the Saved / For You shop product cards and their heart, rating and price. */
+#lcStoreModal .lc-store-product { background: #FFFEFC; }
+#lcStoreModal .lc-store-product-meta strong { color: #433529; }
+#lcStoreModal .lc-store-product-meta .lc-store-item-price { color: #B86629; }
+#lcStoreModal .lc-store-product-meta .lc-store-item-rating { color: #957A63 !important; }
+#lcStoreModal .lc-store-save-btn { color: #6F6158; }
+#lcStoreModal .lc-store-save-btn.is-saved { color: var(--lc-accent-dark); background: #FFF2E5; }
+#lcStoreModal .lc-store-out-of-stock { color: #9B693E; background: rgba(255,251,246,.96); }
+@media (max-width:760px) {
+  #lcStoreModal .lc-store-summary { grid-template-columns: 110px minmax(0,1fr); grid-template-areas: "avatar details" "avatar status"; }
+  #lcStoreModal .lc-store-identity { width: 110px; }
+  #lcStoreModal .lc-store-reviews { font-size: .67rem; }
+}
+@media (max-width:560px) {
+  #lcStoreModal .lc-store-products { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:360px) {
+  #lcStoreModal .lc-store-summary { grid-template-columns: 88px minmax(0,1fr); }
+  #lcStoreModal .lc-store-identity { width: 88px; }
+  #lcStoreModal .lc-store-reviews { font-size: .63rem; }
+}
+@media (max-width:315px) {
+  #lcStoreModal .lc-store-products { grid-template-columns: minmax(0,1fr); }
+}
+
+/* Checkout confirmation: clickable message links in the original bottom toast. */
+#toast.marketplace-toast.show.lc-order-success-toast {
+  pointer-events: auto;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 28px));
+  max-height: min(48dvh, 340px);
+  overflow-y: auto;
+  z-index: 190000;
+  padding: 12px 16px;
+  text-align: left;
+}
+#toast .lc-cart-toast-action {
+  display: block;
+  color: #fff;
+  font-weight: 750;
+  text-decoration: none;
+  line-height: 1.55;
+  border-radius: 7px;
+  outline-offset: 4px;
+}
+#toast .lc-cart-toast-action:hover,
+#toast .lc-cart-toast-action:focus-visible { text-decoration: underline; }
+#toast .lc-cart-toast-heading { display: block; margin-bottom: 6px; font-weight: 800; }
+#toast .lc-cart-toast-seller-link { padding: 6px 0; }
+#toast .lc-cart-toast-seller-link + .lc-cart-toast-seller-link { border-top: 1px solid rgba(255,255,255,.22); }
   </style>
 </head>
 <body>
@@ -4002,7 +4260,6 @@ body{background:#f8f7f5;color:var(--lc-ink)}
                   <option value="cash">Cash</option>
                 </select>
               </div>
-              <p class="lc-checkout-helper" id="paymentMethodNote">Cash: Meetup or Pickup · QR Ph: after seller accepts</p>
               <p class="lc-checkout-field-error" id="checkoutPaymentError" hidden role="status"></p>
             </div>
           </div>
@@ -4391,8 +4648,18 @@ function renderStore(data){
   $('lcStoreTitle').textContent='Store Profile';
   $('lcStoreSummary').replaceChildren();
   const avatar=document.createElement('div');avatar.className='lc-store-avatar';avatar.textContent=String(name).trim().slice(0,2).toUpperCase();
+  const identity=document.createElement('div');identity.className='lc-store-identity';
+  const shopReviewCount=Math.max(0,Number(shop.review_count)||0);
+  const shopRating=Math.max(0,Math.min(5,Number(shop.avg_rating)||0));
+  const shopReviews=document.createElement('div');shopReviews.className='lc-store-reviews';
+  const reviewStar=document.createElement('span');reviewStar.className='lc-store-review-star';reviewStar.textContent=shopReviewCount?'★':'☆';
+  const reviewText=document.createElement('span');reviewText.textContent=shopReviewCount
+    ?shopRating.toFixed(1)+' ('+shopReviewCount+' '+(shopReviewCount===1?'review':'reviews')+')'
+    :'No reviews yet';
+  shopReviews.setAttribute('aria-label',shopReviewCount?shopRating.toFixed(1)+' out of 5 stars from '+shopReviewCount+' reviews':'No store reviews yet');
+  shopReviews.append(reviewStar,reviewText);identity.append(avatar,shopReviews);
   const meta=document.createElement('div');meta.className='lc-store-profile-details';const role=document.createElement('span');role.className='lc-store-role';role.textContent=shop.is_active===false?'LOCAL ARTISAN':'VERIFIED LOCAL ARTISAN';const nameEl=document.createElement('div');nameEl.className='lc-store-summary-name';nameEl.textContent=name;
-  const sub=document.createElement('div');sub.className='lc-store-summary-meta';sub.textContent=[shop.craftcategory,shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(' · ');meta.append(role,nameEl,sub);const active=document.createElement('span');active.className='lc-store-active';active.innerHTML='<span class="lc-store-active-dot"></span>'+(shop.is_active===false?'Inactive Store':'Active Store');$('lcStoreSummary').append(avatar,meta,active);
+  const sub=document.createElement('div');sub.className='lc-store-summary-meta';sub.textContent=[shop.craftcategory,shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(' · ');meta.append(role,nameEl,sub);const active=document.createElement('span');active.className='lc-store-active';active.innerHTML='<span class="lc-store-active-dot"></span>'+(shop.is_active===false?'Inactive Store':'Active Store');$('lcStoreSummary').append(identity,meta,active);
   const facts=$('lcStoreFacts');facts.replaceChildren(storeFact('Seller Name',shop.seller_name),storeFact('Craft Category',shop.craftcategory),storeFact('Business Description',shop.description,true),storeFact('Business Location',[shop.barangay,shop.city||'Taguig City'].filter(Boolean).join(', '),true));
   $('lcStoreMore').hidden=false;$('lcStoreProductCount').textContent=items.length+' items';
   const listing=$('lcStoreProducts');listing.replaceChildren();
@@ -4424,13 +4691,24 @@ const cartBusyIds=new Set();
 detailCart.addEventListener('click',async()=>{
   if(!selectedProduct||selectedProduct.is_available===false||stockMax()<=0)return;
   const productId=Number(selectedProduct.product_id);
+  // Do not race a currently saving +/- quantity request with this Add to Cart request.
+  if(window.lcCartHasPendingQuantity?.()){
+    showToast('Wait for your quantity update to finish.','error');
+    return;
+  }
   if(cartBusyIds.has(productId))return;cartBusyIds.add(productId);
   detailCart.disabled=true;detailCart.innerHTML='<span class="lc-spinner"></span><span>Adding...</span>';
   try{const form=new FormData();form.append('marketplace_action','add_to_cart');form.append('product_id',String(productId));form.append('quantity','1');const result=await postAction(form);
     const row=document.querySelector('.cart-item[data-product-id="'+productId+'"]');
-    if(row){const input=row.querySelector('.qty-input');if(input){input.value=String(result.cart_quantity);input.dataset.savedQuantity=String(result.cart_quantity);}window.dispatchEvent(new Event('lc-cart-updated'));}
-    else needsCartReload=true;
-    detailCart.classList.add('is-complete');detailCart.innerHTML='<span>✓ Added to Cart</span>';showToast('Cart quantity updated.','success');
+    if(row){
+      // The Cart controller owns quantities, row totals, and the selected-price preview.
+      // Send the confirmed DB quantity so its in-flight +/- state stays in sync.
+      window.dispatchEvent(new CustomEvent('lc-cart-updated',{
+        detail:{productId,cartQuantity:Number(result.cart_quantity)}
+      }));
+    }else needsCartReload=true;
+    detailCart.classList.add('is-complete');detailCart.innerHTML='<span>✓ Added to Cart</span>';
+    showToast(row?'Cart quantity updated.':'Added to Cart.','success');
     setTimeout(()=>{cartBusyIds.delete(productId);if(Number(selectedProduct?.product_id)!==productId)return;detailCart.disabled=selectedProduct.is_available===false||stockMax()<=0;detailCart.classList.remove('is-complete');detailCart.innerHTML='<span>Add to Cart</span>';},1800);
   }catch(e){cartBusyIds.delete(productId);if(Number(selectedProduct?.product_id)===productId){detailCart.disabled=selectedProduct.is_available===false||stockMax()<=0;detailCart.textContent='Add to Cart';}showToast(e.message,'error');}
 });
@@ -4533,6 +4811,8 @@ for(const row of document.querySelectorAll('.cart-item')){
     let editing = false, bulkBusy = false;
     const quantityStates = new WeakMap();
     let pendingQuantityRequests = 0;
+    // Used by the Product Details popup to avoid overlapping changes to cart quantities.
+    window.lcCartHasPendingQuantity = () => pendingQuantityRequests > 0;
     const checkoutSelected = document.getElementById('checkoutSelected');
     const summarySelectedProducts = document.getElementById('summarySelectedProducts');
     const summarySelectedQuantity = document.getElementById('summarySelectedQuantity');
@@ -4578,6 +4858,50 @@ for(const row of document.querySelectorAll('.cart-item')){
       toast.textContent = message;
       toast.className = 'marketplace-toast show ' + type;
       toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
+    }
+    // create_order.php returns one order for each seller. Link only to the order
+    // IDs actually confirmed in its successful response, never a guessed thread.
+    function showOrderSuccessToast(result) {
+      if (!toast) return;
+      clearTimeout(toastTimer);
+      const orders = (Array.isArray(result?.orders) ? result.orders : []).filter(order =>
+        Number.isSafeInteger(Number(order.order_id)) && Number(order.order_id) > 0 &&
+        Number.isSafeInteger(Number(order.seller_id)) && Number(order.seller_id) > 0
+      );
+      toast.replaceChildren();
+      toast.className = 'marketplace-toast show success lc-order-success-toast';
+      if (orders.length === 1) {
+        const order = orders[0];
+        const link = document.createElement('a');
+        link.className = 'lc-cart-toast-action';
+        link.href = 'messages.php?seller_id=' + encodeURIComponent(String(order.seller_id))
+          + '&order_id=' + encodeURIComponent(String(order.order_id));
+        link.textContent = 'Order request sent! Tap to open your conversation with '
+          + (String(order.seller_name || '').trim() || 'the seller') + ' →';
+        toast.appendChild(link);
+      } else if (orders.length > 1) {
+        const heading = document.createElement('strong');
+        heading.className = 'lc-cart-toast-heading';
+        heading.textContent = orders.length + ' order requests sent! Open a seller chat:';
+        toast.appendChild(heading);
+        orders.forEach(order => {
+          const link = document.createElement('a');
+          link.className = 'lc-cart-toast-action lc-cart-toast-seller-link';
+          link.href = 'messages.php?seller_id=' + encodeURIComponent(String(order.seller_id))
+            + '&order_id=' + encodeURIComponent(String(order.order_id));
+          link.textContent = (String(order.seller_name || '').trim() || 'Seller')
+            + ' · Order #' + String(order.order_id) + ' →';
+          toast.appendChild(link);
+        });
+      } else {
+        const link = document.createElement('a');
+        link.className = 'lc-cart-toast-action';
+        link.href = 'messages.php';
+        link.textContent = 'Order request sent! Tap to open Messages →';
+        toast.appendChild(link);
+      }
+      // Give buyers time to tap. No automatic page reload interrupts the link.
+      toastTimer = setTimeout(() => toast.classList.remove('show'), orders.length > 1 ? 14000 : 10000);
     }
     function getCartItems() {
       return [...document.querySelectorAll('.cart-item')];
@@ -5414,15 +5738,39 @@ for(const row of document.querySelectorAll('.cart-item')){
       }
     }
     function closeCheckoutModal() {
-      if (checkoutSending) return;
+      if (checkoutSending || checkoutSent) return;
       checkoutOpenSequence++;
       checkoutLoading = false;
       checkoutOptionsLoaded = false;
       setModalOpen(false);
-      if (checkoutSent) {
-        // Reload this same Cart page after confirmation to reflect the server's cart state.
-        window.location.reload();
-      }
+    }
+    // Reconcile only the quantities confirmed by create_order.php. The server
+    // already deleted full quantities or reduced partially ordered cart rows
+    // within the successful order transaction.
+    function applyConfirmedOrderToCart(submittedItems) {
+      const requested = new Map(submittedItems.map(item => [Number(item.cart_id), Number(item.quantity)]));
+      getCartItems().forEach(item => {
+        const quantityOrdered = requested.get(Number(item.dataset.cartId));
+        if (!Number.isSafeInteger(quantityOrdered) || quantityOrdered <= 0) return;
+        const input = item.querySelector('.qty-input');
+        const oldQuantity = Number(input?.dataset.savedQuantity || input?.value || 0);
+        const remaining = oldQuantity - quantityOrdered;
+        if (!input || remaining <= 0) {
+          item.remove();
+          return;
+        }
+        input.value = String(remaining);
+        input.defaultValue = String(remaining);
+        input.dataset.savedQuantity = String(remaining);
+        quantityStates.set(item, {confirmed: remaining, desired: remaining, running: false});
+        const checkbox = item.querySelector('.cart-select');
+        if (checkbox) checkbox.checked = false;
+        updateItemVisuals(item);
+      });
+      updateCartCount();
+      showEmptyStateIfNeeded();
+      updateSelectionSummary();
+      applyCartSearch();
     }
     async function createSelectedOrders() {
       if (checkoutSending || checkoutSent || checkoutLoading || !checkoutOptionsLoaded) return;
@@ -5460,30 +5808,33 @@ for(const row of document.querySelectorAll('.cart-item')){
       formData.append('delivery_option', deliveryOption);
       formData.append('payment_option', paymentOption);
       setCheckoutBusy(true);
-      let requestSucceeded = false;
+      let createdOrderResponse = null;
       try {
-        // Only a confirmed server success triggers automatic dismissal.
-        await postCreateOrder(formData);
+        // The server commits the order, opens the message thread and updates
+        // the cart atomically. Never dismiss the modal on an error.
+        createdOrderResponse = await postCreateOrder(formData);
         checkoutSent = true;
-        requestSucceeded = true;
         showCheckoutError('');
       } catch (error) {
-        // Keep the popup open and show the error so the buyer can try again.
         showCheckoutError(error.message || 'Unable to send your order request. Please try again.');
       } finally {
         setCheckoutBusy(false);
-        if (requestSucceeded) {
+        if (createdOrderResponse) {
           checkoutOpenSequence++;
           checkoutOptionsLoaded = false;
+          // Start dismissal and remove/decrement confirmed ordered items in
+          // the same UI update, instead of waiting for a delayed reload.
           checkoutModal.classList.add('lc-closing');
+          applyConfirmedOrderToCart(selectedPayload);
+          showOrderSuccessToast(createdOrderResponse);
           window.setTimeout(() => {
             setModalOpen(false);
             checkoutModal.classList.remove('lc-closing');
-            showToast('Order request sent! You can check it in Messages.');
-            try { checkoutSelected?.focus({preventScroll: true}); } catch (_) { }
+            checkoutSent = false;
+            checkoutCartSnapshot = [];
+            setCheckoutBusy(false);
+            try { if (!checkoutSelected?.disabled) checkoutSelected.focus({preventScroll: true}); } catch (_) { }
           }, 180);
-          // Refresh the cart after the success toast appears; no manual Close needed.
-          window.setTimeout(() => window.location.reload(), 1500);
         }
       }
     }
@@ -5563,7 +5914,27 @@ for(const row of document.querySelectorAll('.cart-item')){
         closeCheckoutModal();
       }
     });
-    window.addEventListener('lc-cart-updated',()=>{updateCartCount();updateSelectionSummary();showEmptyStateIfNeeded();applyCartSearch();});
+    window.addEventListener('lc-cart-updated',(event)=>{
+      // A Product Details add is saved by PHP, but must refresh all price labels here.
+      const productId = Number(event.detail?.productId);
+      const confirmed = Number(event.detail?.cartQuantity);
+      if (Number.isSafeInteger(productId) && productId > 0
+          && Number.isSafeInteger(confirmed) && confirmed >= 1 && confirmed <= 999) {
+        const item = getCartItems().find(row => Number(row.dataset.productId) === productId);
+        const input = item?.querySelector('.qty-input');
+        if (item && input) {
+          input.value = String(confirmed);
+          input.dataset.savedQuantity = String(confirmed);
+          // Keep the next +/- tap consistent with the quantity confirmed by the database.
+          quantityStates.set(item, {confirmed, desired: confirmed, running: false});
+          updateItemVisuals(item); // Updates the individual Item total immediately.
+        }
+      }
+      updateCartCount();
+      updateSelectionSummary(); // Updates selected quantity and selected items total.
+      showEmptyStateIfNeeded();
+      applyCartSearch();
+    });
     updateCartCount();
     updateSelectionSummary();
     window.addEventListener('pageshow', (event) => {

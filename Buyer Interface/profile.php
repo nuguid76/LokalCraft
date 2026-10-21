@@ -369,14 +369,14 @@ if ($sellerApplicationStatus === 'pending') {
   <title>LokalCraft | Profile</title>
   <style>
     :root {
-      --profile-bg: #f4f3f1;
+      --profile-bg: #fff8ed;
       --profile-card: #ffffff;
       --profile-text: #2d2d2d;
       --profile-muted: #76716d;
       --profile-line: #e8e1da;
-      --profile-orange: #ea8a3a;
-      --profile-orange-dark: #d87522;
-      --profile-orange-soft: #fff3e8;
+      --profile-orange: #a55325;
+      --profile-orange-dark: #85401e;
+      --profile-orange-soft: #fff1e7;
       --profile-green: #278553;
       --profile-green-soft: #edf9f1;
       --profile-red: #bd4c4c;
@@ -702,9 +702,9 @@ if ($sellerApplicationStatus === 'pending') {
     .profile-inline-error{margin-top:12px;padding:10px 12px;border-radius:9px;border:1px solid #edc1be;background:#fff1f1;color:#933d38;font-size:.76rem;line-height:1.45}
     .profile-inline-error[hidden]{display:none}
     .edit-profile-save:disabled{opacity:.52;cursor:not-allowed}
-    .profile-otp-overlay{position:fixed;inset:0;z-index:220000;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(35,27,21,.57);backdrop-filter:blur(3px)}
+    .profile-otp-overlay{position:fixed;inset:0;z-index:220000;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(35,27,21,.57);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
     .profile-otp-overlay.open{display:flex}
-    .profile-otp-card{width:min(430px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;padding:24px;border:1px solid #e9d9c9;border-radius:20px;background:#fffdfa;box-shadow:0 28px 85px rgba(30,20,10,.25);text-align:center}
+    .profile-otp-card{width:min(430px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;padding:24px;border:1px solid #e9d9c9;border-radius:20px;background:#fffdfa;box-shadow:0 28px 85px rgba(30,20,10,.25);text-align:center}
     .profile-otp-head{position:relative;display:flex;justify-content:center;align-items:center;min-height:62px}
     .profile-otp-head .edit-profile-close{position:absolute;right:0;top:0}
     .profile-otp-icon{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#f8e9d8;color:#aa5c2c;border:1px solid #efd8be;font-size:27px}
@@ -726,23 +726,26 @@ if ($sellerApplicationStatus === 'pending') {
     .profile-otp-link{border:0;background:transparent;color:#b76733;font-size:.77rem;font-weight:750;cursor:pointer;padding:5px}
     .profile-otp-link:disabled{color:#ad9e91;cursor:not-allowed}
     .edit-profile-lock-note{grid-column:1/-1;margin:0;padding:9px 11px;border:1px solid #eee4da;border-radius:9px;background:#fcfaf7;color:#7d736a;font-size:.7rem;line-height:1.45}
-    @media(max-width:560px){.profile-otp-card{padding:20px 17px;border-radius:17px}.profile-otp-digits{gap:6px}.profile-otp-digit{height:49px;font-size:1.2rem;border-radius:9px}.edit-profile-modal{max-height:calc(100dvh - 26px)}}
+    @media(max-width:560px){.profile-otp-card{padding:20px 17px;border-radius:17px}.profile-otp-digits{gap:6px}.profile-otp-digit{height:49px;font-size:1.2rem;border-radius:9px}.edit-profile-modal{max-height:calc(100vh - 26px);max-height:calc(100dvh - 26px)}}
     /* Keep edit/OTP dialogs scrollable when the virtual keyboard is visible. */
     .edit-profile-modal, .profile-otp-card {
+      max-height: calc(100vh - 36px);
       max-height: calc(100dvh - 36px);
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
     @media (max-width: 560px) {
       .edit-profile-overlay, .profile-otp-overlay { padding: 12px; }
-      .edit-profile-modal, .profile-otp-card { max-height: calc(100dvh - 24px); }
+      .edit-profile-modal, .profile-otp-card { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
       .profile-otp-digit { font-size: 19px; }
     }
 
 /* Profile overview — LokalCraft cream & orange. */
 /* Selector is deliberately more specific than shared Buyer navigation CSS. */
 .page>.content.buyer-profile-content { position:fixed!important; margin:0!important; left:240px!important; right:0!important; top:0!important; bottom:0!important; width:calc(100vw - 240px)!important; max-width:none!important; min-width:0!important; height:auto!important; overflow-x:hidden!important; overflow-y:auto!important; }
-.profile-wrap { width:100%; max-width:1080px; margin:0 auto; min-width:0; }
+/* Lock the scrollable profile pane too, not only body, while a modal is open. */
+body.profile-modal-open .page>.content.buyer-profile-content { overflow-y:hidden!important; }
+.profile-wrap { width:100%; max-width:1600px; margin:0 auto; min-width:0; }
 .profile-hero { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:0 0 21px; }
 .profile-hero-copy { min-width:0; }
 .profile-eyebrow { display:block; margin:0 0 5px; color:#b57945; font-size:.67rem; font-weight:800; letter-spacing:.15em; }
@@ -810,7 +813,7 @@ if ($sellerApplicationStatus === 'pending') {
 .edit-profile-lock-note svg { width:15px; height:15px; flex:0 0 15px; }
 .edit-profile-field input { font-size:16px!important; }
 .edit-profile-field input:focus-visible { outline:0; }
-.edit-profile-modal,.profile-otp-card { max-height:calc(100dvh - 36px); -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+.edit-profile-modal,.profile-otp-card { max-height:calc(100vh - 36px); max-height:calc(100dvh - 36px); -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
 @media(max-width:980px) { .profile-grid { grid-template-columns:1fr; } }
 @media(max-width:840px) { .page>.content.buyer-profile-content { position:relative!important; left:0!important; right:0!important; top:auto!important; bottom:auto!important; margin-left:0!important; width:100%!important; max-width:100%!important; height:auto!important; overflow-y:visible!important; padding:80px 16px 32px!important; min-width:0; } }
 @media(max-width:560px) {
@@ -837,7 +840,7 @@ if ($sellerApplicationStatus === 'pending') {
   .detail-value { font-size:.83rem; }
   .seller-card-body { padding:17px 15px; }
   .edit-profile-overlay,.profile-otp-overlay { padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); }
-  .edit-profile-modal,.profile-otp-card { max-height:calc(100dvh - 24px); }
+  .edit-profile-modal,.profile-otp-card { max-height:calc(100vh - 24px); max-height:calc(100dvh - 24px); }
 }
 @media(max-width:360px) { .profile-section-heading { gap:7px; } .profile-seller-card .profile-section-heading h2 { font-size:.82rem; } .status-pill { padding:6px 7px; font-size:.6rem; } }
 
@@ -855,7 +858,7 @@ if ($sellerApplicationStatus === 'pending') {
 .profile-fixed-value span{font-size:13px}
 .profile-date-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
 .profile-date-trigger svg{flex:0 0 19px;color:#b5753c}
-.profile-birth-calendar{position:fixed;z-index:210000;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:12px;border:1px solid #ead8c6;border-radius:14px;background:#fffdfa;box-shadow:0 14px 36px rgba(74,45,23,.18)}
+.profile-birth-calendar{position:fixed;z-index:210000;width:min(360px,calc(100vw - 24px));max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:12px;border:1px solid #ead8c6;border-radius:14px;background:#fffdfa;box-shadow:0 14px 36px rgba(74,45,23,.18)}
 .profile-birth-calendar[hidden]{display:none!important}
 .birth-calendar-header{display:grid;grid-template-columns:32px minmax(0,1.35fr) minmax(0,1fr) 32px;gap:5px;align-items:center}
 .birth-calendar-header select{min-width:0;width:100%;min-height:39px;border:1px solid #eaded1;border-radius:8px;background:#fff8f2;color:#634934;padding:4px;font-size:16px}
@@ -869,6 +872,73 @@ if ($sellerApplicationStatus === 'pending') {
 .birth-calendar-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:9px;padding-top:9px;border-top:1px solid #f3e7dc}
 .birth-calendar-footer button{padding:7px 11px;border:0;border-radius:8px;background:#fff0e2;color:#a46029;font-size:12px;font-weight:750}
 @media(max-width:560px){.profile-birth-calendar{max-width:100%;padding:10px}.profile-tip-text{left:-68px;width:min(240px,calc(100vw - 48px))}.birth-calendar-days button{min-height:39px}}
+
+/* Consistent LokalCraft CTA gradient for the Profile avatar and action buttons. */
+.profile-avatar {
+  background: linear-gradient(135deg, #A55325 0%, #C2692E 100%);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(165,83,37,.19);
+}
+.edit-profile-btn,
+.edit-profile-save,
+.seller-action,
+.seller-action.secondary,
+.profile-otp-verify {
+  background: linear-gradient(135deg, #A55325 0%, #C2692E 100%);
+  border-color: #A55325;
+  color: #fff;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.edit-profile-btn:hover:not(:disabled),
+.edit-profile-save:hover:not(:disabled),
+.seller-action:hover,
+.seller-action.secondary:hover,
+.profile-otp-verify:hover:not(:disabled) {
+  background: linear-gradient(135deg, #A55325 0%, #C2692E 100%);
+  border-color: #A55325;
+  color: #fff;
+  filter: brightness(.94);
+  box-shadow: 0 7px 17px rgba(165,83,37,.16);
+}
+.edit-profile-btn:focus-visible,
+.edit-profile-save:focus-visible,
+.seller-action:focus-visible,
+.profile-otp-verify:focus-visible {
+  outline: 3px solid rgba(165,83,37,.35);
+  outline-offset: 3px;
+}
+.profile-otp-verify:disabled { background: #d9c3b2; border-color: #d9c3b2; }
+.birth-calendar-days button[aria-pressed="true"] { background: linear-gradient(135deg, #A55325 0%, #C2692E 100%); border-color: #A55325; }
+.profile-otp-icon { background: #f8ede5; color: #a55325; border-color: #ead4c1; }
+.profile-otp-digit:focus { border-color: #a55325; box-shadow: 0 0 0 3px rgba(165,83,37,.13); }
+.profile-otp-link { color: #a55325; }
+.profile-otp-link:hover:not(:disabled) { color: #85401e; }
+@media (prefers-reduced-motion: no-preference) {
+  .edit-profile-overlay.open .edit-profile-modal,
+  .profile-otp-overlay.open .profile-otp-card {
+    animation: profile-dialog-enter .2s cubic-bezier(.2,.7,.2,1) both;
+  }
+  @keyframes profile-dialog-enter {
+    from { opacity: 0; transform: translateY(9px) scale(.99); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+}
+
+/* My Profile palette — same #FFF8ED cream as For You; shared Buyer files untouched. */
+.page { background: #fff8ed !important; }
+.page > .content.buyer-profile-content { background: #fff8ed !important; }
+/* This higher-specificity rule overrides the later included buyer_search.php styles. */
+.page > .content.buyer-profile-content .buyer-header-tools {
+  background: rgba(255, 248, 237, .98) !important;
+  border-bottom-color: #eadfd2 !important;
+}
+.page > .content.buyer-profile-content .buyer-header-tools .filter-box {
+  background: #fffaf5 !important;
+  border-color: #e8d9c9 !important;
+}
+.page > .content.buyer-profile-content .buyer-header-tools .filter-box:focus-within {
+  background: #fffefb !important;
+}
 </style>
 </head>
 <body>
@@ -1009,7 +1079,7 @@ if ($sellerApplicationStatus === 'pending') {
         </div>
         <div class="edit-profile-field">
           <label for="profilePhone">Phone Number</label>
-          <input id="profilePhone" name="phone" type="tel" maxlength="20" autocomplete="tel" inputmode="numeric" value="<?= buyerProfileE($editValues['phone'] ?? $profile['phone']) ?>" <?= $profileEditAllowed ? 'required' : 'readonly' ?>>
+          <input id="profilePhone" name="phone" type="tel" maxlength="20" autocomplete="tel" inputmode="numeric" placeholder="09XXXXXXXXX" value="<?= buyerProfileE($editValues['phone'] ?? $profile['phone']) ?>" <?= $profileEditAllowed ? 'required' : 'readonly' ?>>
         </div>
         <?php if ($profileApproved): ?>
         <div class="edit-profile-lock-note"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Verified name · Read-only</div>
@@ -1058,7 +1128,7 @@ if ($sellerApplicationStatus === 'pending') {
         </div>
         <div class="edit-profile-field full">
           <label for="profileEmail">Email Address</label>
-          <input id="profileEmail" name="email" type="email" maxlength="100" autocomplete="email" spellcheck="false" value="<?= buyerProfileE($editValues['email'] ?? $profile['email']) ?>" <?= $profileEditAllowed ? 'required' : 'readonly' ?>>
+          <input id="profileEmail" name="email" type="email" maxlength="100" autocomplete="email" autocapitalize="none" spellcheck="false" value="<?= buyerProfileE($editValues['email'] ?? $profile['email']) ?>" <?= $profileEditAllowed ? 'required' : 'readonly' ?>>
           <div class="profile-field-feedback" id="profileEmailFeedback" aria-live="polite"></div>
         </div>
       </div>
@@ -1101,26 +1171,30 @@ if ($sellerApplicationStatus === 'pending') {
   const birthdayInput = document.getElementById('profileBirthday');
   const birthdayButton = document.getElementById('profileBirthdayButton');
   const birthCalendar = document.getElementById('profileBirthCalendar');
+  let closeCalendarFromHistory = null;
+  let openCalendarFromHistory = null;
+  let ignoreNextEditCloseClick = false;
   if (birthdayInput && birthCalendar && birthdayButton) {
     const monthSelect = document.getElementById('birthMonthSelect');
     const yearSelect = document.getElementById('birthYearSelect');
     const daysArea = document.getElementById('birthCalendarDays');
-    const today = new Date();
-    const todayIso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    // The server validates against Asia/Manila; use the same date in every browser/time zone.
+    const todayIso = <?= json_encode((new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->format('Y-m-d'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const [todayYear, todayMonth] = todayIso.split('-').map(Number);
     const firstExisting = /^\d{4}-\d{2}-\d{2}$/.test(birthdayInput.value) ? birthdayInput.value.split('-').map(Number) : null;
-    let displayYear = firstExisting ? firstExisting[0] : today.getFullYear();
-    let displayMonth = firstExisting ? firstExisting[1] : today.getMonth()+1;
+    let displayYear = firstExisting ? firstExisting[0] : todayYear;
+    let displayMonth = firstExisting ? firstExisting[1] : todayMonth;
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     months.forEach((name,idx)=>{const item=document.createElement('option');item.value=String(idx+1);item.textContent=name;monthSelect.appendChild(item);});
-    for (let year=today.getFullYear();year>=1900;year--){const item=document.createElement('option');item.value=String(year);item.textContent=String(year);yearSelect.appendChild(item);}
+    for (let year=todayYear;year>=1900;year--){const item=document.createElement('option');item.value=String(year);item.textContent=String(year);yearSelect.appendChild(item);}
     function selectedIso() {return birthdayInput.value;}
     function labelBirthday() {
       if (selectedIso()) { const [y,m,d]=selectedIso().split('-').map(Number); document.getElementById('profileBirthdayLabel').textContent = `${months[m-1]} ${d}, ${y}`; }
       else document.getElementById('profileBirthdayLabel').textContent = 'Select birthday';
     }
     function renderCalendar() {
-      displayYear=Math.max(1900,Math.min(today.getFullYear(),displayYear));
-      displayMonth=Math.max(1,Math.min(12,displayMonth));
+      displayYear=Math.max(1900,Math.min(todayYear,displayYear));
+      displayMonth=Math.max(1,Math.min(displayYear===todayYear?todayMonth:12,displayMonth));
       monthSelect.value=String(displayMonth);yearSelect.value=String(displayYear);
       daysArea.replaceChildren();
       const offset=new Date(displayYear,displayMonth-1,1).getDay();
@@ -1135,16 +1209,19 @@ if ($sellerApplicationStatus === 'pending') {
         daysArea.appendChild(btn);
       }
       document.getElementById('birthPreviousMonth').disabled=displayYear===1900&&displayMonth===1;
-      document.getElementById('birthNextMonth').disabled=displayYear===today.getFullYear()&&displayMonth>=today.getMonth()+1;
+      document.getElementById('birthNextMonth').disabled=displayYear===todayYear&&displayMonth>=todayMonth;
       if (!birthCalendar.hidden) positionCalendar();
     }
     // Place the picker above the scrollable form so opening it never shifts or clips the fields.
     document.body.appendChild(birthCalendar);
     const editModal = document.querySelector('.edit-profile-modal');
-    function closeCalendar() {
+    function closeCalendar(fromHistory = false) {
+      if (birthCalendar.hidden) return;
       birthCalendar.hidden = true;
       birthdayButton.setAttribute('aria-expanded', 'false');
+      if (!fromHistory) profileHistoryBack('calendar');
     }
+    closeCalendarFromHistory = () => closeCalendar(true);
     function positionCalendar() {
       if (birthCalendar.hidden) return;
       const trigger = birthdayButton.getBoundingClientRect();
@@ -1169,12 +1246,18 @@ if ($sellerApplicationStatus === 'pending') {
       birthCalendar.style.left = `${Math.round(x)}px`;
       birthCalendar.style.top = `${Math.round(Math.max(viewportTop + edge, Math.min(y, viewportTop + viewportHeight - shownHeight - edge)))}px`;
     }
-    birthdayButton.addEventListener('click', () => {
-      if (!birthCalendar.hidden) { closeCalendar(); return; }
+    function openCalendar(fromHistory = false) {
+      if (!birthCalendar.hidden) return;
       renderCalendar();
       birthCalendar.hidden = false;
       birthdayButton.setAttribute('aria-expanded', 'true');
       positionCalendar();
+      if (!fromHistory) profileHistoryPush('calendar');
+    }
+    openCalendarFromHistory = () => openCalendar(true);
+    birthdayButton.addEventListener('click', () => {
+      if (!birthCalendar.hidden) { closeCalendar(); return; }
+      openCalendar();
     });
     editModal?.addEventListener('scroll', () => {
       if (birthCalendar.hidden) return;
@@ -1190,10 +1273,14 @@ if ($sellerApplicationStatus === 'pending') {
     yearSelect.addEventListener('change',()=>{displayYear=Number(yearSelect.value);renderCalendar();});
     document.getElementById('birthPreviousMonth').addEventListener('click',()=>{if(displayMonth===1){displayMonth=12;displayYear--;}else displayMonth--;renderCalendar();});
     document.getElementById('birthNextMonth').addEventListener('click',()=>{if(displayMonth===12){displayMonth=1;displayYear++;}else displayMonth++;renderCalendar();});
-    document.getElementById('birthCalendarToday').addEventListener('click',()=>{birthdayInput.value=todayIso;displayYear=today.getFullYear();displayMonth=today.getMonth()+1;labelBirthday();closeCalendar();birthdayButton.focus({preventScroll:true});});
+    document.getElementById('birthCalendarToday').addEventListener('click',()=>{birthdayInput.value=todayIso;displayYear=todayYear;displayMonth=todayMonth;labelBirthday();closeCalendar();birthdayButton.focus({preventScroll:true});});
     document.getElementById('birthCalendarClear').addEventListener('click',()=>{birthdayInput.value='';labelBirthday();closeCalendar();birthdayButton.focus({preventScroll:true});});
     birthCalendar.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();closeCalendar();birthdayButton.focus();}});
-    document.addEventListener('pointerdown',event=>{if(!birthCalendar.hidden&&!birthCalendar.contains(event.target)&&event.target!==birthdayButton&&!birthdayButton.contains(event.target))closeCalendar();});
+    document.addEventListener('pointerdown',event=>{
+      if (birthCalendar.hidden || birthCalendar.contains(event.target) || event.target === birthdayButton || birthdayButton.contains(event.target)) return;
+      if (event.target.closest('#closeEditProfile, #cancelEditProfile')) ignoreNextEditCloseClick = true;
+      closeCalendar();
+    });
     labelBirthday();renderCalendar();
   }
   // Only one tooltip should be expanded at a time (touch/keyboard friendly).
@@ -1232,23 +1319,99 @@ if ($sellerApplicationStatus === 'pending') {
   let cooldownRemaining = 0;
   let emailTimer = null;
   let emailCheckSerial = 0;
+  // Native Android/Safari back gestures and desktop browser Back should unwind the
+  // visible popup first (calendar > OTP > Edit Profile), without leaving this page.
+  const profileHistoryProperty = '__lokalcraftBuyerProfilePopup';
+  const profileHistoryId = `buyer-profile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let profileHistoryEnabled = false;
+  function profileHistoryState(layer) {
+    const oldState = history.state && typeof history.state === 'object' && !Array.isArray(history.state)
+      ? history.state : {};
+    return {...oldState, [profileHistoryProperty]: {id:profileHistoryId, layer}};
+  }
+  function profileHistoryCurrent() {
+    const state = history.state?.[profileHistoryProperty];
+    return state?.id === profileHistoryId ? state.layer : null;
+  }
+  function profileHistoryPush(layer) {
+    if (!profileHistoryEnabled || profileHistoryCurrent() === layer) return;
+    try { history.pushState(profileHistoryState(layer), '', window.location.href); }
+    catch (error) { profileHistoryEnabled = false; }
+  }
+  function profileHistoryBack(layer) {
+    if (!profileHistoryEnabled || profileHistoryCurrent() !== layer) return;
+    history.back();
+  }
+  function profileHistoryRestoreLayer(layer) {
+    // A forward into a cancelled OTP must not resurrect an invalid verification.
+    if (layer === 'otp') {
+      if (!otpOverlay.classList.contains('open')) {
+        openEditProfile(true);
+        try { history.replaceState(profileHistoryState('edit'), '', window.location.href); } catch (error) {}
+      }
+      return;
+    }
+    if (otpOverlay.classList.contains('open')) {
+      if (otpBusy) { profileHistoryPush('otp'); return; }
+      void closeOtp(true);
+    }
+    if (layer === 'calendar' && closeCalendarFromHistory && openCalendarFromHistory) {
+      if (!overlay.classList.contains('open')) openEditProfile(true);
+      openCalendarFromHistory();
+      return;
+    }
+    closeCalendarFromHistory?.();
+    if (layer === 'edit') {
+      if (!overlay.classList.contains('open')) openEditProfile(true);
+    } else if (overlay.classList.contains('open')) {
+      if (saveBusy) { profileHistoryPush('edit'); return; }
+      closeEditProfile(true);
+    }
+  }
+  try {
+    history.replaceState(profileHistoryState('page'), '', window.location.href);
+    profileHistoryEnabled = true;
+  } catch (error) {
+    // Older/private browsers that disallow pushState still support X/Escape.
+    profileHistoryEnabled = false;
+  }
+  window.addEventListener('popstate', event => {
+    const state = event.state?.[profileHistoryProperty];
+    profileHistoryRestoreLayer(state?.id === profileHistoryId ? state.layer : 'page');
+  });
+  function waitForCalendarHistory() {
+    if (profileHistoryCurrent() !== 'calendar') return Promise.resolve();
+    return new Promise(resolve => {
+      let timer = null;
+      const finished = () => {clearTimeout(timer);window.removeEventListener('popstate',finished);resolve();};
+      window.addEventListener('popstate',finished,{once:true});
+      timer = setTimeout(finished,500);
+    });
+  }
   function setScrollLock() { document.body.classList.toggle('profile-modal-open', overlay.classList.contains('open') || otpOverlay.classList.contains('open')); }
-  function openEditProfile() {
+  function openEditProfile(fromHistory = false) {
     if (!editAllowed) return;
     overlay.classList.add('open');
     overlay.setAttribute('aria-hidden', 'false');
     setScrollLock();
+    if (!fromHistory) profileHistoryPush('edit');
     (canEditName ? first : phone).focus({preventScroll:true});
   }
-  function closeEditProfile() {
+  function closeEditProfile(fromHistory = false) {
+    if (!fromHistory && ignoreNextEditCloseClick) {ignoreNextEditCloseClick = false;return;}
     if (saveBusy || otpBusy || otpOverlay.classList.contains('open')) return;
-    if (birthCalendar) {
-      birthCalendar.hidden = true;
-      birthdayButton?.setAttribute('aria-expanded', 'false');
+    // Clicking the underlying Edit close while a calendar is dismissing must
+    // never pop two layers in one tap.
+    if (!fromHistory && profileHistoryCurrent() === 'calendar') {
+      closeCalendarFromHistory?.();
+      profileHistoryBack('calendar');
+      return;
     }
+    closeCalendarFromHistory?.();
     overlay.classList.remove('open');
     overlay.setAttribute('aria-hidden','true');
     setScrollLock();
+    if (!fromHistory) profileHistoryBack('edit');
     openButton?.focus({preventScroll:true});
   }
   function setError(message) { formError.textContent = message || ''; formError.hidden = !message; }
@@ -1285,8 +1448,6 @@ if ($sellerApplicationStatus === 'pending') {
     element.addEventListener('blur',()=>{ element.value = element.value.trim().replace(/\s+/gu,' '); });
   });
   phone.addEventListener('input',()=>{phone.value=normalizePhone(phone.value);});
-  phone.addEventListener('focus',()=>{if (!phone.value) phone.value='09';});
-  phone.addEventListener('blur',()=>{if (!phone.value) phone.value='09';});
   function checkEmailLocally() {
     const value = email.value.trim().toLowerCase();
     if (!value) {setEmailFeedback('','');return false;}
@@ -1318,6 +1479,7 @@ if ($sellerApplicationStatus === 'pending') {
   email.addEventListener('blur',()=>{ email.value=email.value.trim().toLowerCase(); clearTimeout(emailTimer); checkEmailAvailable(); });
   function validateInputs() {
     setError('');
+    phone.value = normalizePhone(phone.value);
     const checks = [
       ...(canEditName ? [
         [first,validName(first.value,false,false),'Enter a valid first name (maximum 50 characters).'],
@@ -1371,30 +1533,30 @@ if ($sellerApplicationStatus === 'pending') {
   }
   function toggleVerify() {verifyButton.disabled=otpBusy || !/^\d{6}$/.test(otpCode.value);}
   function openOtp(masked, seconds) {
-    if (birthCalendar) {
-      birthCalendar.hidden = true;
-      birthdayButton?.setAttribute('aria-expanded', 'false');
-    }
+    closeCalendarFromHistory?.();
     otpDigits.forEach(input=>{input.value='';input.classList.remove('filled');});
     otpCode.value='';setOtpMessage('','');otpEmail.textContent=masked||email.value.trim();
     otpOverlay.classList.add('open');otpOverlay.setAttribute('aria-hidden','false');
     overlay.setAttribute('aria-hidden','true');
     startCooldown(seconds);
-    toggleVerify();setScrollLock();otpDigits[0].focus({preventScroll:true});
+    toggleVerify();setScrollLock();profileHistoryPush('otp');otpDigits[0].focus({preventScroll:true});
   }
   let otpClosing = false;
-  async function closeOtp() {
-    if (otpBusy || otpClosing) return;
+  async function closeOtp(fromHistory = false) {
+    if (otpBusy || otpClosing || !otpOverlay.classList.contains('open')) return;
     otpClosing = true;
+    // Dismiss first; don't keep a popup on-screen while waiting on the server.
+    otpOverlay.classList.remove('open');otpOverlay.setAttribute('aria-hidden','true');
+    overlay.setAttribute('aria-hidden','false');
+    clearInterval(cooldownTimer);
+    cooldownRemaining = 0;
+    updateCooldown();
+    setScrollLock();
+    if (!fromHistory) profileHistoryBack('otp');
     try { await request('profile_email_cancel'); } catch (error) {}
     finally {
-      otpOverlay.classList.remove('open');otpOverlay.setAttribute('aria-hidden','true');
-      overlay.setAttribute('aria-hidden','false');
-      clearInterval(cooldownTimer);
-      cooldownRemaining = 0;
       otpClosing = false;
-      updateCooldown();
-      setScrollLock();email.focus({preventScroll:true});
+      if (overlay.classList.contains('open') && !otpOverlay.classList.contains('open')) email.focus({preventScroll:true});
     }
   }
   otpDigits.forEach((input, index)=>{
@@ -1426,7 +1588,7 @@ if ($sellerApplicationStatus === 'pending') {
     input.addEventListener('focus',()=>input.select());
   });
   form.addEventListener('submit',async event=>{
-    if (!editAllowed || saveBusy) {event.preventDefault();return;}
+    if (!editAllowed || saveBusy || otpClosing) {event.preventDefault();return;}
     if (!validateInputs()) {event.preventDefault();return;}
     if (email.value.trim().toLowerCase()===currentEmail) {
       saveButton.disabled=true;
@@ -1436,6 +1598,7 @@ if ($sellerApplicationStatus === 'pending') {
     event.preventDefault();
     setSaveBusy(true);
     try {
+      await waitForCalendarHistory();
       const values=Object.fromEntries(new FormData(form).entries());
       const result=await request('profile_email_start',values);
       if (!result.success) {setError(result.message||'Could not send a verification code.');return;}
@@ -1469,9 +1632,9 @@ if ($sellerApplicationStatus === 'pending') {
     }catch(error){setOtpMessage('Unable to resend the code right now.','error');}
     finally{otpBusy=false;updateCooldown();}
   });
-  document.getElementById('profileOtpClose').addEventListener('click',closeOtp);
-  document.getElementById('profileOtpCancel').addEventListener('click',closeOtp);
-  openButton?.addEventListener('click',openEditProfile);
+  document.getElementById('profileOtpClose').addEventListener('click',()=>{void closeOtp();});
+  document.getElementById('profileOtpCancel').addEventListener('click',()=>{void closeOtp();});
+  openButton?.addEventListener('click',()=>openEditProfile());
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     if (otpOverlay.classList.contains('open')) {
@@ -1479,17 +1642,34 @@ if ($sellerApplicationStatus === 'pending') {
       void closeOtp();
     } else if (overlay.classList.contains('open')) {
       if (birthCalendar && !birthCalendar.hidden) {
-        birthCalendar.hidden = true;
-        birthdayButton?.setAttribute('aria-expanded', 'false');
+        closeCalendarFromHistory?.();
+        profileHistoryBack('calendar');
         birthdayButton?.focus({preventScroll:true});
       } else {
         closeEditProfile();
       }
     }
   });
-  closeButton.addEventListener('click',closeEditProfile);
-  cancelButton.addEventListener('click',closeEditProfile);
-  if(overlay.classList.contains('open'))setScrollLock();
+  closeButton.addEventListener('click',()=>closeEditProfile());
+  cancelButton.addEventListener('click',()=>closeEditProfile());
+  // Restore transient button state after back/forward cache navigation (Safari/Chromium).
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    profileHistoryRestoreLayer(profileHistoryCurrent() || 'page');
+    saveBusy = false;
+    saveButton.disabled = !editAllowed;
+    saveButton.textContent = 'Save Changes';
+    if (verifyButton) {
+      otpBusy = false;
+      verifyButton.textContent = 'Verify & Save Changes';
+      toggleVerify();
+      updateCooldown();
+    }
+  });
+  if (overlay.classList.contains('open')) {
+    setScrollLock();
+    profileHistoryPush('edit');
+  }
 })();
 </script>
 </body>

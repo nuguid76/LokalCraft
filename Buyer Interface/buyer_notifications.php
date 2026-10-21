@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/buyer_auth.php';
+date_default_timezone_set('Asia/Manila');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0, private');
 header('X-Content-Type-Options: nosniff');
@@ -12,27 +13,60 @@ function buyerNotifJson(bool $success, string $message = '', array $data = [], i
     exit;
 }
 
-function buyerNotifDestination(mysqli $conn, int $userId, string $referenceType, int $referenceId): ?string
+/** Only these order notifications change the destination. Other order events keep opening Order Details. */
+function buyerNotifOrderAction(string $type, string $title): string
+{
+    $type = strtolower(trim($type));
+    $title = strtolower(trim($title));
+    // Some old events used different type names; only accept a completion label on order events.
+    if (preg_match('/^(?:buyer_)?order_(?:completed|received|delivered)(?:_|$)/', $type)
+        || (str_contains($type, 'order_') && in_array($title, ['order completed', 'order received', 'order delivered'], true))) {
+        return 'review';
+    }
+    if (preg_match('/^(?:buyer_)?order_(?:payment_required|pay_now_reminder|payment_reminder|qr_payment_required)(?:_|$)/', $type)
+        || (str_contains($type, 'order_') && in_array($title, ['payment required', 'pay now reminder', 'payment reminder'], true))) {
+        return 'messages';
+    }
+    if (preg_match('/^(?:buyer_)?order_(?:rejected|declined|seller_rejected|seller_declined)(?:_|$)/', $type)
+        || (str_contains($type, 'order_') && (str_contains($title, 'rejected') || str_contains($title, 'declined')))) {
+        return 'messages';
+    }
+    return 'orders';
+}
+
+function buyerNotifDestination(mysqli $conn, int $userId, string $referenceType, int $referenceId,
+                               string $notificationType = '', string $notificationTitle = ''): ?string
 {
     if ($referenceId <= 0) return null;
     if ($referenceType === 'order') {
-        $stmt = $conn->prepare('SELECT order_id FROM orders WHERE order_id = ? AND buyer_id = ? LIMIT 1');
+        // Resolve the seller from this BUYER-owned order, not from notification text or request parameters.
+        $stmt = $conn->prepare('SELECT order_id, seller_id FROM orders WHERE order_id = ? AND buyer_id = ? LIMIT 1');
         $stmt->bind_param('ii', $referenceId, $userId);
-        $url = 'orders.php?order_id=' . $referenceId;
-    } elseif ($referenceType === 'seller_application') {
+        try {
+            $stmt->execute();
+            $order = $stmt->get_result()->fetch_assoc();
+        } finally {
+            $stmt->close();
+        }
+        if (!$order) return null;
+        $action = buyerNotifOrderAction($notificationType, $notificationTitle);
+        if ($action === 'messages' && (int)$order['seller_id'] > 0) {
+            return 'messages.php?seller_id=' . (int)$order['seller_id'] . '&order_id=' . $referenceId;
+        }
+        return 'orders.php?order_id=' . $referenceId . ($action === 'review' ? '&open_review=1' : '');
+    }
+    if ($referenceType === 'seller_application') {
         $stmt = $conn->prepare('SELECT application_id FROM seller_applications WHERE application_id = ? AND user_id = ? LIMIT 1');
         $stmt->bind_param('ii', $referenceId, $userId);
-        $url = 'seller_application.php';
-    } else {
-        return null;
+        try {
+            $stmt->execute();
+            $exists = $stmt->get_result()->fetch_assoc() !== null;
+            return $exists ? 'seller_application.php' : null;
+        } finally {
+            $stmt->close();
+        }
     }
-    try {
-        $stmt->execute();
-        $exists = $stmt->get_result()->fetch_assoc() !== null;
-        return $exists ? $url : null;
-    } finally {
-        $stmt->close();
-    }
+    return null;
 }
 
 $notificationBuyerId = (int)($buyerId ?? 0);
@@ -47,10 +81,7 @@ try {
         if (!in_array($action, ['list', 'count'], true)) {
             buyerNotifJson(false, 'Invalid notification request.', [], 400);
         }
-        $counter = $conn->prepare(
-            "SELECT COUNT(*) FROM notifications
-             WHERE user_id = ? AND is_read = 0 AND (LEFT(type, 7) <> 'seller_' OR LEFT(type, 19) = 'seller_application_')"
-        );
+        $counter = $conn->prepare('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0 AND (LEFT(type, 7) <> \'seller_\' OR LEFT(type, 19) = \'seller_application_\')');
         $counter->bind_param('i', $notificationBuyerId);
         $counter->execute();
         $counter->bind_result($unreadCount);
@@ -60,10 +91,10 @@ try {
         if ($action === 'count') buyerNotifJson(true, '', $payload);
         $limit = max(1, min(30, (int)($_GET['limit'] ?? 20)));
         $stmt = $conn->prepare(
-            "SELECT notification_id, type, title, message, reference_type, reference_id,
+            'SELECT notification_id, type, title, message, reference_type, reference_id,
                     is_read, created_at
-             FROM notifications WHERE user_id = ? AND (LEFT(type, 7) <> 'seller_' OR LEFT(type, 19) = 'seller_application_')
-             ORDER BY created_at DESC, notification_id DESC LIMIT ?"
+             FROM notifications WHERE user_id = ? AND (LEFT(type, 7) <> \'seller_\' OR LEFT(type, 19) = \'seller_application_\')
+             ORDER BY created_at DESC, notification_id DESC LIMIT ?'
         );
         $stmt->bind_param('ii', $notificationBuyerId, $limit);
         $stmt->execute();
@@ -96,8 +127,8 @@ try {
     $action = (string)($_POST['action'] ?? '');
     if ($action === 'mark_all_read') {
         $stmt = $conn->prepare(
-            "UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW())
-             WHERE user_id = ? AND is_read = 0 AND (LEFT(type, 7) <> 'seller_' OR LEFT(type, 19) = 'seller_application_')"
+            'UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW())
+             WHERE user_id = ? AND is_read = 0 AND (LEFT(type, 7) <> \'seller_\' OR LEFT(type, 19) = \'seller_application_\')'
         );
         $stmt->bind_param('i', $notificationBuyerId);
         $stmt->execute();
@@ -113,8 +144,8 @@ try {
         }
         $notificationId = (int)$notificationIdRaw;
         $stmt = $conn->prepare(
-            "SELECT reference_type, reference_id FROM notifications
-             WHERE notification_id = ? AND user_id = ? AND (LEFT(type, 7) <> 'seller_' OR LEFT(type, 19) = 'seller_application_') LIMIT 1"
+            'SELECT type, title, reference_type, reference_id FROM notifications
+             WHERE notification_id = ? AND user_id = ? AND (LEFT(type, 7) <> \'seller_\' OR LEFT(type, 19) = \'seller_application_\') LIMIT 1'
         );
         $stmt->bind_param('ii', $notificationId, $notificationBuyerId);
         $stmt->execute();
@@ -123,12 +154,12 @@ try {
         if (!$row) buyerNotifJson(false, 'Notification not found.', [], 404);
         $url = buyerNotifDestination(
             $conn, $notificationBuyerId,
-            (string)$row['reference_type'], (int)$row['reference_id']
+            (string)$row['reference_type'], (int)$row['reference_id'],
+            (string)$row['type'], (string)$row['title']
         );
         $update = $conn->prepare(
-            "UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW())
-             WHERE notification_id = ? AND user_id = ? AND is_read = 0
-               AND (LEFT(type, 7) <> 'seller_' OR LEFT(type, 19) = 'seller_application_')"
+            'UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW())
+             WHERE notification_id = ? AND user_id = ? AND is_read = 0 AND (LEFT(type, 7) <> \'seller_\' OR LEFT(type, 19) = \'seller_application_\')'
         );
         $update->bind_param('ii', $notificationId, $notificationBuyerId);
         $update->execute();

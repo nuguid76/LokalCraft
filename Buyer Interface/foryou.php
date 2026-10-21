@@ -1832,11 +1832,11 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
 @media (min-width:1500px){
   .product-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 }
-/* Marketplace palette: dark-brown action buttons, saved hearts, and filters. */
+/* Marketplace accents match the main.php CTA palette. */
 :root{
-  --lc-accent-dark:#6c402b;
-  --lc-accent-dark-hover:#512e20;
-  --lc-action-cream:#fff8ed;
+  --lc-accent-dark:#A55325;
+  --lc-accent-dark-hover:#C2692E;
+  --lc-action-cream:#FFF8ED;
 }
 /* Keep the original white/cream saved-button surface, recolor only its heart. */
 .product-save-btn.is-saved,
@@ -1864,26 +1864,25 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
 .lc-store-product-meta strong{color:#433529}
 .lc-store-fact-icon,.lc-filter-picker-leading,.seller-details-title svg,
 .product-reviews-title svg{color:var(--lc-accent-dark)}
-/* Solid dark-brown actions with white button labels. */
+/* Main.php CTA gradient for primary actions with creamy-white labels. */
 .product-details-cart,.lc-view-store,
 .marketplace-primary-action{
-  background:var(--lc-accent-dark);
+  background:linear-gradient(135deg,var(--lc-accent-dark),var(--lc-accent-dark-hover));
   border-color:var(--lc-accent-dark);
-  color:#fff;
+  color:var(--lc-action-cream);
 }
 .product-details-cart:hover:not(:disabled),.lc-view-store:hover,
 .marketplace-primary-action:hover{
-  background:var(--lc-accent-dark-hover);
+  background:linear-gradient(135deg,var(--lc-accent-dark-hover),var(--lc-accent-dark));
   border-color:var(--lc-accent-dark-hover);
-  color:#fff;
+  color:var(--lc-action-cream);
 }
-/* See Business Details returns to its original white button and brown text.
-   Keep secondary Message actions intact; store avatar remains dark brown. */
+/* Keep secondary Message actions, profile layout, and existing button behavior intact. */
 .seller-action-btn:not(.lc-view-store){color:var(--lc-accent-dark)}
-/* Seller/store profile avatars retain their white initials. */
+/* Seller/store avatars use the same CTA gradient and creamy-white initials. */
 .seller-avatar,.lc-store-avatar{
-  background:linear-gradient(135deg,#78482f,#573120);
-  color:#fff;
+  background:linear-gradient(135deg,var(--lc-accent-dark),var(--lc-accent-dark-hover));
+  color:var(--lc-action-cream);
 }
 /* Shop-wide rating beneath the store avatar. */
 .lc-store-summary{
@@ -1922,10 +1921,10 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
   font-variant-numeric:tabular-nums;
 }
 .lc-store-review-star{color:#e3a22e;font-size:1.02rem;line-height:1}
-/* Filters: checked option stays dark brown; Apply Filter uses cream text. */
+/* Filter selections use the CTA brown-to-orange palette and cream text. */
 .lc-market-filter-count,.lc-filter-option[aria-selected="true"] .lc-filter-option-check{
-  background:var(--lc-accent-dark);
-  color:#fff;
+  background:linear-gradient(135deg,var(--lc-accent-dark),var(--lc-accent-dark-hover));
+  color:var(--lc-action-cream);
 }
 .lc-filter-option[aria-selected="true"]{
   background:#f3e9dd;
@@ -1936,12 +1935,12 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
   color:var(--lc-accent-dark);
 }
 .lc-market-filter-apply{
-  background:var(--lc-accent-dark);
+  background:linear-gradient(135deg,var(--lc-accent-dark),var(--lc-accent-dark-hover));
   border-color:var(--lc-accent-dark);
   color:var(--lc-action-cream);
 }
 .lc-market-filter-apply:hover{
-  background:var(--lc-accent-dark-hover);
+  background:linear-gradient(135deg,var(--lc-accent-dark-hover),var(--lc-accent-dark));
   border-color:var(--lc-accent-dark-hover);
   color:var(--lc-action-cream);
 }

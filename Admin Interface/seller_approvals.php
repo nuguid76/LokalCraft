@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/seller_notification_service.php';
+date_default_timezone_set('Asia/Manila');
 $adminId = (int)($_SESSION['user_id'] ?? 0);
 if ($adminId <= 0 || empty($_SESSION['is_admin'])) {
     header('Location: ../login.php');

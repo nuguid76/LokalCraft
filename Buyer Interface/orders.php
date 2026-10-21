@@ -3,7 +3,7 @@ require_once __DIR__ . '/buyer_auth.php';
 require_once __DIR__ . '/../config/notification_events.php';
 date_default_timezone_set('Asia/Manila');
 $activePage = 'orders';
-$searchPlaceholder = 'Search LokalCraft...';
+$searchPlaceholder = 'Search your orders...';
 $buyerId = (int)($buyerId ?? ($_SESSION['buyer_user_id'] ?? ($_SESSION['user_id'] ?? 0)));
 if ($buyerId <= 0) {
     header('Location: ../login.php');
@@ -59,18 +59,11 @@ function orderIcon(string $name, string $class = 'ui-icon'): string
 
 function orderCancellationReasons(): array
 {
+    // Keep six clear options; buyers can explain other situations in Additional details.
     return [
         'changed_mind' => 'Changed my mind',
         'ordered_by_mistake' => 'Ordered by mistake',
-        'wrong_product' => 'Selected the wrong product',
-        'wrong_quantity' => 'Selected the wrong quantity',
-        'duplicate_order' => 'Accidentally ordered twice',
         'change_order' => 'Need to change my order',
-        'budget' => 'No longer within my budget',
-        'found_alternative' => 'Found another option',
-        'schedule' => 'Schedule no longer works',
-        'delivery' => 'Need a different delivery option',
-        'payment' => 'Need a different payment option',
         'no_response' => 'Seller has not responded',
         'not_needed' => 'No longer need the item',
         'other' => 'Other reason',
@@ -703,6 +696,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $productId = (int)$item['product_id'];
             $sellerId = (int)$item['seller_id'];
+            $conn->begin_transaction();
+            try {
+                // Serialize duplicate review submissions from Messages and Orders.
+                $reviewLock = $conn->prepare('SELECT order_id FROM orders WHERE order_id=? AND buyer_id=? AND seller_id=? LIMIT 1 FOR UPDATE');
+                if (!$reviewLock) throw new RuntimeException('Unable to verify this completed order.');
+                $reviewLock->bind_param('iii', $orderId, $buyerId, $sellerId);
+                $reviewLock->execute();
+                $lockedOrder = $reviewLock->get_result()->fetch_assoc();
+                $reviewLock->close();
+                if (!$lockedOrder) throw new RuntimeException('Order not found.');
             $duplicateCheck = $conn->prepare('
                 SELECT review_id
                 FROM reviews
@@ -769,6 +772,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
             }
             $stmt->close();
+            lokalcraftCreateNotification(
+                $conn,
+                $sellerId,
+                'seller_product_review',
+                'New Product Review',
+                'A buyer rated a product in Order #' . $orderId . ' with ' . $rating
+                    . ($rating === 1 ? ' star.' : ' stars.'),
+                'order',
+                $orderId,
+                'seller-product-review-order-' . $orderId . '-item-' . $orderItemId
+            );
+            $conn->commit();
+            } catch (Throwable $e) {
+                $conn->rollback();
+                throw $e;
+            }
             $_SESSION['buyer_orders_success'] =
                 'Thank you. Your review was submitted.';
         } else {
@@ -2070,7 +2089,7 @@ textarea {
 /* Seller Approvals-inspired Buyer Orders design. Visual updates only. */
 .ui-icon { display:inline-block; width:20px; height:20px; flex:0 0 auto; vertical-align:middle; }
 body { background:#f7f6f4; }
-.orders-wrap { max-width:1320px; }
+.orders-wrap { max-width:1600px; }
 .orders-hero { background:none; box-shadow:none; border:0; border-radius:0; padding: 10px 2px 14px; margin-bottom:8px !important; overflow:visible; }
 .orders-hero::before { display:none; }
 .orders-heading h1 { font-size:clamp(1.55rem,2.5vw,2rem); line-height:1.2; letter-spacing:-.025em; color:#37332f; }
@@ -2297,6 +2316,85 @@ body { background:#f7f6f4; }
 .order-popup-delivery-fields .order-popup-full-width { grid-column:1 / -1; }
 .order-popup-fields.order-popup-qr-references { margin-top:9px; }
 .order-popup-qr-references strong { overflow-wrap:anywhere; word-break:break-word; }
+
+/* Orders consistency: the shared header, not a second table search, filters orders. */
+:root { --orders-bg:#fff8ed; }
+body { background:#fff8ed; }
+.page > .content.buyer-orders-content { background:#fff8ed; }
+.page > .content .buyer-header-tools { background:#fff8ed; }
+
+/* Single-row horizontal tabs: slide if they don't fit; no visible scrollbars. */
+.orders-panel .orders-controls { min-width:0; }
+.orders-panel .order-tabs {
+    display:flex !important;
+    flex:1 1 100%;
+    width:100%; min-width:0;
+    overflow-x:auto; overflow-y:hidden;
+    flex-wrap:nowrap !important;
+    gap:5px; padding:2px 0 6px;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+}
+.orders-panel .order-tabs::-webkit-scrollbar { display:none; width:0; height:0; }
+.orders-panel .order-tab {
+    display:inline-flex !important;
+    flex:0 0 auto !important;
+    flex-direction:row !important;
+    width:auto !important;
+    min-height:42px;
+    white-space:nowrap !important;
+    overflow-wrap:normal;
+    padding:9px 12px;
+    font-size:.74rem;
+    letter-spacing:normal;
+}
+.orders-panel .order-tab small { flex:0 0 auto; }
+@media (max-width:560px) {
+    .orders-panel .order-tab { min-height:41px; padding:8px 10px; font-size:.72rem; }
+}
+
+/* Review & cancellation: equal-width, aligned rows; preserve multiple selections. */
+.order-cancel-dialog, .order-write-dialog { width:min(640px,calc(100vw - 24px)); max-width:640px; }
+.order-cancel-dialog .order-choice-grid,
+.order-write-dialog .review-choice-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+    align-items:stretch;
+}
+.order-cancel-dialog .order-quick-choice,
+.order-write-dialog .review-quick-choice {
+    width:100%; min-width:0; min-height:50px;
+    display:flex; align-items:center; justify-content:flex-start;
+    padding:11px 13px;
+    font-size:.75rem; line-height:1.4;
+    text-align:left; white-space:normal; overflow-wrap:anywhere;
+    border-radius:11px;
+}
+.order-quick-choice.is-selected::before { flex:0 0 auto; }
+.order-write-dialog .order-quick-caption {
+    display:block;
+    margin:15px 0 9px;
+    color:#47403a;
+    font:inherit;
+    font-size:.76rem;
+    font-weight:800;
+    line-height:1.35;
+    letter-spacing:normal;
+}
+.order-write-dialog .order-dialog-field-title + .order-quick-caption { margin-top:10px; }
+.order-cancel-dialog .order-dialog-scroll textarea,
+.order-write-dialog .order-dialog-scroll textarea { font-size:16px; }
+@media (max-width:420px) {
+    .order-cancel-dialog .order-choice-grid,
+    .order-write-dialog .review-choice-grid { gap:7px; }
+    .order-cancel-dialog .order-quick-choice,
+    .order-write-dialog .review-quick-choice {
+        min-height:56px; padding:10px 9px; font-size:.7rem;
+    }
+}
 </style>
 </head>
 <body>
@@ -2350,10 +2448,6 @@ body { background:#f7f6f4; }
                     </button>
                 <?php endforeach; ?>
             </div>
-            <label class="orders-search" for="ordersSearch">
-                <?= orderIcon('search') ?>
-                <input id="ordersSearch" type="search" placeholder="Search order or seller" autocomplete="off" aria-label="Search orders">
-            </label>
             </div>
             <?php if (!$orders && $errorMessage === ''): ?>
                 <div class="orders-empty">
@@ -2719,13 +2813,9 @@ body { background:#f7f6f4; }
                     'Looks just like the photos.',
                     'Great quality and craftsmanship.',
                     'Beautiful handmade details.',
-                    'The material feels durable.',
                     'Good value for the price.',
-                    'Exactly what I expected.',
                     'Arrived in great condition.',
-                    'Carefully packaged.',
                     'The quality could be improved.',
-                    'Different from what I expected.',
                 ] as $phrase): ?>
                     <button class="order-quick-choice review-quick-choice" type="button"
                         data-phrase="<?= orderE($phrase) ?>" aria-pressed="false"><?= orderE($phrase) ?></button>
@@ -2737,13 +2827,9 @@ body { background:#f7f6f4; }
                     'Seller was friendly and helpful.',
                     'Seller replied quickly.',
                     'Updates were clear and timely.',
-                    'The seller accommodated my request.',
                     'Order was prepared on time.',
                     'Pickup or delivery went smoothly.',
-                    'The seller was professional.',
                     'Communication could be improved.',
-                    'Pickup or delivery was delayed.',
-                    'I would buy from this seller again.',
                 ] as $phrase): ?>
                     <button class="order-quick-choice review-quick-choice" type="button"
                         data-phrase="<?= orderE($phrase) ?>" aria-pressed="false"><?= orderE($phrase) ?></button>
@@ -2794,7 +2880,7 @@ body { background:#f7f6f4; }
 const orderTabs = Array.from(document.querySelectorAll('.order-tab'));
 const orderRows = Array.from(document.querySelectorAll('.order-row'));
 const filteredEmpty = document.getElementById('ordersFilteredEmpty');
-const ordersSearch = document.getElementById('ordersSearch');
+const ordersSearch = document.getElementById('productSearch'); // Shared Buyer header search
 let activeOrderFilter = 'all';
 function applyOrderFilter(filter) {
     activeOrderFilter = filter;
@@ -2819,7 +2905,47 @@ orderTabs.forEach((tab) => tab.addEventListener('click', () => {
     applyOrderFilter(tab.dataset.filter || 'all');
 }));
 ordersSearch?.addEventListener('input', () => applyOrderFilter(activeOrderFilter));
+ordersSearch?.addEventListener('search', () => applyOrderFilter(activeOrderFilter));
+// The shared header clears its mobile search when it collapses; reflect that reset in the order rows.
+const buyerOrdersSearchLayout = document.querySelector('.buyer-search-layout');
+if (buyerOrdersSearchLayout && window.MutationObserver) {
+    new MutationObserver(() => applyOrderFilter(activeOrderFilter))
+        .observe(buyerOrdersSearchLayout, {attributes:true, attributeFilter:['class']});
+}
 applyOrderFilter('all');
+// Each open dialog owns one same-page history entry. Browser Back, Escape and
+// popup Close dismiss the topmost dialog before navigating away from Orders.
+// Keep parent Order Details open beneath Review / Cancel / QR, so closing the
+// child reveals the same order without discarding its contents or scroll state.
+const orderDialogStack = [];
+let orderDialogBackPending = false;
+function showTrackedOrderDialog(dialog) {
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    orderDialogStack.push(dialog);
+    window.history.pushState({lokalcraftOrdersDialog:true}, '', window.location.href);
+}
+function closeTrackedOrderDialog(dialog) {
+    if (!dialog || !dialog.open || orderDialogBackPending) return;
+    if (orderDialogStack[orderDialogStack.length - 1] === dialog) {
+        orderDialogBackPending = true;
+        window.history.back();
+    } else {
+        dialog.close();
+    }
+}
+window.addEventListener('popstate', () => {
+    const top = orderDialogStack.pop();
+    if (top?.open) top.close();
+    orderDialogBackPending = false;
+});
+// Native dialog Escape/Android Back must follow the exact same topmost rule.
+function enableOrderDialogBack(dialog) {
+    dialog?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeTrackedOrderDialog(dialog);
+    });
+}
 const orderDetailsDialog = document.getElementById('orderDetailsDialog');
 const orderDetailsBody = document.getElementById('orderDetailsBody');
 const orderDetailsFooter = document.getElementById('orderDetailsFooter');
@@ -2840,7 +2966,7 @@ function openOrderDetails(row) {
     orderDetailsFooter.hidden = !orderDetailsFooter.querySelector('a,button');
     orderDetailsBody.replaceChildren(detail);
     orderDetailsBody.scrollTop = 0;
-    if (!orderDetailsDialog.open) orderDetailsDialog.showModal();
+    showTrackedOrderDialog(orderDetailsDialog);
 }
 orderRows.forEach((row) => {
     row.addEventListener('click', () => openOrderDetails(row));
@@ -2852,18 +2978,26 @@ orderRows.forEach((row) => {
 });
 // Buyer notification links use orders.php?order_id=123. Open only an order
 // already returned by the buyer-scoped query above.
-const linkedOrderId = new URLSearchParams(window.location.search).get('order_id');
+const notificationLinkParams = new URLSearchParams(window.location.search);
+const linkedOrderId = notificationLinkParams.get('order_id');
+// Only this explicit notification deep link is allowed to auto-open a review.
+// The order must belong to this buyer and have a completed status, and the
+// review button must actually exist (no review yet for that order item).
+let linkedUnreviewedOrderId = null;
 if (linkedOrderId && /^[1-9]\d*$/.test(linkedOrderId)) {
     const linkedRow = orderRows.find((row) => row.dataset.orderId === linkedOrderId);
     if (linkedRow) {
         if (ordersSearch) ordersSearch.value = '';
         applyOrderFilter(linkedRow.dataset.group || 'pending');
         openOrderDetails(linkedRow);
+        if (notificationLinkParams.get('open_review') === '1' && linkedRow.dataset.group === 'completed') {
+            linkedUnreviewedOrderId = linkedOrderId;
+        }
     }
 }
-orderDetailsClose?.addEventListener('click', () => orderDetailsDialog?.close());
+orderDetailsClose?.addEventListener('click', () => closeTrackedOrderDialog(orderDetailsDialog));
 orderDetailsDialog?.addEventListener('click', (event) => {
-    if (event.target === orderDetailsDialog) orderDetailsDialog.close();
+    if (event.target === orderDetailsDialog) closeTrackedOrderDialog(orderDetailsDialog);
 });
 const cancelDialog = document.getElementById('cancelDialog');
 const cancelOrderId = document.getElementById('cancelOrderId');
@@ -2903,8 +3037,7 @@ document.addEventListener('click', (event) => {
     cancelReasonError.hidden = true;
     cancelDetailsError.hidden = true;
     updateCancelState();
-    if (orderDetailsDialog?.open) orderDetailsDialog.close();
-    if (!cancelDialog.open) cancelDialog.showModal();
+    showTrackedOrderDialog(cancelDialog);
 });
 cancelReasonButtons.forEach((button) => button.addEventListener('click', () => {
     cancelReason.value = button.dataset.reason || '';
@@ -2933,9 +3066,9 @@ cancelDialog?.addEventListener('close', () => {
     if (cancelSubmit) cancelSubmit.textContent = 'Confirm Cancellation';
     updateCancelState();
 });
-document.getElementById('cancelDialogClose')?.addEventListener('click', () => cancelDialog?.close());
+document.getElementById('cancelDialogClose')?.addEventListener('click', () => closeTrackedOrderDialog(cancelDialog));
 cancelDialog?.addEventListener('click', (event) => {
-    if (event.target === cancelDialog) cancelDialog.close();
+    if (event.target === cancelDialog) closeTrackedOrderDialog(cancelDialog);
 });
 const qrPaymentDialog = document.getElementById('qrPaymentDialog');
 const qrPaymentClose = document.getElementById('qrPaymentClose');
@@ -3286,7 +3419,6 @@ async function checkQrPaymentStatus(showWaitingMessage = true) {
 document.addEventListener('click', async (event) => {
     const button = event.target.closest('.pay-order-qr');
     if (!button) return;
-    if (orderDetailsDialog?.open) orderDetailsDialog.close();
         activeQrOrderId =
             Number(button.dataset.orderId || 0);
         activeQrSellerId =
@@ -3311,7 +3443,7 @@ document.addEventListener('click', async (event) => {
             'Generating your QR Ph code...',
             ''
         );
-        qrPaymentDialog.showModal();
+        showTrackedOrderDialog(qrPaymentDialog);
         await generateQrPayment();
 });
 qrPaymentRegenerate?.addEventListener(
@@ -3351,7 +3483,7 @@ qrPaymentSimulate?.addEventListener(
 function closeQrPaymentDialog() {
     stopQrTimers();
     closePayMongoTestWindow();
-    qrPaymentDialog?.close();
+    closeTrackedOrderDialog(qrPaymentDialog);
 }
 qrPaymentClose?.addEventListener(
     'click',
@@ -3451,9 +3583,15 @@ document.addEventListener('click', (event) => {
     setReviewRating(0);
     reviewRatingError.hidden = true;
     reviewTextError.hidden = true;
-    if (orderDetailsDialog?.open) orderDetailsDialog.close();
-    if (!reviewDialog.open) reviewDialog.showModal();
+    showTrackedOrderDialog(reviewDialog);
 });
+// Runs after the delegated review click handler was registered and after the
+// specific order's Details popup was populated. Already-reviewed items have
+// only .view-review, so this intentionally does nothing if all are rated.
+if (linkedUnreviewedOrderId && orderDetailsDialog?.open) {
+    const firstUnreviewed = orderDetailsBody?.querySelector('.review-product');
+    if (firstUnreviewed?.dataset.orderId === linkedUnreviewedOrderId) firstUnreviewed.click();
+}
 reviewStars.forEach((star) => star.addEventListener('click', () => setReviewRating(star.dataset.rating)));
 reviewQuickButtons.forEach((button) => button.addEventListener('click', () => {
     const phrase = button.dataset.phrase || '';
@@ -3473,9 +3611,9 @@ reviewQuickButtons.forEach((button) => button.addEventListener('click', () => {
     updateReviewState();
 }));
 reviewText?.addEventListener('input', updateReviewState);
-document.getElementById('reviewCancel')?.addEventListener('click', () => reviewDialog?.close());
+document.getElementById('reviewCancel')?.addEventListener('click', () => closeTrackedOrderDialog(reviewDialog));
 reviewDialog?.addEventListener('click', (event) => {
-    if (event.target === reviewDialog) reviewDialog.close();
+    if (event.target === reviewDialog) closeTrackedOrderDialog(reviewDialog);
 });
 document.getElementById('reviewForm')?.addEventListener('submit', (event) => {
     updateReviewState();
@@ -3508,7 +3646,6 @@ document.addEventListener('click', (event) => {
     if (!button) {
         return;
     }
-    if (orderDetailsDialog?.open) orderDetailsDialog.close();
         const rating = Math.max(
             0,
             Math.min(
@@ -3528,15 +3665,18 @@ document.addEventListener('click', (event) => {
             button.dataset.reviewDate
                 ? `Submitted ${button.dataset.reviewDate}`
                 : '';
-        reviewViewDialog.showModal();
+        showTrackedOrderDialog(reviewViewDialog);
 });
 document.getElementById('reviewViewClose')?.addEventListener(
     'click',
     () => {
-        reviewViewDialog.close();
+        closeTrackedOrderDialog(reviewViewDialog);
     }
 );
 <?php endif; ?>
+[orderDetailsDialog, cancelDialog, qrPaymentDialog,
+    document.getElementById('reviewDialog'), document.getElementById('reviewViewDialog')]
+    .forEach(enableOrderDialogBack);
 </script>
 </body>
 </html>
