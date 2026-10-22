@@ -55,6 +55,48 @@ function syncSellerInventoryStatuses(mysqli $conn, int $sellerId): void
     $stmt->execute();
     $stmt->close();
 }
+/** Read the admin moderation notices without treating a seller's own archive as an admin removal. */
+function loadSellerAdminRemovalDates(mysqli $conn, int $sellerId): array
+{
+    $dates = [];
+    $noticePattern = '[LokalCraft Seller Notice] Seller #' . $sellerId . ' Product #%';
+    $legacyPattern = '[LokalCraft Moderation] Product #%';
+    $stmt = $conn->prepare(
+        'SELECT m.message_text, m.sent_at
+         FROM messages m
+         INNER JOIN users moderator ON moderator.id = m.sender_id AND moderator.AdminOrNot = 1
+         WHERE (m.sender_id = m.receiver_id AND m.message_text LIKE ?)
+            OR (m.receiver_id = ? AND m.message_text LIKE ?)
+         ORDER BY m.sent_at DESC, m.message_id DESC'
+    );
+    if (!$stmt) {
+        throw new RuntimeException('Unable to check product moderation records.');
+    }
+    $stmt->bind_param('sis', $noticePattern, $sellerId, $legacyPattern);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $body = (string)$row['message_text'];
+        $productId = 0;
+        if (preg_match('/^\[LokalCraft Seller Notice\] Seller #(\d+) Product #(\d+) removed from marketplace\. Reason:/', $body, $match)
+            && (int)$match[1] === $sellerId) {
+            $productId = (int)$match[2];
+        } elseif (preg_match('/^\[LokalCraft Moderation\] Product #(\d+)\b/', $body, $match)) {
+            $productId = (int)$match[1];
+        }
+        if ($productId > 0 && !isset($dates[$productId])) {
+            $dates[$productId] = (string)$row['sent_at'];
+        }
+    }
+    $stmt->close();
+    return $dates;
+}
+function isActiveAdminRemoval(string $status, ?string $imageUpdatedAt, ?string $adminRemovedAt): bool
+{
+    return $status === 'Archived'
+        && $adminRemovedAt !== null
+        && ($imageUpdatedAt === null || strcmp($imageUpdatedAt, $adminRemovedAt) <= 0);
+}
 function lockProductReservedStock(
     mysqli $conn,
     int $productId,
@@ -758,6 +800,27 @@ try {
                 $conn->begin_transaction();
                 try {
                     $currentReserved = lockProductReservedStock($conn, $productId, $sellerId, $stock);
+                    $removalDates = loadSellerAdminRemovalDates($conn, $sellerId);
+                    $currentStmt = $conn->prepare(
+                        'SELECT p.status, e.updated_at AS image_updated_at
+                         FROM products p
+                         LEFT JOIN product_image_embeddings e ON e.product_id = p.product_id
+                         WHERE p.product_id = ? AND p.seller_id = ? LIMIT 1'
+                    );
+                    $currentStmt->bind_param('ii', $productId, $sellerId);
+                    $currentStmt->execute();
+                    $currentProduct = $currentStmt->get_result()->fetch_assoc();
+                    $currentStmt->close();
+                    if (!$currentProduct) {
+                        throw new RuntimeException('Product not found.');
+                    }
+                    if ($requestedStatus !== 'Archived' && isActiveAdminRemoval(
+                        (string)$currentProduct['status'],
+                        $currentProduct['image_updated_at'],
+                        $removalDates[$productId] ?? null
+                    )) {
+                        throw new RuntimeException('Admin removed this listing. Upload a new product photo before making it available.');
+                    }
                     $status = inventoryProductStatus($requestedStatus, $stock, $currentReserved);
                     $stmt = $conn->prepare(
                         'UPDATE products
@@ -821,32 +884,40 @@ try {
         unset($_SESSION['product_message'], $_SESSION['product_message_type']);
     }
     syncSellerInventoryStatuses($conn, $sellerId);
+    $adminRemovalDates = loadSellerAdminRemovalDates($conn, $sellerId);
     $productStmt = $conn->prepare(
         'SELECT
-            product_id,
-            product_photo,
-            product_name,
-            craft_category,
-            description,
-            cost,
-            stock,
-            COALESCE(reserved_stock, 0) AS reserved_stock,
-            GREATEST(stock - COALESCE(reserved_stock, 0), 0) AS available_stock,
+            p.product_id,
+            p.product_photo,
+            p.product_name,
+            p.craft_category,
+            p.description,
+            p.cost,
+            p.stock,
+            COALESCE(p.reserved_stock, 0) AS reserved_stock,
+            GREATEST(p.stock - COALESCE(p.reserved_stock, 0), 0) AS available_stock,
             CASE
-                WHEN status = \'Archived\' THEN \'Archived\'
-                WHEN COALESCE(stock, 0) <= COALESCE(reserved_stock, 0) THEN \'Out of Stock\'
+                WHEN p.status = \'Archived\' THEN \'Archived\'
+                WHEN COALESCE(p.stock, 0) <= COALESCE(p.reserved_stock, 0) THEN \'Out of Stock\'
                 ELSE \'Available\'
             END AS status,
-            created_at
-         FROM products
-         WHERE seller_id = ?
-         ORDER BY created_at DESC, product_id DESC'
+            p.created_at,
+            e.updated_at AS image_updated_at
+         FROM products p
+         LEFT JOIN product_image_embeddings e ON e.product_id = p.product_id
+         WHERE p.seller_id = ?
+         ORDER BY p.created_at DESC, p.product_id DESC'
     );
     $productStmt->bind_param('i', $sellerId);
     $productStmt->execute();
     $productResult = $productStmt->get_result();
     while ($row = $productResult->fetch_assoc()) {
         $productId = (int)$row['product_id'];
+        $row['admin_removed'] = isActiveAdminRemoval(
+            (string)$row['status'],
+            $row['image_updated_at'],
+            $adminRemovalDates[$productId] ?? null
+        );
         $row['average_rating'] = 0.0;
         $row['review_count'] = 0;
         $products[] = $row;
@@ -1981,6 +2052,9 @@ body .page > main.content.products-main {
             <?php foreach ($products as $product): ?>
               <?php
                 $productStatusClass = strtolower(str_replace(' ', '-', (string)$product['status']));
+                $productStatusLabel = (string)$product['status'] === 'Archived'
+                  ? (!empty($product['admin_removed']) ? 'Removed by Admin' : 'Seller Archived')
+                  : (string)$product['status'];
                 $description = trim((string)($product['description'] ?? ''));
               ?>
               <article
@@ -1998,6 +2072,7 @@ body .page > main.content.products-main {
                 data-available-stock="<?= (int)$product['available_stock'] ?>"
                 data-reserved-stock="<?= (int)$product['reserved_stock'] ?>"
                 data-status="<?= htmlspecialchars($product['status'], ENT_QUOTES) ?>"
+                data-admin-removed="<?= !empty($product['admin_removed']) ? '1' : '0' ?>"
                 data-photo="<?= htmlspecialchars($product['product_photo'] ?? '', ENT_QUOTES) ?>"
                 data-average-rating="<?= number_format((float)$product['average_rating'], 1, '.', '') ?>"
                 data-review-count="<?= (int)$product['review_count'] ?>"
@@ -2015,7 +2090,7 @@ body .page > main.content.products-main {
                   <?php endif; ?>
                   <div class="product-card-status">
                     <span class="status <?= htmlspecialchars($productStatusClass) ?>">
-                      <?= htmlspecialchars($product['status']) ?>
+                      <?= htmlspecialchars($productStatusLabel) ?>
                     </span>
                   </div>
                   <span class="stock-tag">
@@ -2227,8 +2302,8 @@ body .page > main.content.products-main {
 <button class="close-modal" id="close-delete-product" type="button" aria-label="Close delete confirmation">&times;</button>
 </div>
 <div class="confirm-body">
-<p class="confirm-copy">Are you sure you want to delete <strong id="delete-product-name">this product</strong>?</p>
-<div class="confirm-warning">This action cannot be undone. The product listing and its saved image embedding will be removed.</div>
+<p class="confirm-copy">Are you sure you want to permanently delete <strong id="delete-product-name">this product</strong>?</p>
+<div class="confirm-warning">This will permanently delete the product. It cannot be undone.</div>
 </div>
 <form method="post" id="view-delete-form" class="delete-confirm-form">
 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['seller_products_csrf'], ENT_QUOTES) ?>">
@@ -2255,6 +2330,7 @@ body .page > main.content.products-main {
     const productStatus = document.getElementById('product-status');
     const inventoryStatusNote = document.getElementById('inventory-status-note');
     let editingReservedStock = 0;
+    let editingAdminRemoved = false;
     const productDescription = document.getElementById('product-description');
     const productPhoto = document.getElementById('product-photo');
     const previewImage = document.getElementById('preview-image');
@@ -2440,7 +2516,9 @@ body .page > main.content.products-main {
         : 'No reviews';
       viewDeleteProductId.value = card.dataset.productId || '';
       viewProductStatus.className = `status ${statusClass}`;
-      viewProductStatus.textContent = status;
+      viewProductStatus.textContent = status === 'Archived'
+        ? (card.dataset.adminRemoved === '1' ? 'Removed by Admin' : 'Seller Archived')
+        : status;
       if (photo) {
         viewProductImage.src = '../' + photo;
         viewProductImage.alt = card.dataset.productName || 'Product';
@@ -2547,8 +2625,10 @@ body .page > main.content.products-main {
       const requestId = ++imageSafetyRequestId;
       if (!file) {
         setImageSafetyState(
-          formAction.value === 'update_product' && !productPhoto.required ? 'existing' : 'idle',
-          formAction.value === 'update_product' && !productPhoto.required
+          editingAdminRemoved ? 'existing' : formAction.value === 'update_product' && !productPhoto.required ? 'existing' : 'idle',
+          editingAdminRemoved
+            ? 'Admin removed this listing. Choose a new photo to relist.'
+            : formAction.value === 'update_product' && !productPhoto.required
             ? 'Current saved image will be kept.'
             : 'Choose an image to run the safety check.'
         );
@@ -2604,6 +2684,11 @@ body .page > main.content.products-main {
       }
     }
     function updateListingPreview() {
+      const requiresReplacement = editingAdminRemoved && !productPhoto?.files?.[0];
+      Array.from(productStatus?.options || []).forEach((option) => {
+        if (option.value !== 'Archived') option.disabled = requiresReplacement;
+      });
+      if (requiresReplacement) productStatus.value = 'Archived';
       const name = productName.value.trim() || 'Product Name';
       const category = craftCategory.value || 'Select category';
       const price = Number(productCost.value || 0);
@@ -2616,7 +2701,9 @@ body .page > main.content.products-main {
       productStatus.value = status;
       const statusClass = status.toLowerCase().replaceAll(' ', '-');
       if (inventoryStatusNote) {
-        inventoryStatusNote.textContent = status === 'Archived'
+        inventoryStatusNote.textContent = requiresReplacement
+          ? 'Removed by Admin · Upload a new photo to relist'
+          : status === 'Archived'
           ? `Archived · ${available} available · ${editingReservedStock} reserved`
           : `${available} available · ${editingReservedStock} reserved`;
       }
@@ -2625,7 +2712,9 @@ body .page > main.content.products-main {
       listingPreviewPrice.textContent = formatPeso(price);
       listingPreviewStock.textContent = `${available} available`;
       listingPreviewStatus.className = `status ${statusClass}`;
-      listingPreviewStatus.textContent = status;
+      listingPreviewStatus.textContent = status === 'Archived' && editingAdminRemoved
+        ? 'Removed by Admin'
+        : status;
       if (previewImage.classList.contains('show') && previewImage.getAttribute('src')) {
         listingPreviewImage.src = previewImage.src;
         listingPreviewImage.alt = name;
@@ -2649,6 +2738,7 @@ body .page > main.content.products-main {
     }
     function openCreateModal() {
       activeProductCard = null;
+      editingAdminRemoved = false;
       modalTitle.textContent = 'Add Product';
       formAction.value = 'create_product';
       formProductId.value = '';
@@ -2675,6 +2765,7 @@ body .page > main.content.products-main {
     function openEditModal(source) {
       if (!source) return;
       activeProductCard = source;
+      editingAdminRemoved = source.dataset.adminRemoved === '1';
       modalTitle.textContent = 'Edit Product';
       formAction.value = 'update_product';
       formProductId.value = source.dataset.productId || '';
@@ -2689,9 +2780,11 @@ body .page > main.content.products-main {
       resetQuickCustomizations(customizationsByProduct[source.dataset.productId] || []);
       productPhoto.value = '';
       productPhoto.required = !(source.dataset.photo || '');
-      if (productPhotoNote) productPhotoNote.textContent = source.dataset.photo
-        ? 'Leave blank to keep the current image. JPG, PNG, or WEBP · up to 5 MB.'
-        : 'Image required. JPG, PNG, or WEBP · up to 5 MB.';
+      if (productPhotoNote) productPhotoNote.textContent = editingAdminRemoved
+        ? 'Admin removed this listing. Upload a new image to make it available again. JPG, PNG, or WEBP · up to 5 MB.'
+        : source.dataset.photo
+          ? 'Leave blank to keep the current image. JPG, PNG, or WEBP · up to 5 MB.'
+          : 'Image required. JPG, PNG, or WEBP · up to 5 MB.';
       configureSavedCalculation('edit');
       if (source.dataset.photo) {
         previewImage.src = '../' + source.dataset.photo;
@@ -2706,7 +2799,9 @@ body .page > main.content.products-main {
       submitProduct.textContent = 'Update Product';
       setImageSafetyState(
         source.dataset.photo ? 'existing' : 'idle',
-        source.dataset.photo
+        editingAdminRemoved
+          ? 'Upload a new photo to make this admin-removed listing available again.'
+          : source.dataset.photo
           ? 'Current saved image will be kept unless you choose a new one.'
           : 'Choose an image to run the safety check.'
       );
@@ -2781,6 +2876,7 @@ body .page > main.content.products-main {
     });
     productPhoto?.addEventListener('change', () => {
       const file = productPhoto.files?.[0] || null;
+      updateListingPreview();
       if (!file) {
         if (formAction.value === 'update_product' && activeProductCard?.dataset.photo) {
           previewImage.src = '../' + activeProductCard.dataset.photo;
@@ -2833,6 +2929,11 @@ body .page > main.content.products-main {
         return;
       }
       const selectedFile = productPhoto?.files?.[0] || null;
+      if (editingAdminRemoved && productStatus.value !== 'Archived' && !selectedFile) {
+        event.preventDefault();
+        openImageWarning('Upload a new product photo before making this admin-removed listing available.');
+        return;
+      }
       if (selectedFile && imageSafetyState !== 'safe') {
         event.preventDefault();
         const message = imageSafetyState === 'checking'

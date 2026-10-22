@@ -4839,26 +4839,6 @@ if ($selectedBuyerId > 0) {
     }
   </style>
   <style id="sellerThreadSearchStyles">
-    /* Search lives ONLY in Seller Messages. Shared seller_search.php is untouched. */
-    .seller-thread-search{position:relative;z-index:6;padding:11px 12px 12px;background:#fff;border-bottom:1px solid #f0e9e2;min-width:0}
-    .seller-thread-search-field{display:flex;align-items:center;gap:9px;width:100%;min-width:0;min-height:44px;border:1px solid #e7ded6;border-radius:11px;background:#faf9f7;padding:0 12px;transition:border-color .15s,box-shadow .15s}
-    .seller-thread-search-field:focus-within{border-color:#df9f65;box-shadow:0 0 0 3px rgba(234,138,58,.11);background:#fff}
-    .seller-thread-search-field svg{width:18px;height:18px;flex:0 0 18px;color:#a1826a}
-    #sellerThreadSearchInput{flex:1;width:100%;min-width:0;height:42px;padding:0;border:0;outline:0;box-shadow:none;background:transparent;color:#493d32;font:400 14px/1.4 Inter,system-ui,-apple-system,'Segoe UI',sans-serif;appearance:none;-webkit-appearance:none}
-    #sellerThreadSearchInput::-webkit-search-cancel-button{cursor:pointer}
-    #sellerThreadSearchInput::placeholder{color:#a0968e;opacity:1}
-    .seller-thread-search-results{position:absolute;top:calc(100% - 3px);left:12px;right:12px;z-index:15;max-height:min(355px,50dvh);overflow-y:auto;overscroll-behavior:contain;padding:7px;border:1px solid #e8ddd1;border-radius:12px;background:#fff;box-shadow:0 15px 32px rgba(53,38,24,.15);-webkit-overflow-scrolling:touch}
-    .seller-thread-search-results[hidden]{display:none!important}
-    .seller-thread-suggest-group{padding:7px 10px 5px;color:#a17752;font-size:11px;line-height:1.5;font-weight:800;letter-spacing:.065em;text-transform:uppercase}
-    .seller-thread-suggest{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 10px;border:0;border-radius:9px;background:#fff;color:#45382f;text-align:left;cursor:pointer;font-family:inherit}
-    .seller-thread-suggest:hover,.seller-thread-suggest:focus-visible,.seller-thread-suggest.is-keyboard-active{background:#fff3e8;outline:none}
-    .seller-thread-suggest-icon{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;border:1px solid #f1e1d2;border-radius:9px;background:#fff7ef;color:#b77740}
-    .seller-thread-suggest-icon svg{width:17px;height:17px}
-    .seller-thread-suggest-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
-    .seller-thread-suggest-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:1.35;font-weight:720}
-    .seller-thread-suggest-detail{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8d8075;font-size:12px;font-weight:400;line-height:1.35}
-    .seller-thread-no-results{padding:12px;color:#81766d;font-size:13px;line-height:1.5}
-    @media(max-width:760px){.seller-thread-search{padding:11px 12px}.seller-thread-search-results{max-height:min(340px,48dvh)}#sellerThreadSearchInput{font-size:16px}}
       .lc-chat-order-tag { display:inline-block; margin-bottom:4px; font-size:.64rem; font-weight:800; letter-spacing:.01em; opacity:.72; }
 
     /* Cart-only order detail breakdown, sourced from saved order item snapshots. */
@@ -5039,12 +5019,72 @@ if ($selectedBuyerId > 0) {
     @media(max-width:560px){.seller-buyer-profile-dialog{width:calc(100vw - 20px);border-radius:16px;}.seller-buyer-profile-head{padding:14px 16px;}.seller-buyer-profile-scroll{padding:15px;}.seller-buyer-hero{padding:19px 17px;align-items:flex-start;flex-direction:column;gap:14px;min-height:0;margin-bottom:19px;}.seller-buyer-overview{gap:12px;}.seller-buyer-profile-avatar{flex-basis:56px;width:56px;height:56px;border-radius:17px;font-size:18px;}.seller-buyer-profile-identity strong{font-size:19px;}.seller-buyer-profile-active{align-self:flex-start;}.seller-buyer-rating-summary,.seller-buyer-rating-bars{padding:16px;}.seller-buyer-review{padding:14px;}}
     @media(max-width:360px){.seller-buyer-review-top{flex-wrap:wrap;gap:4px;}.seller-buyer-profile-identity strong{font-size:17px;}.seller-buyer-rating-score strong{font-size:35px;}}
   </style>
+  <style id="sellerMessagesCtaGradientAndAvatars">
+    body, .page, .page > main.content.messages-main, .messages-wrap {
+      background: #FFF8ED;
+    }
+    .chat-body { background: #FFF8ED; }
+    @media (max-width: 760px) {
+      .messages-wrap { background: #FFF8ED; }
+    }
+    /* Color only: keep the Buyer Profile avatar's existing dimensions and shape. */
+    .seller-buyer-profile-avatar {
+      background: linear-gradient(135deg, #A55325, #C2692E);
+    }
+    /* Match the existing Buyer Messages CTA colors without changing chat behavior. */
+    .outgoing .bubble {
+      border-color: #A55325;
+      background: linear-gradient(135deg, #A55325, #C2692E);
+      color: #FFF8ED;
+    }
+    .send-btn:not(:disabled),
+    .arrange-order-btn:not(.accept-ready):not(:disabled),
+    #arrangementDialog .arrangement-action.primary:not(:disabled),
+    .message-order-card:not(.is-closed-order) .order-chat-action:not(:disabled) {
+      border-color: #A55325;
+      background: linear-gradient(135deg, #A55325, #C2692E);
+      color: #FFF8ED;
+    }
+    .send-btn:hover:not(:disabled),
+    .arrange-order-btn:not(.accept-ready):hover:not(:disabled),
+    #arrangementDialog .arrangement-action.primary:hover:not(:disabled),
+    .message-order-card:not(.is-closed-order) .order-chat-action:hover:not(:disabled) {
+      background: linear-gradient(135deg, #C2692E, #A55325);
+    }
+    /* Keep acceptance (green), disabled buttons, and closed-order states intact. */
+
+    /* Match the circular, warm-brown avatar design of the seller search header. */
+    #conversationItems .conversation .avatar,
+    .chat-header .avatar,
+    #chatAvatar {
+      display: grid;
+      place-items: center;
+      padding: 0;
+      line-height: 1;
+      aspect-ratio: 1 / 1;
+      border: 1px solid rgba(116, 46, 18, .22);
+      border-radius: 50% !important;
+      background: linear-gradient(135deg, #A55325, #C2692E);
+      color: #FFF8ED;
+      font-weight: 800;
+      text-shadow: none;
+      box-shadow: inset 0 1px 1px rgba(255, 248, 237, .14),
+                  0 2px 6px rgba(102, 46, 19, .16);
+    }
+    #conversationItems .conversation:hover .avatar,
+    #conversationItems .conversation:focus-visible .avatar,
+    #chatAvatar:hover,
+    #chatAvatar:focus-visible {
+      box-shadow: inset 0 1px 1px rgba(255, 248, 237, .18),
+                  0 3px 8px rgba(102, 46, 19, .20);
+    }
+  </style>
 </head>
 <body>
   <div class="page">
     <?php require __DIR__ . '/seller_nav.php'; ?>
     <main class="content messages-main">
-      <div class="seller-messages-search"><?php require __DIR__ . '/seller_search.php'; ?></div>
+      <div class="seller-messages-search"><?php $searchPlaceholder = 'Search buyers...'; require __DIR__ . '/seller_search.php'; ?></div>
       <div class="messages-wrap">
         <h1 class="page-title">Messages</h1>
         
@@ -5055,16 +5095,6 @@ if ($selectedBuyerId > 0) {
           <aside class="conversation-list" id="conversationList" aria-label="Buyer conversations">
             <div class="list-heading">
               <span class="list-heading-title">Messages</span>
-            </div>
-            <div class="seller-thread-search" id="sellerThreadSearch">
-              <div class="seller-thread-search-field">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 4.5 4.5"/></svg>
-                <input id="sellerThreadSearchInput" type="search" maxlength="70" autocomplete="off"
-                  placeholder="Search buyer or Order ID" aria-label="Search buyer names or order IDs"
-                  role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
-                  aria-controls="sellerThreadSearchResults" aria-expanded="false" />
-              </div>
-              <div class="seller-thread-search-results" id="sellerThreadSearchResults" role="listbox" aria-label="Message search suggestions" hidden></div>
             </div>
             <div id="conversationItems">
               <?php if (empty($conversationList)): ?>
@@ -7063,152 +7093,22 @@ if ($selectedBuyerId > 0) {
       }
       return data;
     }
-    // Buyer-name and exact-order search, scoped to this Messages module only.
-    const sellerThreadSearchInput = document.getElementById('sellerThreadSearchInput');
-    const sellerThreadSearchResults = document.getElementById('sellerThreadSearchResults');
-    const sellerThreadSearchRoot = document.getElementById('sellerThreadSearch');
-    let sellerThreadSearchTimer = null;
-    let sellerThreadSearchVersion = 0;
-    let sellerThreadActiveOption = -1;
-    let sellerThreadOptions = [];
-
-    function sellerSearchGoTo(buyerId, orderId = 0) {
-      const buyer = Number(buyerId);
-      const order = Number(orderId);
-      if (!Number.isSafeInteger(buyer) || buyer <= 0) return;
-      const link = new URL(window.location.pathname, window.location.href);
-      link.searchParams.set('buyer_id', String(buyer));
-      if (Number.isSafeInteger(order) && order > 0) {
-        link.searchParams.set('order_id', String(order));
-      }
-      // The existing server-side order ownership check validates these links.
-      window.location.assign(link.href);
-    }
-    function sellerSearchHide() {
-      if (!sellerThreadSearchResults || !sellerThreadSearchInput) return;
-      sellerThreadSearchResults.hidden = true;
-      sellerThreadSearchInput.setAttribute('aria-expanded', 'false');
-      sellerThreadActiveOption = -1;
-    }
-    function sellerSearchAddGroup(title, items, kind) {
-      if (!sellerThreadSearchResults || !items.length) return;
-      const heading = document.createElement('div');
-      heading.className = 'seller-thread-suggest-group';
-      heading.textContent = title;
-      sellerThreadSearchResults.appendChild(heading);
-      items.forEach((item) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'seller-thread-suggest';
-        button.setAttribute('role', 'option');
-        button.setAttribute('aria-selected', 'false');
-        const icon = document.createElement('span');
-        icon.className = 'seller-thread-suggest-icon';
-        icon.setAttribute('aria-hidden', 'true');
-        icon.textContent = kind === 'order' ? '#' : '◎';
-        const text = document.createElement('span');
-        text.className = 'seller-thread-suggest-copy';
-        const primary = document.createElement('span');
-        primary.className = 'seller-thread-suggest-name';
-        primary.textContent = kind === 'order' ? 'Order #' + item.order_id : (item.buyer_name || 'Buyer');
-        const secondary = document.createElement('span');
-        secondary.className = 'seller-thread-suggest-detail';
-        secondary.textContent = kind === 'order'
-          ? ((item.buyer_name || 'Buyer') + ' · Jump to order message')
-          : 'Open buyer conversation';
-        text.append(primary, secondary);
-        button.append(icon, text);
-        button.addEventListener('click', () => sellerSearchGoTo(item.buyer_id, kind === 'order' ? item.order_id : 0));
-        sellerThreadOptions.push(button);
-        sellerThreadSearchResults.appendChild(button);
+    // Use the shared Seller header search only on this Messages page.
+    // The shared seller_search.php remains unchanged for other seller modules.
+    const sellerHeaderBuyerSearch = document.querySelector('.seller-messages-search #productSearch');
+    if (sellerHeaderBuyerSearch) {
+      sellerHeaderBuyerSearch.setAttribute('aria-label', 'Search buyer conversations');
+      sellerHeaderBuyerSearch.setAttribute('autocomplete', 'off');
+      sellerHeaderBuyerSearch.addEventListener('focus', () => {
+        // On phones the conversation list is hidden when a chat is open.
+        if (window.matchMedia('(max-width: 760px)').matches && messagesShell?.classList.contains('chat-open')) {
+          closeChatOnMobile();
+        }
+      });
+      sellerHeaderBuyerSearch.addEventListener('input', () => {
+        renderConversationList(initialConversations);
       });
     }
-    function sellerSearchDraw(term, orders = [], error = '') {
-      if (!sellerThreadSearchResults || !sellerThreadSearchInput) return;
-      const query = term.trim().toLocaleLowerCase();
-      const buyers = initialConversations.filter(conversation =>
-        !query || String(conversation.buyer_name || '').toLocaleLowerCase().includes(query)
-      ).slice(0, 6);
-      sellerThreadOptions = [];
-      sellerThreadActiveOption = -1;
-      sellerThreadSearchResults.replaceChildren();
-      sellerSearchAddGroup(query ? 'Matching buyers' : 'Recent buyers', buyers, 'buyer');
-      sellerSearchAddGroup('Matching orders', orders, 'order');
-      if (!buyers.length && !orders.length) {
-        const empty = document.createElement('div');
-        empty.className = 'seller-thread-no-results';
-        empty.textContent = error || (query ? 'No matching buyer or Order ID found.' : 'No conversations yet.');
-        sellerThreadSearchResults.appendChild(empty);
-      }
-      sellerThreadSearchResults.hidden = false;
-      sellerThreadSearchInput.setAttribute('aria-expanded', 'true');
-    }
-    async function sellerSearchUpdate() {
-      if (!sellerThreadSearchInput) return;
-      const query = sellerThreadSearchInput.value.trim();
-      const version = ++sellerThreadSearchVersion;
-      renderConversationList(initialConversations);
-      if (document.activeElement !== sellerThreadSearchInput) return;
-      // Offer the recent buyer list on focus, without unnecessary network requests.
-      sellerSearchDraw(query);
-      if (!query) return;
-      const data = new FormData();
-      data.append('action', 'search_message_orders');
-      data.append('query', query);
-      try {
-        const result = await postForm(data);
-        if (version !== sellerThreadSearchVersion
-            || document.activeElement !== sellerThreadSearchInput) return;
-        sellerSearchDraw(query, Array.isArray(result.orders) ? result.orders : []);
-      } catch (error) {
-        if (version !== sellerThreadSearchVersion
-            || document.activeElement !== sellerThreadSearchInput) return;
-        sellerSearchDraw(query, [], 'Order search is temporarily unavailable.');
-      }
-    }
-    sellerThreadSearchInput?.addEventListener('focus', sellerSearchUpdate);
-    sellerThreadSearchInput?.addEventListener('input', () => {
-      clearTimeout(sellerThreadSearchTimer);
-      // A stale response must never replace suggestions for a new query.
-      sellerThreadSearchVersion++;
-      renderConversationList(initialConversations);
-      if (sellerThreadSearchInput.value.trim()) {
-        sellerSearchDraw(sellerThreadSearchInput.value);
-      } else {
-        sellerSearchDraw('');
-      }
-      sellerThreadSearchTimer = setTimeout(sellerSearchUpdate, 180);
-    });
-    sellerThreadSearchInput?.addEventListener('keydown', event => {
-      if (event.key === 'Escape') {
-        sellerSearchHide();
-        sellerThreadSearchInput.blur();
-        return;
-      }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        if (!sellerThreadOptions.length) return;
-        event.preventDefault();
-        sellerThreadActiveOption = (sellerThreadActiveOption
-          + (event.key === 'ArrowDown' ? 1 : -1)
-          + sellerThreadOptions.length) % sellerThreadOptions.length;
-        sellerThreadOptions.forEach((option, index) => {
-          option.classList.toggle('is-keyboard-active', index === sellerThreadActiveOption);
-          option.setAttribute('aria-selected', String(index === sellerThreadActiveOption));
-        });
-        sellerThreadOptions[sellerThreadActiveOption].scrollIntoView({block:'nearest'});
-      } else if (event.key === 'Enter') {
-        if (!sellerThreadOptions.length) return;
-        event.preventDefault();
-        sellerThreadOptions[Math.max(0, sellerThreadActiveOption)].click();
-      }
-    });
-    document.addEventListener('pointerdown', event => {
-      if (sellerThreadSearchRoot?.contains(event.target)) return;
-      clearTimeout(sellerThreadSearchTimer);
-      sellerThreadSearchVersion++;
-      sellerSearchHide();
-      if (document.activeElement === sellerThreadSearchInput) sellerThreadSearchInput.blur();
-    });
     async function loadConversation(
       buyerId,
       forceScroll = true,
@@ -7378,14 +7278,14 @@ if ($selectedBuyerId > 0) {
     function renderConversationList(conversations) {
       if (!conversationItems) return;
       conversationItems.innerHTML = '';
-      const query = (sellerThreadSearchInput?.value || '').trim().toLocaleLowerCase();
+      const query = (sellerHeaderBuyerSearch?.value || '').trim().toLocaleLowerCase();
       const visibleConversations = query
         ? conversations.filter(conversation => String(conversation.buyer_name || '').toLocaleLowerCase().includes(query))
         : conversations;
       if (!visibleConversations.length) {
         const empty = document.createElement('div');
         empty.className = 'empty-conversations show';
-        empty.textContent = query ? 'No matching buyer. Check the Order ID suggestions above.' : 'No customer conversations yet.';
+        empty.textContent = query ? 'No matching buyer conversations.' : 'No customer conversations yet.';
         conversationItems.appendChild(empty);
         syncSellerNavUnreadFromConversationList();
         return;

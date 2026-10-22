@@ -411,6 +411,17 @@ body{background:#f7f6f4;color:#352f29;font-family:Inter,system-ui,-apple-system,
   .profile-summary>.approved-pill{padding:6px 10px;min-height:30px;font-size:.68rem}
   .profile-name{color:#493a30}
 }
+/* Seller Profile only: agreed page width, palette, and action colors. */
+:root{--sp-cta-gradient:linear-gradient(135deg,#A55325 0%,#C2692E 100%)}
+body,.page,.profile-content{background:#FFF8ED}
+.profile-wrap{max-width:1600px}
+.profile-avatar{background:var(--sp-cta-gradient)}
+.edit-btn,.primary-btn,.secondary-btn{border-color:#A55325;background:var(--sp-cta-gradient);color:#fff}
+.edit-btn:hover:not(:disabled),.primary-btn:hover:not(:disabled),.secondary-btn:hover:not(:disabled){background:var(--sp-cta-gradient);filter:brightness(.94);color:#fff}
+.sp-cal-days button[aria-pressed="true"]{background:var(--sp-cta-gradient);color:#fff}
+/* Tooltips stay hidden until tapped and open beneath their info icons. */
+.sp-once-tooltip:not([open]) .sp-tooltip-content{display:none!important}
+.sp-tooltip-content{top:calc(100% + 8px);bottom:auto}
 </style>
 </head>
 <body>
@@ -612,7 +623,16 @@ if(birthInput && calendar && birthButton){
   document.addEventListener('pointerdown',event=>{if(!calendar.hidden&&!calendar.contains(event.target)&&!birthButton.contains(event.target))close();});
   refreshLabel();render();
 }
-document.querySelectorAll('.sp-once-tooltip').forEach(tip=>tip.addEventListener('toggle',()=>{if(tip.open)document.querySelectorAll('.sp-once-tooltip').forEach(other=>{if(tip!==other)other.open=false;});}));
+const profileTooltips=[...document.querySelectorAll('.sp-once-tooltip')];
+const closeProfileTooltips=()=>profileTooltips.forEach(tip=>{tip.open=false;});
+profileTooltips.forEach(tip=>tip.addEventListener('toggle',()=>{if(tip.open)profileTooltips.forEach(other=>{if(tip!==other)other.open=false;});}));
+document.addEventListener('pointerdown',event=>{
+  if(!(event.target instanceof Element)||!event.target.closest('.sp-once-tooltip'))closeProfileTooltips();
+});
+document.addEventListener('focusin',event=>{
+  if(!(event.target instanceof Element)||!event.target.closest('.sp-once-tooltip'))closeProfileTooltips();
+});
+$('spEditOverlay')?.querySelector('.sp-modal')?.addEventListener('scroll',closeProfileTooltips,{passive:true});
 // Safari/iOS: adapt scrolling dialog to the visible viewport above the keyboard.
 const viewport=window.visualViewport;
 function sizeModal(){const visible=viewport?viewport.height:window.innerHeight;document.documentElement.style.setProperty('--sp-view-height',`${Math.round(visible)}px`);document.documentElement.style.setProperty('--sp-view-top',`${Math.round(viewport?viewport.offsetTop:0)}px`);}

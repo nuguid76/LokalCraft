@@ -144,7 +144,7 @@ try {
     <title>LokalCraft | Materials Library</title>
     <style>
 :root {
-    --bg: #f6f3ef;
+    --bg: #fff8ed;
     --panel: #ffffff;
     --line: #e7ded5;
     --text: #332c27;
@@ -153,6 +153,8 @@ try {
     --orange: #ea8a3a;
     --orange-dark: #c96d20;
     --orange-soft: #fff1e3;
+    --cta-gradient: linear-gradient(135deg, #ea8a3a 0%, #dc7c2e 55%, #c96d20 100%);
+    --cta-gradient-hover: linear-gradient(135deg, #df7d2e 0%, #b85e1d 100%);
     --brown: #5a4032;
     --brown-dark: #3f2c23;
     --green: #2f8f62;
@@ -165,7 +167,7 @@ body.modal-open { overflow: hidden; }
 .page {
     display: block !important;
     min-height: 100vh;
-    background: linear-gradient(180deg, #f8f5f1 0%, #f3eee9 100%);
+    background: var(--bg);
 }
 /* Follow the Seller Dashboard: scroll the document, not a fixed content pane. */
 body .page > main.content.saved-materials-main {
@@ -187,7 +189,7 @@ body .page > main.content.saved-materials-main {
 }
 .wrap {
     width: 100%;
-    max-width: 1240px;
+    max-width: 1600px;
     min-width: 0;
     margin: 0 auto;
     padding: 8px 26px 20px;
@@ -242,16 +244,18 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
     color: var(--orange-dark);
 }
 .materials-page .primary,
-.material-modal .primary {
+.material-modal .primary,
+.materials-page .card-actions .edit-material {
     border-color: var(--orange);
-    background: linear-gradient(135deg, var(--orange), #dc7c2e);
+    background: var(--cta-gradient);
     color: #fff;
     box-shadow: 0 7px 16px rgba(234,138,58,.16);
 }
 .materials-page .primary:hover,
-.material-modal .primary:hover {
+.material-modal .primary:hover,
+.materials-page .card-actions .edit-material:hover {
     border-color: var(--orange-dark);
-    background: linear-gradient(135deg, #df7d2e, var(--orange-dark));
+    background: var(--cta-gradient-hover);
     color: #fff;
 }
 /* Use the same action styling as Seller Profile's Edit Profile button. */
@@ -265,7 +269,7 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
     padding: 11px 18px;
     border: 1px solid #e98736;
     border-radius: 13px;
-    background: #ee8b39;
+    background: var(--cta-gradient);
     color: #fff;
     font-size: .82rem;
     font-weight: 750;
@@ -277,7 +281,7 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
 }
 .materials-page a.link-button.back-to-costing:hover {
     border-color: #d97a2c;
-    background: #dc7b2b;
+    background: var(--cta-gradient-hover);
     color: #fff;
     box-shadow: 0 8px 19px rgba(224,119,37,.18);
 }
@@ -411,7 +415,7 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
 }
 .materials-grid {
     display: grid;
-    grid-template-columns: repeat(3,minmax(0,1fr));
+    grid-template-columns: repeat(4,minmax(0,1fr));
     gap: 14px;
 }
 .material-card {
@@ -596,9 +600,9 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
 .heading { align-items: center; gap: 8px; }
 .heading h1 { color: #332c27; font-family: "Segoe UI", Arial, sans-serif; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; line-height: 1.25; }
 .top-actions { align-items: center; flex-wrap: nowrap; gap: 8px; }
-.materials-page a.link-button.back-to-costing { width: auto; height: 43px; min-height: 43px; padding: 0 14px; border-color: #d77d32; border-radius: 12px; background: #e98b40; color: #fff; box-shadow: 0 5px 14px rgba(202,111,36,.13); gap: 7px; }
+.materials-page a.link-button.back-to-costing { width: auto; height: 43px; min-height: 43px; padding: 0 14px; border-color: #d77d32; border-radius: 12px; background: var(--cta-gradient); color: #fff; box-shadow: 0 5px 14px rgba(202,111,36,.13); gap: 7px; }
 .materials-page a.link-button.back-to-costing .back-label { font-size: .78rem; font-weight: 750; white-space: nowrap; }
-.materials-page a.link-button.back-to-costing:hover { border-color: #c8752d; background: #cd722c; color: #fff; }
+.materials-page a.link-button.back-to-costing:hover { border-color: #c8752d; background: var(--cta-gradient-hover); color: #fff; }
 .card, .material-card { border-color: #eadfd6; background: rgba(255,255,255,.94); box-shadow: 0 8px 22px rgba(76,50,32,.05); }
 .material-card { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
 .material-card:focus-visible { outline: 3px solid rgba(234,138,58,.35); outline-offset: 2px; }

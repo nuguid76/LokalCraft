@@ -476,7 +476,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
     <title>LokalCraft | Saved Calculations</title>
     <style>
         :root {
-            --bg: #f3f3f3;
+            --bg: #FFF8ED;
             --panel: #ffffff;
             --line: #dedad6;
             --text: #2d2d2d;
@@ -484,6 +484,8 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             --orange: #e68d2d;
             --orange-dark: #d7771a;
             --orange-soft: #fff0da;
+            --cta-gradient: linear-gradient(135deg, #ea8a3a 0%, #dc7c2e 55%, #c96d20 100%);
+            --cta-hover: linear-gradient(135deg, #df7d2e 0%, #b85e1d 100%);
             --green: #1b9a5e;
             --red: #c94141;
             --soft: #f9f8f7;
@@ -494,7 +496,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         .page {
             display: block !important;
             min-height: 100vh;
-            background: #f5f3f1;
+            background: var(--bg);
         }
         /* Use the document scroll, like the Seller Dashboard, instead of
            trapping this page in a fixed-position scrolling container. */
@@ -517,7 +519,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         }
         .page-wrap {
             width: 100%;
-            max-width: 1180px;
+            max-width: 1600px;
             min-width: 0;
             margin: 0 auto;
             padding: 8px 26px 20px;
@@ -551,9 +553,9 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             flex: 0 0 auto;
             min-height: 46px;
             padding: 11px 18px;
-            border: 1px solid #e98736;
+            border: 1px solid #c96d20;
             border-radius: 13px;
-            background: #ee8b39;
+            background: var(--cta-gradient);
             color: #fff;
             font-size: .82rem;
             font-weight: 750;
@@ -565,7 +567,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         }
         .back-button:hover {
             border-color: #d97a2c;
-            background: #dc7b2b;
+            background: var(--cta-hover);
             color: #fff;
             box-shadow: 0 8px 19px rgba(224, 119, 37, .18);
         }
@@ -581,7 +583,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         .toolbar { margin-bottom: 16px; }
         .count { color: var(--muted); font-size: .78rem; }
         .error-message { margin-bottom: 16px; padding: 11px 13px; border: 1px solid #efc0c0; border-radius: 8px; background: #fff3f3; color: var(--red); font-size: .78rem; }
-        .costing-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+        .costing-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
         .costing-card {
             display: flex; flex-direction: column; min-width: 0; background: rgba(255,255,255,.8);
             border: 1px solid #e8e4df; border-radius: 16px; overflow: hidden;
@@ -625,17 +627,19 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         .expense-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,.48fr) 38px; gap: 9px; align-items: end; }
         .material-cost-display { margin-top: 6px; min-height: 38px; display: flex; align-items: center; padding: 9px 10px; border-radius: 7px; background: #f0efed; color: #555; font-size: .77rem; font-weight: 700; }
         .remove-row { height: 38px; border: 1px solid #f1caca; border-radius: 7px; background: #fff6f6; color: #c84d4d; cursor: pointer; }
-        .add-row { border: 0; border-radius: 7px; background: #fff0da; color: #bf681b; padding: 8px 11px; font-size: .72rem; font-weight: 800; cursor: pointer; }
+        .add-row { border: 1px solid #c96d20; border-radius: 7px; background: var(--cta-gradient); color: #fff; padding: 8px 11px; font-size: .72rem; font-weight: 800; cursor: pointer; }
+        .add-row:hover { background: var(--cta-hover); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
         .button { border: 1px solid var(--line); border-radius: 7px; background: #fff; color: #4f4f4f; padding: 10px 14px; font: inherit; font-size: .76rem; font-weight: 800; cursor: pointer; }
-        .button.primary { border-color: var(--orange); background: var(--orange); color: #fff; }
-        .button.primary:hover { background: var(--orange-dark); }
+        .button.primary { border-color: #c96d20; background: var(--cta-gradient); color: #fff; }
+        .button.primary:hover { background: var(--cta-hover); }
         .button:disabled { opacity: .55; cursor: not-allowed; }
         .modal-status { min-height: 20px; margin-top: 10px; font-size: .75rem; }
         .modal-status.error { color: var(--red); }
         .modal-status.success { color: var(--green); }
         .library-warning { padding: 11px 12px; border: 1px solid #efd29a; border-radius: 8px; background: #fff9ec; color: #7a633f; font-size: .74rem; line-height: 1.45; }
         .library-warning a { color: #b96518; font-weight: 800; }
+        @media (max-width: 1599px) { .costing-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
         @media (max-width: 1100px) { .costing-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
         @media (max-width: 900px) { .costing-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
         @media (max-width: 760px) {
@@ -654,9 +658,9 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             .form-grid, .material-row, .expense-row { grid-template-columns: 1fr; }
             .remove-row { width: 100%; }
 }
-        @media (max-width: 420px) { .costing-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 420px) { .costing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
         :root {
-            --bg: #f6f3ef;
+            --bg: #FFF8ED;
             --panel: #ffffff;
             --line: #e7ded5;
             --text: #332c27;
@@ -669,7 +673,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             --soft: #fbf8f5;
         }
         .page {
-            background: linear-gradient(180deg, #f8f5f1 0%, #f3eee9 100%);
+            background: var(--bg);
         }
         .costing-card {
             background: rgba(255,255,255,.94);
@@ -964,11 +968,11 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             flex-shrink: 0;
         }
         .button.primary {
-            border-color: var(--orange);
-            background: var(--orange);
+            border-color: #c96d20;
+            background: var(--cta-gradient);
         }
         .button.primary:hover {
-            background: var(--orange-dark);
+            background: var(--cta-hover);
         }
         .field-error {
             border-color: #d9685e !important;
@@ -1028,10 +1032,10 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         /* Shared pricing typography and toolbar (matches calculator.php). */
         .heading { flex-direction: row; align-items: center; gap: 8px; }
         .heading h1 { color: #332c27; font-family: "Segoe UI", Arial, sans-serif; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; line-height: 1.25; }
-        .back-button { display: inline-flex; flex: 0 0 auto; width: auto; height: 43px; min-height: 43px; padding: 0 14px; align-items: center; justify-content: center; gap: 7px; border: 1px solid #d77d32; border-radius: 12px; background: #e98b40; color: #fff; box-shadow: 0 5px 14px rgba(202,111,36,.13); }
+        .back-button { display: inline-flex; flex: 0 0 auto; width: auto; height: 43px; min-height: 43px; padding: 0 14px; align-items: center; justify-content: center; gap: 7px; border: 1px solid #c96d20; border-radius: 12px; background: var(--cta-gradient); color: #fff; box-shadow: 0 5px 14px rgba(202,111,36,.13); }
         .back-button .back-label { font-size: .78rem; font-weight: 750; white-space: nowrap; }
         .back-button svg { width: 18px; height: 18px; flex: 0 0 18px; }
-        .back-button:hover { border-color: #c8752d; background: #cd722c; color: #fff; }
+        .back-button:hover { border-color: #b85e1d; background: var(--cta-hover); color: #fff; }
         /* Seller Application-inspired inputs without heavy text. */
         .costing-modal label { font-size: .81rem; font-weight: 700; color: #625548; }
         .costing-modal input:not([type=file]), .costing-modal select { min-width: 0; min-height: 45px; padding: 10px 12px; border: 1px solid #e5d9cd; border-radius: 11px; background: #fdfbf9; color: #483c32; font-family: inherit; font-size: .91rem; font-weight: 400; }

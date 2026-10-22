@@ -261,6 +261,9 @@ header('Cache-Control: private, no-store, max-age=0');
   <title>Seller Wallet | LokalCraft</title>
   <style>
 :root {
+    --wallet-bg: #FFF8ED;
+    --wallet-cta: linear-gradient(135deg, #ea8a3a 0%, #dc7c2e 55%, #c96d20 100%);
+    --wallet-cta-hover: linear-gradient(135deg, #df7d2e 0%, #b85e1d 100%);
     --wallet-card: #ffffff;
     --wallet-text: #2d2d2d;
     --wallet-muted: #7c7671;
@@ -282,11 +285,11 @@ header('Cache-Control: private, no-store, max-age=0');
 body {
     margin: 0;
     min-height: 100vh;
-    background: #f4f3f1;
+    background: var(--wallet-bg);
     color: var(--wallet-text);
     font-family: "Segoe UI", Arial, sans-serif;
 }
-.app { min-height: 100vh; }
+.app { min-height: 100vh; background: var(--wallet-bg); }
 /* Same normal document-flow positioning as the Seller Dashboard. */
 body .app > main.main.wallet-main {
     position: relative !important;
@@ -303,18 +306,18 @@ body .app > main.main.wallet-main {
     margin: 0 0 0 250px !important;
     padding: var(--wallet-header-offset, 70px) 0 28px !important;
     overflow: visible !important;
-    background: transparent !important;
+    background: var(--wallet-bg) !important;
 }
 .wallet-search-shell { min-width: 0; }
 body .app > main.wallet-main > .wallet-content {
     width: 100% !important;
-    max-width: 1240px !important;
+    max-width: 1600px !important;
     margin: 0 auto !important;
     padding: 8px 26px 24px !important;
 }
 .page-heading {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
     gap: 18px;
     margin-bottom: 18px;
@@ -332,13 +335,44 @@ body .app > main.wallet-main > .wallet-content {
     font-size: .9rem;
     line-height: 1.45;
 }
-.wallet-note {
-    max-width: 410px;
-    color: #8d837a;
-    font-size: .67rem;
-    line-height: 1.5;
-    text-align: right;
+.wallet-info { position: relative; margin-left: auto; flex: 0 0 auto; }
+.wallet-info summary {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid #e8d0ba;
+    border-radius: 50%;
+    background: #fffaf4;
+    color: #9b5a2a;
+    font-size: .82rem;
+    font-weight: 800;
+    cursor: pointer;
+    list-style: none;
 }
+.wallet-info summary::-webkit-details-marker { display: none; }
+.wallet-info summary:hover { background: #fff1e2; }
+.wallet-info summary:focus-visible { outline: 3px solid #f0ae72; outline-offset: 2px; }
+.wallet-info-copy {
+    display: none;
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 9px);
+    right: 0;
+    width: min(310px, calc(100vw - 32px));
+    padding: 11px 13px;
+    border: 1px solid #e8d6c6;
+    border-radius: 10px;
+    background: #fffdfb;
+    color: #685b51;
+    box-shadow: 0 12px 26px rgba(76,50,32,.12);
+    font-size: .72rem;
+    line-height: 1.55;
+    text-align: left;
+}
+.wallet-info[open] .wallet-info-copy,
+.wallet-info:hover .wallet-info-copy,
+.wallet-info:focus-within .wallet-info-copy { display: block; }
 .stats {
     display: grid;
     grid-template-columns: repeat(4,minmax(0,1fr));
@@ -538,11 +572,15 @@ body .app > main.wallet-main > .wallet-content {
 .wallet-detail-item.highlight dd { color: #ad632a; }
 .wallet-detail-note { margin: 11px 0 0; padding: 12px 13px; border: 1px solid #efdfce; border-radius: 11px; background: #fff8f0; color: #755c48; font-size: .72rem; line-height: 1.55; }
 .wallet-detail-footer { display: flex; justify-content: flex-end; padding: 13px 20px; border-top: 1px solid #eee3d9; }
-.wallet-detail-done { min-width: 92px; padding: 9px 17px; border: 1px solid #dc7a2a; border-radius: 10px; background: #ea8a3a; color: #fff; font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; }
-.wallet-detail-done:hover { background: #d87522; }
+.wallet-detail-done { min-width: 92px; padding: 9px 17px; border: 1px solid #c96d20; border-radius: 10px; background: var(--wallet-cta); color: #fff; font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; box-shadow: 0 7px 16px rgba(234,138,58,.18); }
+.wallet-detail-done:hover { background: var(--wallet-cta-hover); }
 body.wallet-detail-open { overflow: hidden; }
 @media (max-width: 1050px) {
-    .stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .stats { gap: 10px; }
+    .stat-card { padding: 12px; gap: 8px; }
+    .stat-icon { width: 30px; height: 30px; flex-basis: 30px; }
+    .stat-icon svg { width: 17px; height: 17px; }
+    .stat-value { font-size: 1rem; }
     .transaction-row { grid-template-columns: minmax(0,1fr) 130px 125px; }
     .transaction-category { display: none; }
 }
@@ -554,15 +592,15 @@ body.wallet-detail-open { overflow: hidden; }
     }
 }
 @media (max-width: 760px) {
+    .stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
     body .app > main.main.wallet-main {
         width: 100% !important;
         margin-left: 0 !important;
         padding-top: var(--wallet-header-offset, 76px) !important;
     }
     body .app > main.wallet-main > .wallet-content { padding: 8px 12px 24px !important; }
-    .page-heading { align-items: flex-start; flex-direction: column; }
+    .page-heading { align-items: center; flex-direction: row; }
     .page-heading h1 { font-size: 1.8rem; }
-    .wallet-note { max-width: none; text-align: left; }
     .transaction-row { grid-template-columns: 1fr auto; gap: 7px 12px; padding: 12px 8px; }
     .transaction-category { display: inline-flex; }
     .transaction-date, .balance-after { grid-column: 1 / -1; }
@@ -593,10 +631,10 @@ body.wallet-detail-open { overflow: hidden; }
         <div>
           <h1>Wallet</h1>
         </div>
-        <div class="wallet-note">
-          This is an internal LokalCraft wallet record. It does not represent
-          an automatic bank or e-wallet withdrawal.
-        </div>
+        <details class="wallet-info">
+          <summary aria-label="About your wallet" title="About your wallet">i</summary>
+          <div class="wallet-info-copy">This is an internal LokalCraft wallet record. It does not represent an automatic bank or e-wallet withdrawal.</div>
+        </details>
       </div>
       <?php if ($errorMessage !== ''): ?>
         <div class="error-box">
