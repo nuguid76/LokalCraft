@@ -977,11 +977,11 @@ try {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LokalCraft | Products</title>
   <style>
-:root { --bg:#f6f3ef; --panel:#fff; --line:#e7ded5; --text:#332c27; --muted:#7b746e; --soft:#fbf8f5; --orange:#ea8a3a; --orange-dark:#c96d20; --orange-soft:#fff1e3; --brown:#5a4032; --brown-dark:#3f2c23; --green:#2f8f62; --green-soft:#edf8f1; --red:#c94f45; --red-soft:#fff1ef; --shadow:0 8px 22px rgba(76,50,32,.06); }
+:root { --bg:#FFF8ED; --panel:#fff; --line:#e7ded5; --text:#332c27; --muted:#7b746e; --soft:#fbf8f5; --orange:#ea8a3a; --orange-dark:#c96d20; --orange-soft:#fff1e3; --cta-gradient:linear-gradient(135deg,#ea8a3a 0%,#dc7c2e 55%,#c96d20 100%); --cta-hover:linear-gradient(135deg,#df7d2e 0%,#b85e1d 100%); --brown:#5a4032; --brown-dark:#3f2c23; --green:#2f8f62; --green-soft:#edf8f1; --red:#c94f45; --red-soft:#fff1ef; --shadow:0 8px 22px rgba(76,50,32,.06); }
 * { box-sizing:border-box; }
 body { margin:0; font-family:"Segoe UI",Arial,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
 body.modal-open { overflow:hidden; }
-.page { display:block!important; min-height:100vh; background:linear-gradient(180deg,#f8f5f1 0%,#f3eee9 100%); }
+.page { display:block!important; min-height:100vh; background:var(--bg); }
 /* Match Seller Dashboard: the page scrolls naturally below the shared fixed search bar.
    Specificity intentionally overrides seller_nav.php and seller_search.php defaults. */
 body .page > main.content.products-main {
@@ -1002,12 +1002,11 @@ body .page > main.content.products-main {
     background: transparent !important;
 }
 .products-search-shell { min-width: 0; }
-.products-wrap { width:100%; max-width:1240px; margin:0 auto; padding:8px 26px 24px; }
-.seller-header-tools .filter-box input,.seller-header-tools .filter-box select { width:100%; min-width:0; min-height:0; height:auto; margin:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; font:inherit; outline:none; }
+.products-wrap { width:100%; max-width:1600px; margin:0 auto; padding:8px 26px 24px; }
 .page-header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:18px; }
 .page-title { margin:0; color:var(--text); font-size:2.1rem; font-weight:800; letter-spacing:-.7px; }
-.add-btn { min-height:40px; border:1px solid var(--orange); border-radius:8px; background:linear-gradient(135deg,var(--orange),#dc7c2e); color:#fff; padding:9px 14px; font:inherit; font-size:.78rem; font-weight:800; cursor:pointer; box-shadow:0 7px 16px rgba(234,138,58,.18); }
-.add-btn:hover { background:linear-gradient(135deg,#df7d2e,var(--orange-dark)); }
+.add-btn { min-height:40px; border:1px solid var(--orange-dark); border-radius:8px; background:var(--cta-gradient); color:#fff; padding:9px 14px; font:inherit; font-size:.78rem; font-weight:800; cursor:pointer; box-shadow:0 7px 16px rgba(234,138,58,.18); }
+.add-btn:hover { background:var(--cta-hover); }
 .message { margin-bottom:16px; padding:11px 13px; border-radius:9px; font-size:.78rem; line-height:1.45; }
 .message.success { border:1px solid #bee6ca; background:var(--green-soft); color:#27834f; }
 .message.error { border:1px solid #efc0c0; background:var(--red-soft); color:var(--red); }
@@ -1224,14 +1223,6 @@ body .page > main.content.products-main {
     font-size: 1.35rem;
     font-weight: 900;
 }
-.listing-preview-note {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px dashed #d8bcaa;
-    color: #766054;
-    font-size: .62rem;
-    line-height: 1.5;
-}
 .product-section,
 .product-view-section,
 .reviews-section {
@@ -1249,7 +1240,8 @@ body .page > main.content.products-main {
 .quick-custom-fields { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(140px,1fr); gap:10px; }
 .quick-custom-check { display:flex!important; align-items:center; gap:8px; margin-top:12px; font-size:.69rem!important; font-weight:600!important; }
 #product-modal .quick-custom-check input { width:17px; height:17px; min-height:17px; margin:0; flex:0 0 17px; accent-color:var(--orange); }
-.quick-custom-add { min-height:37px; margin-top:11px; padding:7px 12px; border:1px dashed #d7a880; border-radius:8px; background:#fff9f3; color:var(--orange-dark); font:inherit; font-size:.74rem; font-weight:800; cursor:pointer; }
+.quick-custom-add { min-height:37px; margin-top:11px; padding:7px 12px; border:1px solid var(--orange-dark); border-radius:8px; background:var(--cta-gradient); color:#fff; font:inherit; font-size:.74rem; font-weight:800; cursor:pointer; box-shadow:0 5px 12px rgba(234,138,58,.14); }
+.quick-custom-add:hover:not(:disabled) { background:var(--cta-hover); }
 .quick-custom-add:disabled { opacity:.55; cursor:not-allowed; }
 .quick-custom-count { color:var(--muted); font-size:.67rem; font-weight:700; }
 .quick-custom-error { display:none; margin-top:5px; color:var(--red); font-size:.65rem; line-height:1.35; }
@@ -1285,12 +1277,48 @@ body .page > main.content.products-main {
     color: #3d342e;
     font-size: .9rem;
 }
-.product-section-heading p {
-    margin: 4px 0 0;
-    color: #857d76;
-    font-size: .66rem;
+.field-title-row, .quick-custom-heading-tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.field-title-row { min-height: 20px; }
+.quick-custom-heading-tools { flex: 0 0 auto; }
+.help-tip { position: relative; display: inline-flex; flex: 0 0 auto; }
+.help-tip > summary {
+    display: grid;
+    place-items: center;
+    width: 19px;
+    height: 19px;
+    padding: 0;
+    border: 1px solid #dfc7b4;
+    border-radius: 50%;
+    background: #fff9f3;
+    color: #9b643f;
+    font: 700 12px/1 "Segoe UI", Arial, sans-serif;
+    list-style: none;
+    cursor: pointer;
+}
+.help-tip > summary::-webkit-details-marker { display: none; }
+.help-tip > summary:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.help-tip-copy {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(260px, calc(100vw - 54px));
+    padding: 10px 12px;
+    border: 1px solid #e7d5c7;
+    border-radius: 9px;
+    background: #fffdfb;
+    color: #5d5148;
+    box-shadow: 0 10px 28px rgba(54,39,25,.14);
+    font-size: .68rem;
+    font-weight: 500;
     line-height: 1.45;
 }
+.help-tip--up .help-tip-copy { top: auto; bottom: calc(100% + 8px); }
 .form-grid {
     display: grid;
     grid-template-columns: repeat(2,minmax(0,1fr));
@@ -1407,11 +1435,12 @@ body .page > main.content.products-main {
     color: var(--orange-dark);
 }
 .submit-btn {
-    border: 1px solid var(--orange);
-    background: var(--orange);
+    border: 1px solid var(--orange-dark);
+    background: var(--cta-gradient);
     color: #fff;
+    box-shadow: 0 7px 16px rgba(234,138,58,.18);
 }
-.submit-btn:hover { background: var(--orange-dark); }
+.submit-btn:hover:not(:disabled) { background: var(--cta-hover); }
 .submit-btn:disabled { opacity: .6; cursor: wait; }
 .product-view-body {
     padding: 20px 22px 10px;
@@ -1520,11 +1549,12 @@ body .page > main.content.products-main {
     cursor: pointer;
 }
 .view-action.primary {
-    border-color: var(--orange);
-    background: var(--orange);
+    border-color: var(--orange-dark);
+    background: var(--cta-gradient);
     color: #fff;
+    box-shadow: 0 5px 12px rgba(234,138,58,.14);
 }
-.view-action.primary:hover { background: var(--orange-dark); }
+.view-action.primary:hover { background: var(--cta-hover); }
 .view-action.danger {
     border-color: #efcece;
     background: #fff6f6;
@@ -1719,9 +1749,9 @@ body .page > main.content.products-main {
 .image-warning-close {
     min-height: 40px;
     padding: 9px 14px;
-    border: 1px solid var(--orange);
+    border: 1px solid var(--orange-dark);
     border-radius: 8px;
-    background: var(--orange);
+    background: var(--cta-gradient);
     color: #fff;
     font: inherit;
     font-size: .72rem;
@@ -1729,7 +1759,7 @@ body .page > main.content.products-main {
     cursor: pointer;
 }
 .image-warning-close:hover {
-    background: var(--orange-dark);
+    background: var(--cta-hover);
 }
 @media (max-width:1180px) { .product-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (max-width:940px) { .product-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .product-view-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
@@ -1755,6 +1785,8 @@ body .page > main.content.products-main {
 .cancel-btn,.submit-btn { flex:1; min-height:44px; }
 }
 @media (max-width:580px) {
+.product-section-heading { flex-wrap:wrap; }
+.quick-custom-heading-tools { margin-left:41px; }
 .page-title { font-size:1.8rem; }
 .product-grid { grid-template-columns:1fr; gap:12px; }
 .product-image-wrap { aspect-ratio:16/10; }
@@ -2015,7 +2047,6 @@ body .page > main.content.products-main {
 <div class="modal-header-copy">
 <span class="modal-eyebrow">PRODUCT</span>
 <div class="modal-title">Product Details</div>
-<p class="modal-subtitle">Review the listing information, inventory, and customer rating.</p>
 </div>
 <button class="close-modal" id="close-view-product" type="button" aria-label="Close product details">&times;</button>
 </div>
@@ -2057,7 +2088,6 @@ body .page > main.content.products-main {
 <div class="modal-header-copy">
 <span class="modal-eyebrow">PRODUCT LISTING</span>
 <div class="modal-title" id="modal-title">Add Product</div>
-<p class="modal-subtitle">Create or update a marketplace listing using your saved costing, inventory, product details, and image.</p>
 </div>
 <button class="close-modal" id="close-modal" type="button" aria-label="Close product form">&times;</button>
 </div>
@@ -2069,7 +2099,7 @@ body .page > main.content.products-main {
 <div class="product-form-layout">
 <section class="product-section">
 <div class="product-section-heading">
-<div><span class="section-number">01</span><div><h3>Saved Calculation</h3><p>Reuse a saved costing if you already calculated the product price.</p></div></div>
+<div><span class="section-number">01</span><div><h3>Saved Calculation</h3></div></div>
 </div>
 <div class="saved-costing-box">
 <label class="full">
@@ -2080,13 +2110,12 @@ body .page > main.content.products-main {
 <option value="<?= (int)$costing['costing_id'] ?>" data-name="<?= htmlspecialchars($costing['product_title'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($costing['craft_category'], ENT_QUOTES) ?>" data-price="<?= htmlspecialchars((string)$costing['suggested_price'], ENT_QUOTES) ?>"><?= htmlspecialchars($costing['product_title']) ?> — <?= formatMoney((float)$costing['suggested_price']) ?></option>
 <?php endforeach; ?>
 </select>
-<div class="costing-note" id="saved-costing-note">Choose a saved calculation to fill the product name, category, and latest suggested selling price.</div>
 </label>
 </div>
 </section>
 <section class="product-section">
 <div class="product-section-heading">
-<div><span class="section-number">02</span><div><h3>Product Information</h3><p>Enter the main information that will appear on the marketplace.</p></div></div>
+<div><span class="section-number">02</span><div><h3>Product Information</h3></div></div>
 </div>
 <div class="form-grid">
 <label>Product Name<input id="product-name" name="product_name" type="text" maxlength="255" placeholder="e.g. Handwoven Rattan Basket" required></label>
@@ -2096,26 +2125,28 @@ body .page > main.content.products-main {
 </section>
 <section class="product-section">
 <div class="product-section-heading">
-<div><span class="section-number">03</span><div><h3>Price & Inventory</h3><p>Set the final selling price and the quantity available for this listing.</p></div></div>
+<div><span class="section-number">03</span><div><h3>Price & Inventory</h3></div></div>
 </div>
 <div class="form-grid">
-<label>Price (₱)<input id="product-cost" name="cost" type="number" min="0" step="0.01" value="0" required><div class="costing-note">This is the selling price buyers will see.</div></label>
-<label>Stock<input id="product-stock" name="stock" type="number" min="0" step="1" value="0" required><div class="costing-note">Reserved units cannot be removed while they are tied to active orders.</div></label>
-<label class="full">Status<select id="product-status" name="status"><?php foreach ($statusOptions as $option): ?><option value="<?= htmlspecialchars($option, ENT_QUOTES) ?>"><?= htmlspecialchars($option) ?></option><?php endforeach; ?></select><div class="costing-note" id="inventory-status-note" role="status" aria-live="polite">Out of Stock is automatic when no units are available. Choose Archived to remove a listing.</div></label>
+<label>Price (₱)<input id="product-cost" name="cost" type="number" min="0" step="0.01" value="0" required></label>
+<div class="stock-field">
+<div class="field-title-row"><label for="product-stock">Stock</label><details class="help-tip"><summary aria-label="Stock help" title="Stock help">i</summary><div class="help-tip-copy">Stock cannot be set below units reserved for active orders.</div></details></div>
+<input id="product-stock" name="stock" type="number" min="0" step="1" value="0" required>
+</div>
+<label class="full">Status<select id="product-status" name="status"><?php foreach ($statusOptions as $option): ?><option value="<?= htmlspecialchars($option, ENT_QUOTES) ?>"><?= htmlspecialchars($option) ?></option><?php endforeach; ?></select><div class="costing-note" id="inventory-status-note" role="status" aria-live="polite">0 available · 0 reserved</div></label>
 </div>
 </section>
 <section class="product-section" id="quick-customizations-section">
 <div class="product-section-heading">
-<div><span class="section-number">04</span><div><h3>Quick Customizations (Optional)</h3><p>Add up to 5 paid or free options that buyers can choose for this product.</p></div></div>
-<div class="quick-custom-count" id="quick-custom-count" aria-live="polite">0 of 5 options</div>
+<div><span class="section-number">04</span><div><h3>Quick Customizations (Optional)</h3></div></div>
+<div class="quick-custom-heading-tools"><div class="quick-custom-count" id="quick-custom-count" aria-live="polite">0 of 5 options</div><details class="help-tip"><summary aria-label="Customization pricing help" title="Customization pricing help">i</summary><div class="help-tip-copy">Additional prices are per unit and do not change the base price. Enable “Require buyer details” for engraving or personalized text.</div></details></div>
 </div>
 <div class="quick-custom-list" id="quick-custom-list"></div>
 <button type="button" class="quick-custom-add" id="quick-custom-add">+ Add Customization</button>
-<div class="costing-note">Additional prices are charged per unit and do not change the product's base selling price. Choose "Require buyer details" for engraving or personalized text.</div>
 </section>
 <section class="product-section">
 <div class="product-section-heading">
-<div><span class="section-number">05</span><div><h3>Product Image</h3><p>Use a clear image for the marketplace and visual product matching.</p></div></div>
+<div><span class="section-number">05</span><div><h3>Product Image</h3></div></div>
 </div>
 <div class="photo-editor">
 <div class="photo-preview">
@@ -2123,8 +2154,8 @@ body .page > main.content.products-main {
 <div class="photo-empty" id="photo-empty">Product image preview</div>
 </div>
 <div class="photo-fields">
-<label>Product Photo<input id="product-photo" name="product_photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
-<div class="costing-note" id="product-photo-note">Required for new products. JPG, PNG, or WEBP, maximum 5 MB. The image is also used for visual product matching.</div>
+<div class="field-title-row"><label for="product-photo">Product Photo</label><details class="help-tip help-tip--up"><summary aria-label="Product photo requirements" title="Photo requirements">i</summary><div class="help-tip-copy" id="product-photo-note">New product: JPG, PNG, or WEBP · up to 5 MB.</div></details></div>
+<input id="product-photo" name="product_photo" type="file" accept="image/jpeg,image/png,image/webp">
 <div class="image-safety-status idle" id="product-image-safety" role="status" aria-live="polite">Choose an image to run the safety check.</div>
 </div>
 </div>
@@ -2146,7 +2177,6 @@ body .page > main.content.products-main {
 <div class="listing-preview-category" id="listing-preview-category">Select category</div>
 <div class="listing-preview-name" id="listing-preview-name">Product Name</div>
 <div class="listing-preview-price" id="listing-preview-price">₱0.00</div>
-<div class="listing-preview-note">This preview updates while you edit. The actual buyer listing will use the same saved product data after submission.</div>
 </div>
 </div>
 </aside>
@@ -2193,7 +2223,6 @@ body .page > main.content.products-main {
 <div class="modal-header-copy">
 <span class="modal-eyebrow">PRODUCT ACTION</span>
 <div class="modal-title" id="delete-product-title">Delete Product?</div>
-<p class="modal-subtitle">Confirm before permanently removing this listing.</p>
 </div>
 <button class="close-modal" id="close-delete-product" type="button" aria-label="Close delete confirmation">&times;</button>
 </div>
@@ -2219,7 +2248,6 @@ body .page > main.content.products-main {
     const savedCosting = document.getElementById('saved-costing');
     const savedCostingLabel = document.getElementById('saved-costing-label');
     const savedCostingDefault = document.getElementById('saved-costing-default');
-    const savedCostingNote = document.getElementById('saved-costing-note');
     const productName = document.getElementById('product-name');
     const craftCategory = document.getElementById('craft-category');
     const productCost = document.getElementById('product-cost');
@@ -2589,10 +2617,8 @@ body .page > main.content.products-main {
       const statusClass = status.toLowerCase().replaceAll(' ', '-');
       if (inventoryStatusNote) {
         inventoryStatusNote.textContent = status === 'Archived'
-          ? 'Archived products stay hidden from active buyer listings until reactivated.'
-          : (available === 0
-              ? `Out of Stock automatically: ${stock} total, ${editingReservedStock} reserved, 0 available.`
-              : `${available} available (${editingReservedStock} reserved). Out of Stock applies automatically at 0 available.`);
+          ? `Archived · ${available} available · ${editingReservedStock} reserved`
+          : `${available} available · ${editingReservedStock} reserved`;
       }
       listingPreviewName.textContent = name;
       listingPreviewCategory.textContent = category;
@@ -2616,13 +2642,9 @@ body .page > main.content.products-main {
       if (mode === 'edit') {
         savedCostingLabel.textContent = 'Reapply Saved Calculation';
         savedCostingDefault.textContent = 'Keep current product details';
-        savedCostingNote.textContent =
-          'Choose a saved calculation to replace the product name, category, and selling price with its latest saved values.';
       } else {
         savedCostingLabel.textContent = 'Use Saved Calculation';
         savedCostingDefault.textContent = 'Create product without saved calculation';
-        savedCostingNote.textContent =
-          'Choose a saved calculation to fill the product name, category, and latest suggested selling price.';
       }
     }
     function openCreateModal() {
@@ -2638,7 +2660,7 @@ body .page > main.content.products-main {
       productCost.value = '0';
       productStock.value = '0';
       productPhoto.required = true;
-      if (productPhotoNote) productPhotoNote.textContent = 'Required for new products. JPG, PNG, or WEBP, maximum 5 MB. The image is also used for visual product matching.';
+      if (productPhotoNote) productPhotoNote.textContent = 'New product: JPG, PNG, or WEBP · up to 5 MB.';
       configureSavedCalculation('create');
       previewImage.removeAttribute('src');
       previewImage.classList.remove('show');
@@ -2668,8 +2690,8 @@ body .page > main.content.products-main {
       productPhoto.value = '';
       productPhoto.required = !(source.dataset.photo || '');
       if (productPhotoNote) productPhotoNote.textContent = source.dataset.photo
-        ? 'Leave this empty to keep the current image. Uploading a new image will refresh its visual-matching embedding.'
-        : 'This product has no image yet, so a product photo is required before saving.';
+        ? 'Leave blank to keep the current image. JPG, PNG, or WEBP · up to 5 MB.'
+        : 'Image required. JPG, PNG, or WEBP · up to 5 MB.';
       configureSavedCalculation('edit');
       if (source.dataset.photo) {
         previewImage.src = '../' + source.dataset.photo;

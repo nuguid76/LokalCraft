@@ -283,7 +283,7 @@ function formatStatus(string $status): string
   <style>
 :root {
     /* Same warm palette used by Seller Profile. */
-    --bg: #f4f3f1;
+    --bg: #FFF8ED;
     --panel: #ffffff;
     --line: #e9e2dc;
     --text: #2d2d2d;
@@ -333,7 +333,7 @@ body .app > main.main.dashboard-main {
 .dashboard-search-shell { min-width: 0; }
 body .app > main.dashboard-main > .dashboard-content {
     width: 100% !important;
-    max-width: 1240px !important;
+    max-width: 1600px !important;
     margin: 0 auto !important;
     padding: 8px 26px 24px !important;
 }

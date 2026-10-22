@@ -849,7 +849,7 @@ foreach ($orders as $summaryOrder) {
 }
 $orderItems = [];
 try {
-    $itemsStmt = $conn->prepare('SELECT oi.order_id, oi.order_item_id, oi.quantity, oi.unit_price,
+    $itemsStmt = $conn->prepare('SELECT oi.order_id, oi.order_item_id, oi.product_id, oi.quantity, oi.unit_price,
         oi.agreed_unit_price, oi.subtotal, oi.special_request,
         COALESCE(p.product_name,"Product") AS product_name, p.product_photo
         FROM order_items oi JOIN orders o ON o.order_id = oi.order_id
@@ -866,6 +866,29 @@ try {
     error_log('LokalCraft seller orders item load: ' . $error->getMessage());
     $message = 'Unable to load product details. Refresh the page.';
     $messageType = 'error';
+}
+$orderReviews = [];
+$orderReviewsAvailable = false;
+try {
+    $reviewStmt = $conn->prepare('
+        SELECT r.order_id, r.product_id, r.rating, r.review_text, r.created_at
+        FROM reviews r
+        INNER JOIN orders o ON o.order_id = r.order_id
+        WHERE r.seller_id = ? AND o.seller_id = ? AND o.buyer_id = r.buyer_id
+        ORDER BY r.created_at DESC, r.review_id DESC
+    ');
+    if (!$reviewStmt) {
+        throw new RuntimeException('Unable to load buyer reviews.');
+    }
+    $reviewStmt->bind_param('ii', $sellerId, $sellerId);
+    $reviewStmt->execute();
+    foreach ($reviewStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $review) {
+        $orderReviews[(int)$review['order_id']][(int)$review['product_id']][] = $review;
+    }
+    $reviewStmt->close();
+    $orderReviewsAvailable = true;
+} catch (Throwable $error) {
+    error_log('LokalCraft seller orders review load: ' . $error->getMessage());
 }
 function sellerOrderChoices(string $snapshot): array {
     $choices = [];
@@ -916,7 +939,7 @@ function sellerOrderIcon(string $icon): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LokalCraft | Seller Orders</title>
 <style>
-:root{--bg:#f5f3f1;--paper:#fff;--ink:#38332f;--muted:#837b74;--line:#ece5df;--orange:#e98b40;--orange-dark:#b86b2b;--orange-soft:#fff2e6;--green:#32895b;--red:#be5a55;--blue:#527fb1}
+:root{--bg:#FFF8ED;--paper:#fff;--ink:#38332f;--muted:#837b74;--line:#ece5df;--orange:#e98b40;--orange-dark:#b86b2b;--orange-soft:#fff2e6;--green:#32895b;--red:#be5a55;--blue:#527fb1}
 *{box-sizing:border-box}
 html,body{max-width:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",Arial,sans-serif}
@@ -926,7 +949,7 @@ button{cursor:pointer}
 .ui-icon{display:inline-block;width:20px;height:20px;flex:0 0 auto;vertical-align:middle}
 .page{display:block!important;min-height:100vh;background:var(--bg)!important}
 body .page>main.content.orders-content{position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-width:none!important;min-width:0!important;height:auto!important;min-height:100vh!important;margin-left:250px!important;padding:var(--orders-header-offset,70px) 28px 42px!important;overflow:visible!important;background:transparent!important}
-.orders-wrap{width:100%;max-width:1330px;min-width:0;margin:0 auto;padding-top:8px}
+.orders-wrap{width:100%;max-width:1600px;min-width:0;margin:0 auto;padding-top:8px}
 .orders-hero{display:flex;align-items:center;justify-content:space-between;margin:0 0 20px}
 .orders-hero h1{margin:0;color:#37322e;font-size:clamp(1.5rem,2.5vw,2rem);letter-spacing:-.03em}
 /* Non-blocking order updates and errors. Keep notifications above any open dialog. */
@@ -1050,6 +1073,15 @@ dialog::backdrop{background:rgba(32,26,21,.52);backdrop-filter:blur(2px)}
 .addons-title{margin-bottom:7px;color:#988b80;font-size:.72rem;font-weight:750}
 .addon-line{display:flex;justify-content:space-between;gap:12px;margin:6px 0;color:#6a5e54;font-size:.78rem}.addon-line strong{flex-shrink:0;color:#bd783e;font-size:.75rem}.addon-name{overflow-wrap:anywhere}
 .legacy-note{white-space:pre-wrap;overflow-wrap:anywhere;color:#75685d;font-size:.75rem}
+.order-buyer-review{margin-top:13px;padding-top:12px;border-top:1px solid #f0e5db}
+.order-review-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.order-review-label{color:#786a5d;font-size:.73rem;font-weight:800}
+.order-review-rating{display:inline-flex;align-items:center;gap:7px;color:#6b5a4d;font-size:.72rem}
+.order-review-stars{color:#dc982d;letter-spacing:1px;font-size:.9rem;white-space:nowrap}
+.order-review-text{margin:8px 0 0;color:#61564c;font-size:.77rem;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.order-review-date{margin-top:7px;color:#9c8e82;font-size:.68rem}
+.order-review-empty{color:#978a7e;font-size:.73rem}
+.order-buyer-review+.order-buyer-review{padding-top:13px}
 .total-box{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 23px;padding:15px 18px;border:1px solid #f2ddc7;border-radius:14px;background:#fff3e9}.total-box span{font-size:.86rem;font-weight:800;color:#71513b}.total-box strong{font-size:1.3rem;color:#b85d1c;white-space:nowrap}
 /* Keep Buyer and Seller order-detail text sizing consistent while retaining Seller colors. */
 .popup-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;min-width:0}
@@ -1105,12 +1137,12 @@ dialog::backdrop{background:rgba(32,26,21,.52);backdrop-filter:blur(2px)}
 @media(max-width:430px){.confirm-dialog{max-height:92dvh}.confirm-head{padding:17px 16px 12px}.rejection-fields{padding:13px 16px 16px}.rejection-quick-list{grid-template-columns:minmax(0,1fr);max-height:235px}.rejection-choice{min-height:39px;padding:9px 11px}.confirm-actions{padding:12px 16px}.confirm-actions .order-action{flex:1;min-width:0}}
 
 /* Seller Orders: unified workspace background and Buyer-style responsive cards.
-   Visual changes only. Existing PHP, data, filters and actions are untouched. */
+   The Orders-only search hookup is below; shared Seller header files remain unchanged. */
 html, body, body .page {
-    background: #f5f3f1 !important;
+    background: #FFF8ED !important;
 }
 body .page > main.content.orders-content {
-    background: #f5f3f1 !important;
+    background: #FFF8ED !important;
 }
 .orders-wrap { min-width: 0; }
 /* On compact laptop/tablet widths, the full desktop table becomes order cards. */
@@ -1199,7 +1231,7 @@ body .page > main.content.orders-content {
         padding: var(--orders-header-offset, 70px) 16px 32px !important;
         width: auto !important;
         min-width: 0 !important;
-        background: #f5f3f1 !important;
+        background: #FFF8ED !important;
     }
     .orders-wrap { width: 100%; max-width: 100%; }
     .order-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
@@ -1277,12 +1309,79 @@ body .page > main.content.orders-content {
     .orders-table tbody tr.order-row .table-date { font-size: .68rem !important; }
 }
 
+/* Show that an order row opens its details without adding another action button. */
+@media (min-width: 1101px) {
+    .orders-table td.table-date { position: relative; padding-right: 30px; }
+    .orders-table td.table-date::after {
+        content: '\203A';
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #b9783f;
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1;
+        pointer-events: none;
+    }
+}
+@media (max-width: 1100px) {
+    .orders-table tbody tr.order-row { position: relative; padding-right: 38px; }
+    .orders-table tbody tr.order-row::after {
+        content: '\203A';
+        position: absolute;
+        right: 13px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #b9783f;
+        font-size: 1.55rem;
+        font-weight: 700;
+        line-height: 1;
+        pointer-events: none;
+    }
+}
+/* Swipeable tabs on phones, with no visible scrollbar or page overflow. */
+@media (max-width: 760px) {
+    .order-tabs {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        gap: 7px;
+        padding: 2px 1px 6px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+    }
+    .order-tabs::-webkit-scrollbar { display: none; width: 0; height: 0; }
+    .order-tab {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 94px;
+        min-height: 43px;
+        padding: 8px 12px;
+        flex-direction: row;
+        gap: 6px;
+        font-size: .75rem;
+        white-space: nowrap;
+        overflow-wrap: normal;
+        scroll-snap-align: start;
+    }
+}
+
 </style>
 </head>
 <body>
 <div class="page">
     <?php require __DIR__ . '/seller_nav.php'; ?>
     <main class="content orders-content">
+        <?php $searchPlaceholder = 'Search orders...'; ?>
         <div class="orders-search-shell" id="ordersSearchShell"><?php require __DIR__ . '/seller_search.php'; ?></div>
         <div class="orders-wrap">
             <header class="orders-hero"><h1>Orders</h1></header>
@@ -1300,7 +1399,6 @@ body .page > main.content.orders-content {
                             <button class="order-tab <?= $key === 'all' ? 'active' : '' ?>" type="button" data-filter="<?= e($key) ?>" aria-pressed="<?= $key === 'all' ? 'true' : 'false' ?>"><?= e($label) ?><small><?= (int)$counts[$key] ?></small></button>
                         <?php endforeach; ?>
                     </div>
-                    <label class="orders-search" for="ordersSearch"><?= sellerOrderIcon('search') ?><input id="ordersSearch" type="search" placeholder="Search order or buyer" autocomplete="off"></label>
                 </div>
                 <?php if (!$orders): ?>
                     <div class="empty-list"><?= sellerOrderIcon('package') ?><h2>No orders yet</h2></div>
@@ -1367,6 +1465,26 @@ body .page > main.content.orders-content {
                                                         <?php endforeach; ?></div>
                                                     <?php elseif ($choicesText!==''): ?>
                                                         <div class="addons"><div class="addons-title">Order Details</div><div class="legacy-note"><?= e($choicesText) ?></div></div>
+                                                    <?php endif; ?>
+                                                    <?php if ($statusGroup === 'completed'): ?>
+                                                        <?php $itemReviews = $orderReviews[$orderId][(int)$item['product_id']] ?? []; ?>
+                                                        <?php if (!$orderReviewsAvailable || !$itemReviews): ?>
+                                                            <div class="order-buyer-review">
+                                                                <div class="order-review-head"><span class="order-review-label">Buyer Review</span><span class="order-review-empty"><?= $orderReviewsAvailable ? 'Not yet reviewed' : 'Reviews unavailable' ?></span></div>
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <?php foreach ($itemReviews as $review): ?>
+                                                                <?php
+                                                                $rating = max(0, min(5, (int)$review['rating']));
+                                                                $reviewText = trim((string)($review['review_text'] ?? ''));
+                                                                ?>
+                                                                <div class="order-buyer-review">
+                                                                    <div class="order-review-head"><span class="order-review-label">Buyer Review</span><span class="order-review-rating" aria-label="<?= $rating ?> out of 5 stars"><span class="order-review-stars" aria-hidden="true"><?= str_repeat('★', $rating) . str_repeat('☆', 5 - $rating) ?></span><strong><?= $rating ?>/5</strong></span></div>
+                                                                    <?php if ($reviewText !== ''): ?><p class="order-review-text"><?= e($reviewText) ?></p><?php endif; ?>
+                                                                    <div class="order-review-date"><?= e(sellerOrderDate($review['created_at'], true)) ?></div>
+                                                                </div>
+                                                            <?php endforeach; ?>
+                                                        <?php endif; ?>
                                                     <?php endif; ?>
                                                 </div>
                                             <?php endforeach; ?>
@@ -1482,7 +1600,9 @@ body .page > main.content.orders-content {
     }
     const filterButtons=[...document.querySelectorAll('.order-tab[data-filter]')];
     const rows=[...document.querySelectorAll('.order-row')];
-    const search=document.getElementById('ordersSearch');
+    // Reuse the shared header input only on this Seller Orders page.
+    const search=document.querySelector('#ordersSearchShell #productSearch');
+    search?.setAttribute('aria-label','Search orders');
     const empty=document.getElementById('filterEmpty');
     let filter='all';
     function updateList(){

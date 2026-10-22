@@ -381,10 +381,10 @@ try {
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LokalCraft | Pricing & Costing</title>
+    <title>LokalCraft | Costing & Pricing</title>
     <style>
         :root {
-            --bg: #f6f3ef;
+            --bg: #FFF8ED;
             --panel: #ffffff;
             --line: #e7ded5;
             --text: #332c27;
@@ -392,6 +392,8 @@ try {
             --soft: #fbf8f5;
             --orange: #ea8a3a;
             --orange-dark: #c96d20;
+            --cta-gradient: linear-gradient(135deg, #ea8a3a 0%, #dc7c2e 55%, #c96d20 100%);
+            --cta-hover: linear-gradient(135deg, #df7d2e 0%, #b85e1d 100%);
             --orange-soft: #fff1e3;
             --cream: #fffaf5;
             --brown: #5a4032;
@@ -407,7 +409,7 @@ try {
         .page {
             display: block !important;
             min-height: 100vh;
-            background: linear-gradient(180deg, #f8f5f1 0%, #f3eee9 100%);
+            background: var(--bg);
         }
         /* Match Seller Dashboard: document scrolling, not a nested fixed scroll region. */
         body .page > main.content.pricing-main {
@@ -429,7 +431,7 @@ try {
         }
         .calculator-wrap {
             width: 100%;
-            max-width: 1240px;
+            max-width: 1600px;
             min-width: 0;
             margin: 0 auto;
             padding: 8px 26px 24px;
@@ -1500,7 +1502,8 @@ try {
         .cost-sidebar-row.total strong {
             color: var(--orange-dark);
         }
-        .cost-sidebar-row.pricing-profit-row {
+        .cost-sidebar-row.pricing-profit-row,
+        .cost-sidebar-row.seller-payout-row {
             margin-top: 8px;
             padding: 11px 12px;
             border: 1px solid #efd4b8;
@@ -1509,9 +1512,16 @@ try {
             color: #855126;
             font-weight: 700;
         }
-        .cost-sidebar-row.pricing-profit-row strong {
+        .cost-sidebar-row.pricing-profit-row strong,
+        .cost-sidebar-row.seller-payout-row strong {
             color: var(--orange-dark);
         }
+        .cost-sidebar-row.platform-fee-row strong {
+            color: #9d5b39;
+        }
+        .cost-sidebar-row .label-with-tip { display: block; min-width: 0; overflow-wrap: break-word; }
+        .cost-sidebar-row .info-tip-wrap { vertical-align: middle; margin-left: 3px; }
+        .cost-sidebar-row strong { flex-shrink: 0; white-space: nowrap; }
         .cost-sidebar-note {
             background: rgba(255,255,255,.58);
             border: 1px solid #ead5c5;
@@ -2054,7 +2064,8 @@ try {
             max-height: none;
             overflow: visible;
         }
-        .cost-sidebar-row.pricing-profit-row { background: #fff4e8; border-color: #efdccc; }
+        .cost-sidebar-row.pricing-profit-row,
+        .cost-sidebar-row.seller-payout-row { background: #fff4e8; border-color: #efdccc; }
         .cost-sidebar-note { background: #fffdfa; border-color: #efe2d6; }
         .cost-sidebar-price { color: #cd6b1f; }
         .cost-sidebar-section-label, .cost-sidebar-kicker { color: #a75e2b; }
@@ -2448,6 +2459,29 @@ try {
             .expense-row, #overheads .expense-row { grid-template-columns: minmax(0, 1fr) 90px; }
             .expense-row .remove-button, #overheads .expense-row .remove-button { grid-column: 2; justify-self: end; }
         }
+        /* Match the CTA buttons already used in Seller Products. */
+        .heading-actions .shortcut-button,
+        .calculator-wrap .nav-button.next,
+        .calculator-wrap .add-button:not(.secondary-add),
+        .calculator-wrap .market-more-button {
+            border-color: var(--orange-dark);
+            background: var(--cta-gradient);
+            color: #fff;
+            box-shadow: 0 7px 16px rgba(234,138,58,.18);
+        }
+        .heading-actions .shortcut-button:hover:not(:disabled),
+        .calculator-wrap .nav-button.next:hover:not(:disabled),
+        .calculator-wrap .add-button:not(.secondary-add):hover:not(:disabled),
+        .calculator-wrap .market-more-button:hover:not(:disabled) {
+            border-color: #b85e1d;
+            background: var(--cta-hover);
+            color: #fff;
+        }
+        .calculator-wrap .margin-preset.active {
+            border-color: var(--orange-dark);
+            background: var(--cta-gradient);
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -2458,7 +2492,7 @@ try {
         <div class="calculator-wrap">
             <div id="product-image-lightbox" class="product-image-lightbox" hidden role="dialog" aria-modal="true" aria-label="Product image preview"><button type="button" id="product-image-lightbox-close" aria-label="Close image preview">×</button><img id="product-image-lightbox-img" alt="Full product image"></div>
             <div class="heading-row">
-                <h1>Pricing &amp; Costing</h1>
+                <h1>Costing &amp; Pricing</h1>
                 <div class="heading-actions">
                     <button class="shortcut-button" id="saved-calculations-button" type="button" aria-label="Saved Calculations" title="Saved Calculations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span class="shortcut-text">Saved Calculations</span></button>
                     <button class="shortcut-button" id="materials-library-button" type="button" aria-label="Materials Library" title="Materials Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h12v17H6a2 2 0 0 1 0-4h12"/><path d="M4 5v13a2 2 0 0 0 2 2M8 8h6"/></svg><span class="shortcut-text">Materials Library</span></button>
@@ -2758,6 +2792,14 @@ try {
                             <span>Profit</span>
                             <strong id="sidebar-profit">₱0.00</strong>
                         </div>
+                        <div class="cost-sidebar-row platform-fee-row">
+                            <span class="label-with-tip">Estimated Platform Fee (5%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About estimated platform fee">i</button><span class="tooltip-box">Estimated 5% of your suggested selling price. This fee is not included in your costing formula.</span></span></span>
+                            <strong id="sidebar-platform-fee">−₱0.00</strong>
+                        </div>
+                        <div class="cost-sidebar-row seller-payout-row">
+                            <span>Estimated Amount You'll Receive</span>
+                            <strong id="sidebar-seller-payout">₱0.00</strong>
+                        </div>
                     </div>
                 </aside>
             </div>
@@ -2882,6 +2924,7 @@ try {
     let marketRefreshTimer = null;
     let marketComparisonLoading = false;
     let latestPricing = { suggestedPrice: 0 };
+    const ESTIMATED_PLATFORM_FEE_RATE = 0.05;
     const formatMoney = value => `₱${Number(value || 0).toFixed(2)}`;
     const roundMoney = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     const getNumber = selector => Math.max(0, Number(document.querySelector(selector)?.value || 0));
@@ -3379,6 +3422,9 @@ try {
         const pricingDenominator = 1 - marginDecimal;
         const suggestedPrice = totalCost > 0 ? roundMoney(totalCost / pricingDenominator) : 0;
         const profitAmount = roundMoney(Math.max(0, suggestedPrice - totalCost));
+        // Informational only: this estimate does not change the saved costing formula.
+        const estimatedPlatformFee = roundMoney(suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE);
+        const estimatedSellerPayout = roundMoney(suggestedPrice - estimatedPlatformFee);
         latestPricing = {
             materialTotal,
             laborHours,
@@ -3404,6 +3450,9 @@ try {
         setMoney('sidebar-total-cost', totalCost);
         setMoney('sidebar-profit', profitAmount);
         setMoney('sidebar-price', suggestedPrice);
+        const sidebarPlatformFee = document.getElementById('sidebar-platform-fee');
+        if (sidebarPlatformFee) sidebarPlatformFee.textContent = `−${formatMoney(estimatedPlatformFee)}`;
+        setMoney('sidebar-seller-payout', estimatedSellerPayout);
         const sidebarMargin = document.getElementById('sidebar-margin');
         if (sidebarMargin) sidebarMargin.textContent = `${profitMargin.toFixed(0)}%`;
         document.querySelectorAll('.margin-preset').forEach(button => {
@@ -3737,7 +3786,7 @@ try {
             button.textContent = 'Save Calculation';
         }
     }
-    // Keep unfinished costing only when visiting the two Pricing & Costing subpages.
+    // Keep unfinished costing only when visiting the two Costing & Pricing subpages.
     const draftKey = `lokalcraft.costing.draft.v2.${sellerDraftId}`;
     const imageKey = `costing-image-${sellerDraftId}`;
     const allowedReturnKey = `lokalcraft.costing.allowed-return.${sellerDraftId}`;

@@ -6430,6 +6430,63 @@ html,body,.page{background:#FFF8ED;color:#342d27}
     const buyerArrangementDate = document.getElementById('buyerArrangementDate');
     const buyerArrangementTime = document.getElementById('buyerArrangementTime');
     const buyerArrangementNotes = document.getElementById('buyerArrangementNotes');
+    // Keep the active seller conversation visible when browser Back closes an
+    // Order Details or QR popup. A popup gets its own same-URL history entry.
+    // Do not change the seller_id/order_id URL or reload the chat page.
+    const buyerChatDialogHistoryId = 'lc-buyer-chat-' + Date.now()
+      + '-' + Math.random().toString(36).slice(2);
+    const buyerChatDialogFrames = [];
+    let buyerChatDialogSequence = 0;
+    function buyerChatDialogState(state) {
+      const entry = state && typeof state === 'object'
+        ? state.lcBuyerChatDialog : null;
+      return entry && entry.owner === buyerChatDialogHistoryId ? entry : null;
+    }
+    function openBuyerChatDialog(dialog, kind) {
+      if (!dialog || dialog.open || typeof dialog.showModal !== 'function') return;
+      dialog.showModal();
+      try {
+        const current = window.history.state;
+        const existing = current && typeof current === 'object' ? current : {};
+        const ticket = ++buyerChatDialogSequence;
+        window.history.pushState({
+          ...existing,
+          lcBuyerChatDialog: { owner: buyerChatDialogHistoryId, ticket, kind }
+        }, '', window.location.href);
+        buyerChatDialogFrames.push({ dialog, ticket });
+      } catch (_) {
+        // The dialog is still usable if the browser blocks History API changes.
+      }
+    }
+    window.addEventListener('popstate', (event) => {
+      const current = buyerChatDialogState(event.state);
+      // Back/forward removes only the topmost popup layer, not the conversation.
+      while (buyerChatDialogFrames.length) {
+        const top = buyerChatDialogFrames[buyerChatDialogFrames.length - 1];
+        if (current && top.ticket === current.ticket) break;
+        buyerChatDialogFrames.pop();
+        if (top.dialog.open) top.dialog.close();
+      }
+    });
+    for (const dialog of [buyerArrangementDialog, buyerQrDialog]) {
+      if (!dialog) continue;
+      dialog.addEventListener('cancel', (event) => {
+        const top = buyerChatDialogFrames[buyerChatDialogFrames.length - 1];
+        const state = buyerChatDialogState(window.history.state);
+        if (top?.dialog === dialog && state?.ticket === top.ticket) {
+          event.preventDefault();
+          window.history.back();
+        }
+      });
+      dialog.addEventListener('close', () => {
+        const index = buyerChatDialogFrames.findIndex(frame => frame.dialog === dialog);
+        if (index < 0) return; // Already closed by browser Back.
+        const [closed] = buyerChatDialogFrames.splice(index, 1);
+        const state = buyerChatDialogState(window.history.state);
+        // X/Close/action buttons must consume their popup entry as well.
+        if (state?.ticket === closed.ticket) window.history.back();
+      });
+    }
     function showChatError(message) {
       if (!chatError) return;
       chatError.textContent = message;
@@ -7164,7 +7221,7 @@ html,body,.page{background:#FFF8ED;color:#342d27}
           );
       }
       if (!buyerQrDialog.open) {
-        buyerQrDialog.showModal();
+        openBuyerChatDialog(buyerQrDialog, 'qr');
       }
     }
     function localOrderDateString(date = new Date()) {
@@ -8258,7 +8315,7 @@ html,body,.page{background:#FFF8ED;color:#342d27}
       try {
         const order = await loadBuyerOrderDetails(selectedSellerId, orderId);
         if (!order || Number(order.order_id) !== orderId) throw new Error('Order not found.');
-        if (buyerArrangementDialog?.showModal) buyerArrangementDialog.showModal();
+        openBuyerChatDialog(buyerArrangementDialog, 'order');
       } catch (error) {
         showChatError(error.message);
       } finally {
@@ -8285,9 +8342,7 @@ html,body,.page{background:#FFF8ED;color:#342d27}
           populateBuyerArrangement(
             activeOrderDetails
           );
-          if (buyerArrangementDialog?.showModal) {
-            buyerArrangementDialog.showModal();
-          }
+          openBuyerChatDialog(buyerArrangementDialog, 'order');
         } catch (error) {
           showChatError(error.message);
         }
