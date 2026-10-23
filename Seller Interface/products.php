@@ -634,6 +634,9 @@ try {
             if ($productName === '') {
                 throw new RuntimeException('Please enter the product name.');
             }
+            if ($description === '') {
+                throw new RuntimeException('Please enter a product description, including its size or dimensions.');
+            }
             if (!in_array($craftCategory, $craftCategories, true)) {
                 throw new RuntimeException('Please select a valid craft category.');
             }
@@ -709,6 +712,9 @@ try {
             $status = trim((string)($_POST['status'] ?? 'Available'));
             if ($productId <= 0 || $productName === '') {
                 throw new RuntimeException('Please complete the required product fields.');
+            }
+            if ($description === '') {
+                throw new RuntimeException('Please enter a product description, including its size or dimensions.');
             }
             if (!in_array($craftCategory, $craftCategories, true)) {
                 throw new RuntimeException('Please select a valid craft category.');
@@ -2195,7 +2201,7 @@ body .page > main.content.products-main {
 <div class="form-grid">
 <label>Product Name<input id="product-name" name="product_name" type="text" maxlength="255" placeholder="e.g. Handwoven Rattan Basket" required></label>
 <label>Craft Category<select id="craft-category" name="craft_category" required><option value="">Select category</option><?php foreach ($craftCategories as $category): ?><option value="<?= htmlspecialchars($category, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($category, ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></select></label>
-<label class="full">Description<textarea id="product-description" name="description" maxlength="2000" placeholder="Describe your handmade product..."></textarea></label>
+<label class="full">Description<textarea id="product-description" name="description" maxlength="2000" placeholder="Size: 20 x 20 cm&#10;Good for bags&#10;Suitable for everyday use" required></textarea><span class="costing-note">Press Enter for separate lines. Include the size, materials, and other useful product details.</span></label>
 </div>
 </section>
 <section class="product-section">
@@ -2203,10 +2209,10 @@ body .page > main.content.products-main {
 <div><span class="section-number">03</span><div><h3>Price & Inventory</h3></div></div>
 </div>
 <div class="form-grid">
-<label>Price (₱)<input id="product-cost" name="cost" type="number" min="0" step="0.01" value="0" required></label>
+<label>Price (₱)<input id="product-cost" name="cost" type="number" min="0" step="0.01" placeholder="0.00" required></label>
 <div class="stock-field">
 <div class="field-title-row"><label for="product-stock">Stock</label><details class="help-tip"><summary aria-label="Stock help" title="Stock help">i</summary><div class="help-tip-copy">Stock cannot be set below units reserved for active orders.</div></details></div>
-<input id="product-stock" name="stock" type="number" min="0" step="1" value="0" required>
+<input id="product-stock" name="stock" type="number" min="0" step="1" placeholder="0" required>
 </div>
 <label class="full">Status<select id="product-status" name="status"><?php foreach ($statusOptions as $option): ?><option value="<?= htmlspecialchars($option, ENT_QUOTES) ?>"><?= htmlspecialchars($option) ?></option><?php endforeach; ?></select><div class="costing-note" id="inventory-status-note" role="status" aria-live="polite">0 available · 0 reserved</div></label>
 </div>
@@ -2422,7 +2428,7 @@ body .page > main.content.products-main {
       const row = document.createElement('div');
       row.className = 'quick-custom-row';
       const textRequired = Number(item.requires_text || 0) === 1;
-      const price = item.price === undefined ? '0.00' : String(item.price);
+      const price = item.price === undefined ? '' : String(item.price);
       row.innerHTML = `
         <div class="quick-custom-head">
           <strong class="quick-custom-title"></strong>
@@ -2811,8 +2817,8 @@ body .page > main.content.products-main {
       editingReservedStock = 0;
       productStock.min = '0';
       productStatus.value = 'Available';
-      productCost.value = '0';
-      productStock.value = '0';
+      productCost.value = '';
+      productStock.value = '';
       productPhoto.required = true;
       if (productPhotoNote) productPhotoNote.textContent = 'JPG, PNG, WEBP, or supported iPhone photos. Large photos are optimized to 5 MB.';
       configureSavedCalculation('create');

@@ -555,7 +555,9 @@ try {
         .add-button:disabled { opacity: .45; cursor: not-allowed; }
         .remove-button { height: 39px; padding: 0; border-color: #f0c6c6; background: #fff7f7; color: #d95f5f; }
         .library-empty { padding: 14px; border: 1px solid #ecd5b8; background: #fff9f0; border-radius: 8px; color: #6e6255; font-size: .78rem; line-height: 1.5; }
-        .library-empty button { margin-left: 6px; border: 0; background: transparent; color: #b86112; font: inherit; font-weight: 800; padding: 0; cursor: pointer; text-decoration: underline; }
+        .library-empty strong, .library-empty span { display: block; }
+        .library-empty strong { margin-bottom: 4px; color: #5a4032; }
+        .library-empty button { display: inline-flex; margin: 9px 0 0; border: 0; background: transparent; color: #b86112; font: inherit; font-weight: 800; padding: 0; cursor: pointer; text-decoration: underline; }
         .material-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .secondary-add { border: 1px solid #e2c49e; background: #fff9f0; color: #a85d19; }
 .market-box { margin-top: 18px; border: 1px dashed #cfc7bf; border-radius: 10px; padding: 16px; background: #faf9f8; }
@@ -1987,11 +1989,80 @@ try {
 .market-lightbox.open { display: flex; }
 .market-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .market-lightbox-close { position: absolute; top: 12px; right: 16px; color: #fff; border: 1px solid rgba(255,255,255,.4); border-radius: 50%; background: #3b342e; width: 40px; height: 40px; cursor: pointer; font-size: 1.6rem; }
-.costing-saved-toast { position: fixed; right: 22px; bottom: 22px; z-index: 290000; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: min(430px,calc(100vw - 28px)); padding: 14px 15px; background: #fff; color: #325b3d; border: 1px solid #a6dab9; border-left: 4px solid #359a63; box-shadow: 0 14px 40px rgba(38,27,17,.18); border-radius: 13px; font-size: .82rem; font-weight: 700; }
-.costing-saved-toast[hidden] { display: none; }
-.costing-saved-toast a { color: #a75c19; font-weight: 800; }
-.costing-saved-toast button { border: 0; background: none; color: #6b7269; font-size: 1.2rem; cursor: pointer; }
-@media (max-width:760px) { .costing-saved-toast { left: 14px; right: 14px; bottom: 14px; } }
+.guide-popup {
+    position: fixed;
+    z-index: 290002;
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: min(380px, calc(100vw - 28px));
+    max-width: calc(100vw - 28px);
+    padding: 14px 15px;
+    border: 1px solid var(--guide-arrow-border, #a6dab9);
+    border-left: 4px solid var(--guide-accent, #359a63);
+    border-radius: 13px;
+    background: #fff;
+    color: #40372f;
+    box-shadow: 0 14px 40px rgba(38,27,17,.20);
+    font-size: .80rem;
+    line-height: 1.45;
+    animation: savedGuideIn .28s ease-out both;
+}
+.guide-popup[hidden] { display: none; }
+.guide-popup.guide-pop { animation: savedGuideIn .28s ease-out both; }
+.guide-popup::before,
+.guide-popup::after {
+    content: "";
+    position: absolute;
+    left: var(--guide-arrow-left, 50%);
+    width: 0;
+    height: 0;
+    transform: translateX(-50%);
+    border-left: 9px solid transparent;
+    border-right: 9px solid transparent;
+    pointer-events: none;
+}
+.guide-popup.guide-below::before { top: -10px; border-bottom: 10px solid var(--guide-arrow-border, #a6dab9); }
+.guide-popup.guide-below::after { top: -8px; border-bottom: 8px solid #fff; }
+.guide-popup.guide-above::before { bottom: -10px; border-top: 10px solid var(--guide-arrow-border, #a6dab9); }
+.guide-popup.guide-above::after { bottom: -8px; border-top: 8px solid #fff; }
+.guide-popup-copy { display: grid; gap: 4px; flex: 1 1 190px; min-width: 0; padding-right: 22px; }
+.guide-popup-copy strong { color: #47372b; font-size: .85rem; }
+.guide-popup-copy span { color: #74695f; font-size: .75rem; }
+.guide-popup a { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 7px 10px; border-radius: 8px; background: var(--orange-soft); color: var(--orange-dark); font-weight: 800; text-decoration: none; }
+.guide-popup a:hover { background: #ffe7d1; }
+.guide-popup button { position: absolute; top: 7px; right: 7px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; margin: 0; border: 0; border-radius: 7px; background: transparent; color: #766c63; cursor: pointer; }
+.guide-popup button:hover { background: #f6f0ea; }
+.costing-saved-toast { --guide-arrow-border: #a6dab9; --guide-accent: #359a63; }
+.materials-library-guide { --guide-arrow-border: #edc58f; --guide-accent: #d78332; }
+.saved-guide-highlight,
+.library-guide-highlight {
+    position: relative !important;
+    z-index: 290001 !important;
+    outline: 3px solid rgba(234,138,58,.68) !important;
+    outline-offset: 3px !important;
+    box-shadow: 0 0 0 8px rgba(234,138,58,.16), 0 8px 22px rgba(92,56,29,.20) !important;
+    animation: savedButtonPulse 1.2s ease-in-out infinite;
+}
+@keyframes savedGuideIn {
+    from { opacity: 0; transform: translateY(7px) scale(.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes savedButtonPulse {
+    0%, 100% { outline-offset: 3px; box-shadow: 0 0 0 5px rgba(234,138,58,.12), 0 8px 22px rgba(92,56,29,.16); }
+    50% { outline-offset: 5px; box-shadow: 0 0 0 9px rgba(234,138,58,.22), 0 8px 22px rgba(92,56,29,.20); }
+}
+@media (max-width:760px) {
+    .guide-popup { gap: 8px; padding: 12px; font-size: .76rem; }
+    .guide-popup-copy { flex-basis: 150px; }
+    .guide-popup-copy strong { font-size: .82rem; }
+    .guide-popup-copy span { font-size: .72rem; }
+    .guide-popup a { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .guide-popup, .saved-guide-highlight, .library-guide-highlight { animation: none !important; }
+}
 
         /* Seller Calculator finishing layer: consistent typography and warm LokalCraft palette. */
         .progress-card {
@@ -2594,12 +2665,14 @@ try {
                                     </span>
                                 </h3>
                                 <div class="material-actions">
-                                    <button class="add-button" id="add-material" type="button" <?= count($savedMaterials) === 0 ? 'disabled' : '' ?>>+ Add Material</button>
+                                    <button class="add-button" id="add-material" type="button">+ Add Material</button>
                                 </div>
                             </div>
                             <?php if (count($savedMaterials) === 0): ?>
-                                <div class="library-empty" id="library-empty-message">
-                                    No materials yet. <button type="button" id="empty-add-material">Open Materials Library</button>
+                                <div class="library-empty" id="library-empty-message" role="status" aria-live="polite">
+                                    <strong>No saved materials yet.</strong>
+                                    <span>Add at least one material in Materials Library first. Then return here to calculate the direct material cost for your product.</span>
+                                    <button type="button" id="empty-add-material">Open Materials Library</button>
                                 </div>
                             <?php endif; ?>
                             <div id="materials"></div>
@@ -2638,7 +2711,7 @@ try {
                         </section>
                         <section class="step" data-step="3">
                             <div class="step-kicker">STEP 3 · INDIRECT COSTS</div>
-                            <h2>Add the expenses that support production</h2>
+                            <h2>Add the indirect costs that support production</h2>
                             <p class="step-help small-help">Extra business costs per product. <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About indirect costs">i</button><span class="tooltip-box">Enter only the share of each business expense for one handmade item, not the entire monthly bill.</span></span></p>
                             <div class="step-error-summary" data-step-error-summary="3"></div>
                             <div class="indirect-guide">
@@ -2650,14 +2723,14 @@ try {
                                     <button type="button" class="indirect-chip" data-overhead-preset="Internet">Internet</button>
                                     <button type="button" class="indirect-chip" data-overhead-preset="Tool Wear">Tool Wear</button>
                                     <button type="button" class="indirect-chip" data-overhead-preset="Workspace Rent">Workspace Rent</button>
-                                    <button type="button" class="indirect-chip" data-overhead-preset="Sewing Machine Maintenance">Machine Care</button>
+                                    <button type="button" class="indirect-chip" data-overhead-preset="Machine Maintenance">Machine Maintenance</button>
                                     <button type="button" class="indirect-chip" data-overhead-preset="Online Shop Ads">Online Ads</button>
                                 </div>
                             </div>
                             <div class="section-heading compact-heading">
-                                <h3 class="label-with-tip">Indirect Expenses (Overhead)
+                                <h3 class="label-with-tip">Indirect Costs (Overheads)
                                     <span class="info-tip-wrap">
-                                        <button class="info-tip" type="button" aria-label="Indirect expenses information">i</button>
+                                        <button class="info-tip" type="button" aria-label="Indirect costs information">i</button>
                                         <span class="tooltip-box">Enter the share of each indirect expense that you want to assign to one product. The seller decides which expenses apply and how much should be allocated.</span>
                                     </span>
                                 </h3>
@@ -2670,16 +2743,15 @@ try {
                         </section>
                         <section class="step" data-step="4">
                             <div class="step-kicker">STEP 4 · PROFIT &amp; MARKET COMPARISON</div>
-                            <h2>Set your target profit margin, then compare</h2>
+                            <h2>Set your desired profit margin, then compare</h2>
                             <p class="step-help small-help">Set profit and compare prices. <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price comparison">i</button><span class="tooltip-box">Your costs and profit set the suggested price. Similar listings are for comparison only.</span></span></p>
                             <div class="step-error-summary" data-step-error-summary="4"></div>
                             <div class="profit-margin-card">
                                 <div>
-                                    <span class="eyebrow">TARGET PROFIT</span>
                                     <h3 class="label-with-tip">Desired Profit Margin (%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About profit margin">i</button><span class="tooltip-box">Your profit as a percentage of the selling price. No platform fee is added here.</span></span></h3>
                                 </div>
                                 <label>
-                                    Target Profit Margin
+                                    Desired Profit Margin
                                     <div class="percentage-input">
                                         <input id="profit-margin" type="number" min="0" max="90" step="1" placeholder="e.g. 30" />
                                         <span>%</span>
@@ -2753,7 +2825,7 @@ try {
                 <aside class="cost-sidebar" aria-label="Cost breakdown">
                     <div class="cost-sidebar-card">
                         <div class="cost-sidebar-kicker">COST BREAKDOWN</div>
-                        <div class="cost-sidebar-title label-with-tip">Suggested Selling Price <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price calculation">i</button><span class="tooltip-box">Total cost plus your target profit. Optional add-ons are priced separately.</span></span></div>
+                        <div class="cost-sidebar-title label-with-tip">Suggested Selling Price <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price calculation">i</button><span class="tooltip-box">Total cost plus your desired profit. Optional add-ons are priced separately.</span></span></div>
                         <div class="cost-sidebar-price" id="sidebar-price">₱0.00</div>
                         <div class="cost-sidebar-rule"></div>
                         <div class="cost-sidebar-section-label">Direct Costs</div>
@@ -2878,7 +2950,16 @@ try {
     <button type="button" class="market-lightbox-close" id="market-lightbox-close" aria-label="Close full image"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     <img id="market-lightbox-image" alt="Full product image">
 </div>
-<div class="costing-saved-toast" id="costing-saved-toast" role="status" hidden><span>✓ Calculation saved</span><a href="saved_calculation.php">View Saved Calculations</a><button id="costing-toast-close" type="button" aria-label="Close notification"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+<div class="costing-saved-toast guide-popup" id="costing-saved-toast" role="status" aria-live="polite" hidden>
+    <div class="guide-popup-copy"><strong>Calculation saved!</strong><span>Use the highlighted Saved Calculations button to find this product costing anytime.</span></div>
+    <a href="saved_calculation.php">View Saved Calculations</a>
+    <button id="costing-toast-close" type="button" aria-label="Close notification"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div class="materials-library-guide guide-popup" id="materials-library-guide" role="status" aria-live="polite" hidden>
+    <div class="guide-popup-copy"><strong>Materials Library needed</strong><span id="materials-library-guide-message">Save at least one material in Materials Library first, then return here to add it to your product costing.</span></div>
+    <a href="saved_materials.php">Open Materials Library</a>
+    <button id="materials-library-guide-close" type="button" aria-label="Close Materials Library notice"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
 <div class="floating-tooltip" id="floating-tooltip" role="tooltip" aria-hidden="true"></div>
 <script>
 (() => {
@@ -2909,8 +2990,8 @@ try {
     const stepNames = {
         1: 'Add the product details first',
         2: 'Calculate direct materials, direct labor, and packaging',
-        3: 'Add the indirect expenses that support production',
-        4: 'Set the target profit margin and review the market comparison'
+        3: 'Add the indirect costs (overheads) that support production',
+        4: 'Set the desired profit margin and review the market comparison'
     };
     const MIN_STEP = 1;
     const MAX_STEP = 4;
@@ -3332,7 +3413,14 @@ try {
     let activeTooltipWrap = null;
     let tooltipPinned = false;
     function addMaterialRow({ focus = true, atTop = true } = {}) {
-        if (savedMaterials.length === 0) return null;
+        if (savedMaterials.length === 0) {
+            if (focus && !restoringDraft && !discardingDraft) {
+                promptMaterialsLibrary(
+                    'Your Materials Library is empty. Save at least one material there first, then return here to select it for this product.'
+                );
+            }
+            return null;
+        }
         const row = document.createElement('div');
         row.className = 'material-row';
         if (focus) row.classList.add('row-added');
@@ -3650,11 +3738,20 @@ try {
         }
         if (currentStep === 2) {
             if (savedMaterials.length === 0) {
-                const button = document.getElementById('empty-add-material') || document.getElementById('materials-library-button');
-                return showFieldError(
-                    button,
-                    'Add a material in Materials Library first.'
-                );
+                const message = 'Your Materials Library is empty. Open Materials Library and save at least one material before adding direct materials to this costing.';
+                const emptyState = document.getElementById('library-empty-message');
+                if (emptyState) {
+                    clearFieldError(emptyState);
+                    showFieldError(emptyState, message, { focus: false });
+                } else {
+                    showFieldError(
+                        document.getElementById('materials-library-button'),
+                        message,
+                        { focus: false }
+                    );
+                }
+                showMaterialsLibraryGuide(message);
+                return false;
             }
             const rows = [...document.querySelectorAll('.material-row')];
             if (rows.length === 0) {
@@ -3728,7 +3825,7 @@ try {
             if (margin <= 0) {
                 return showFieldError(
                     marginInput,
-                    'Enter your target profit margin. You can type your own percentage or use a quick option.'
+                    'Enter your desired profit margin. You can type your own percentage or use a quick option.'
                 );
             }
             if (Number(marginInput.value) >= 90) {
@@ -4070,12 +4167,110 @@ try {
         showStep(MIN_STEP);
         showStatus('');
     }
-    function showSavedToast() {
-        const toast = document.getElementById('costing-saved-toast');
-        toast.hidden = false;
-        window.clearTimeout(showSavedToast.timer);
-        showSavedToast.timer = window.setTimeout(() => { toast.hidden = true; }, 6500);
+    function positionGuidePopup(popup, target) {
+        if (!popup || popup.hidden || !target || !document.body.contains(target)) return;
+        const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+        const edge = 14;
+        popup.style.width = `${Math.max(0, Math.min(380, viewportWidth - edge * 2))}px`;
+        popup.style.left = '0px';
+        popup.style.top = '0px';
+        popup.style.right = 'auto';
+        popup.style.bottom = 'auto';
+        const targetRect = target.getBoundingClientRect();
+        const popupRect = popup.getBoundingClientRect();
+        let left = targetRect.left + targetRect.width / 2 - popupRect.width / 2;
+        left = Math.max(edge, Math.min(left, viewportWidth - popupRect.width - edge));
+        let top = targetRect.bottom + 13;
+        let placement = 'below';
+        if (top + popupRect.height > window.innerHeight - edge) {
+            top = targetRect.top - popupRect.height - 13;
+            placement = 'above';
+        }
+        top = Math.max(edge, Math.min(top, window.innerHeight - popupRect.height - edge));
+        const arrowLeft = Math.max(18, Math.min(targetRect.left + targetRect.width / 2 - left, popupRect.width - 18));
+        popup.style.setProperty('--guide-arrow-left', `${Math.round(arrowLeft)}px`);
+        popup.style.left = `${Math.round(left)}px`;
+        popup.style.top = `${Math.round(top)}px`;
+        popup.classList.toggle('guide-below', placement === 'below');
+        popup.classList.toggle('guide-above', placement === 'above');
     }
+    function hideSavedToast() {
+        const toast = document.getElementById('costing-saved-toast');
+        toast.hidden = true;
+        toast.classList.remove('guide-below', 'guide-above', 'guide-pop');
+        ['left', 'top', 'right', 'bottom', 'width'].forEach(property => toast.style.removeProperty(property));
+        document.getElementById('saved-calculations-button')?.classList.remove('saved-guide-highlight');
+        window.clearTimeout(showSavedToast.timer);
+    }
+    function showSavedToast() {
+        hideMaterialsLibraryGuide();
+        const toast = document.getElementById('costing-saved-toast');
+        const target = document.getElementById('saved-calculations-button');
+        toast.hidden = false;
+        target.classList.add('saved-guide-highlight');
+        target.scrollIntoView({
+            behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            block: 'center',
+            inline: 'nearest'
+        });
+        window.requestAnimationFrame(() => {
+            positionGuidePopup(toast, target);
+            toast.classList.remove('guide-pop');
+            void toast.offsetWidth;
+            toast.classList.add('guide-pop');
+        });
+        window.clearTimeout(showSavedToast.timer);
+        showSavedToast.timer = window.setTimeout(hideSavedToast, 10000);
+    }
+    function hideMaterialsLibraryGuide() {
+        const guide = document.getElementById('materials-library-guide');
+        guide.hidden = true;
+        guide.classList.remove('guide-below', 'guide-above', 'guide-pop');
+        ['left', 'top', 'right', 'bottom', 'width'].forEach(property => guide.style.removeProperty(property));
+        document.getElementById('materials-library-button')?.classList.remove('library-guide-highlight');
+        window.clearTimeout(showMaterialsLibraryGuide.timer);
+    }
+    function showMaterialsLibraryGuide(message = 'Save at least one material in Materials Library first, then return here to add it to your product costing.') {
+        hideSavedToast();
+        const guide = document.getElementById('materials-library-guide');
+        const target = document.getElementById('materials-library-button');
+        document.getElementById('materials-library-guide-message').textContent = message;
+        guide.hidden = false;
+        target.classList.add('library-guide-highlight');
+        target.scrollIntoView({
+            behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            block: 'center',
+            inline: 'nearest'
+        });
+        window.requestAnimationFrame(() => {
+            positionGuidePopup(guide, target);
+            guide.classList.remove('guide-pop');
+            void guide.offsetWidth;
+            guide.classList.add('guide-pop');
+        });
+        window.clearTimeout(showMaterialsLibraryGuide.timer);
+        showMaterialsLibraryGuide.timer = window.setTimeout(hideMaterialsLibraryGuide, 12000);
+    }
+    function promptMaterialsLibrary(message) {
+        const emptyState = document.getElementById('library-empty-message');
+        if (emptyState) {
+            clearFieldError(emptyState);
+            showFieldError(emptyState, message, { focus: false });
+        }
+        showMaterialsLibraryGuide(message);
+    }
+    function repositionVisibleGuides() {
+        const savedToast = document.getElementById('costing-saved-toast');
+        if (!savedToast.hidden) {
+            positionGuidePopup(savedToast, document.getElementById('saved-calculations-button'));
+        }
+        const libraryGuide = document.getElementById('materials-library-guide');
+        if (!libraryGuide.hidden) {
+            positionGuidePopup(libraryGuide, document.getElementById('materials-library-button'));
+        }
+    }
+    window.addEventListener('resize', repositionVisibleGuides);
+    window.addEventListener('scroll', repositionVisibleGuides, { passive: true });
     // Re-check all visited steps before saving, including edits made after going back.
     function validateEveryStep() {
         const priorStep = currentStep;
@@ -4462,7 +4657,8 @@ try {
         // Refresh PHP material data, then restore the saved costing draft.
         if (event.persisted) window.location.reload();
     });
-    document.getElementById('costing-toast-close')?.addEventListener('click', () => { document.getElementById('costing-saved-toast').hidden = true; });
+    document.getElementById('costing-toast-close')?.addEventListener('click', hideSavedToast);
+    document.getElementById('materials-library-guide-close')?.addEventListener('click', hideMaterialsLibraryGuide);
     restoringDraft = true;
     if (savedMaterials.length > 0) addMaterialRow({ focus: false });
     restoringDraft = false;

@@ -1389,7 +1389,7 @@ function validateNotPastArrangementDateTime(
     $today = date('Y-m-d');
     if ($date < $today) {
         throw new RuntimeException(
-            'Choose today or a future date.'
+            'The selected date has already passed. Choose today or a future date.'
         );
     }
     if ($date !== $today || $time === '') {
@@ -1410,7 +1410,7 @@ function validateNotPastArrangementDateTime(
     );
     if ($selected < $now) {
         throw new RuntimeException(
-            'Choose a later time.'
+            'The selected time has already passed. Choose a later time.'
         );
     }
 }
@@ -4173,6 +4173,8 @@ if ($selectedBuyerId > 0) {
       background: #fff7f7 !important;
       box-shadow: 0 0 0 3px rgba(191, 76, 76, .08) !important;
     }
+    #arrangementDialog .seller-datetime-error{display:block;margin-top:2px;color:#b84343;font-size:.68rem;font-weight:650;line-height:1.4;overflow-wrap:anywhere}
+    #arrangementDialog .seller-datetime-error[hidden]{display:none!important}
     .arrangement-actions {
       display: flex;
       justify-content: flex-end;
@@ -5315,6 +5317,7 @@ if ($selectedBuyerId > 0) {
             <span class="seller-picker-placeholder-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></svg></span>
             <input id="arrangementDate" name="arrangement_date" type="date" min="<?php echo e(date('Y-m-d')); ?>" aria-label="Date"/>
           </span>
+          <span class="seller-datetime-error" id="arrangementDateError" role="alert" hidden></span>
         </label>
         <label class="arrangement-field">
           <span>Time <b>*</b></span>
@@ -5323,6 +5326,7 @@ if ($selectedBuyerId > 0) {
             <span class="seller-picker-placeholder-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
             <input id="arrangementTime" name="arrangement_time" type="time" step="60" aria-label="Time"/>
           </span>
+          <span class="seller-datetime-error" id="arrangementTimeError" role="alert" hidden></span>
         </label>
         <label class="arrangement-field arrangement-field-wide">
           <span>Delivery Note (Optional)</span>
@@ -5408,6 +5412,8 @@ if ($selectedBuyerId > 0) {
     const arrangementLocation = document.getElementById('arrangementLocation');
     const arrangementDate = document.getElementById('arrangementDate');
     const arrangementTime = document.getElementById('arrangementTime');
+    const arrangementDateError = document.getElementById('arrangementDateError');
+    const arrangementTimeError = document.getElementById('arrangementTimeError');
     const arrangementNotes = document.getElementById('arrangementNotes');
     /* Keep the real <select> values for existing seller validation and AJAX.
        Render a consistent, keyboard-friendly options menu instead of iOS Safari's native sheet. */
@@ -6251,16 +6257,41 @@ if ($selectedBuyerId > 0) {
       const today = localDateString(now);
       const selectedDate = arrangementDate.value;
       if (selectedDate < today) {
-        return 'Choose today or a future date.';
+        return 'The selected date has already passed. Choose today or a future date.';
       }
       if (
         selectedDate === today
         && arrangementTime?.value
         && arrangementTime.value < localTimeString(now)
       ) {
-        return 'Choose a later time.';
+        return 'The selected time has already passed. Choose a later time.';
       }
       return '';
+    }
+    function clearArrangementDateTimeErrors() {
+      [arrangementDateError, arrangementTimeError].forEach((hint) => {
+        if (!hint) return;
+        hint.textContent = '';
+        hint.hidden = true;
+      });
+    }
+    function showArrangementDateTimeError() {
+      clearArrangementDateTimeErrors();
+      [arrangementDate, arrangementTime].forEach((field) => {
+        field?.closest('.arrangement-field')?.classList.remove('invalid');
+      });
+      const message = arrangementDateTimeError();
+      if (!message) return '';
+      const dateIsPast = arrangementDate?.value
+        && arrangementDate.value < localDateString(new Date());
+      const invalidField = dateIsPast ? arrangementDate : arrangementTime;
+      const hint = dateIsPast ? arrangementDateError : arrangementTimeError;
+      markArrangementInvalid(invalidField);
+      if (hint) {
+        hint.textContent = message;
+        hint.hidden = false;
+      }
+      return message;
     }
     function validateFinalArrangement() {
       clearArrangementInvalidFields();
@@ -6304,7 +6335,7 @@ if ($selectedBuyerId > 0) {
         }
       );
       const invalid = checks.filter((check) => !check.valid);
-      const dateTimeError = arrangementDateTimeError();
+      const dateTimeError = showArrangementDateTimeError();
       if (dateTimeError) {
         const dateIsPast =
           arrangementDate?.value
@@ -6578,6 +6609,8 @@ if ($selectedBuyerId > 0) {
           field.disabled = !editable;
         }
       });
+      if (editable) showArrangementDateTimeError();
+      else clearArrangementDateTimeErrors();
       syncSellerNativePickerState();
       if (saveArrangementButton) {
         const draftAllowed = editable && stage === 'arranging';
@@ -6731,15 +6764,15 @@ if ($selectedBuyerId > 0) {
       setArrangementBottomFeedback();
       clearArrangementInvalidFields();
       updateArrangementDateTimeLimits();
-      const dateTimeError = arrangementDateTimeError();
+      const dateTimeError = showArrangementDateTimeError();
       if (dateTimeError) {
         const dateIsPast =
           arrangementDate?.value
           && arrangementDate.value < localDateString(new Date());
-        markArrangementInvalid(
-          dateIsPast ? arrangementDate : arrangementTime
-        );
         setArrangementBottomFeedback(dateTimeError, 'error');
+        (dateIsPast ? arrangementDate : arrangementTime)?.scrollIntoView({
+          behavior: 'smooth', block: 'center'
+        });
         return;
       }
       if (
@@ -7468,30 +7501,6 @@ if ($selectedBuyerId > 0) {
       field?.addEventListener('change', syncSellerNativePickerState);
       field?.addEventListener('blur', syncSellerNativePickerState);
     });
-    arrangementDate?.addEventListener(
-      'change',
-      () => {
-        updateArrangementDateTimeLimits();
-        const error = arrangementDateTimeError();
-        if (error) {
-          markArrangementInvalid(arrangementDate);
-          setArrangementBottomFeedback(error, 'error');
-        }
-        refreshSellerReadiness();
-      }
-    );
-    arrangementTime?.addEventListener(
-      'change',
-      () => {
-        updateArrangementDateTimeLimits();
-        const error = arrangementDateTimeError();
-        if (error) {
-          markArrangementInvalid(arrangementTime);
-          setArrangementBottomFeedback(error, 'error');
-        }
-        refreshSellerReadiness();
-      }
-    );
     [
       arrangementFulfillment,
       arrangementPayment,
@@ -7499,20 +7508,19 @@ if ($selectedBuyerId > 0) {
       arrangementDate,
       arrangementTime
     ].forEach((field) => {
-      field?.addEventListener('input', () => {
-        field
-          .closest('.arrangement-field')
-          ?.classList.remove('invalid');
-        setArrangementBottomFeedback();
+      const onFieldChange = () => {
+        if (field === arrangementDate || field === arrangementTime) {
+          updateArrangementDateTimeLimits();
+          const dateTimeError = showArrangementDateTimeError();
+          setArrangementBottomFeedback(dateTimeError, dateTimeError ? 'error' : '');
+        } else {
+          field?.closest('.arrangement-field')?.classList.remove('invalid');
+          setArrangementBottomFeedback();
+        }
         refreshSellerReadiness();
-      });
-      field?.addEventListener('change', () => {
-        field
-          .closest('.arrangement-field')
-          ?.classList.remove('invalid');
-        setArrangementBottomFeedback();
-        refreshSellerReadiness();
-      });
+      };
+      field?.addEventListener('input', onFieldChange);
+      field?.addEventListener('change', onFieldChange);
     });
     saveArrangementButton?.addEventListener(
       'click',

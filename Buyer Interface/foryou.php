@@ -1958,6 +1958,16 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
   .lc-store-identity{width:88px}
   .lc-store-reviews{font-size:.63rem}
 }
+.product-description{white-space:pre-line}
+.product-details-description{white-space:pre-wrap;overflow-wrap:anywhere}
+.product-details-description.is-collapsed{max-height:6.8em;overflow:hidden}
+.product-details-description.has-more{margin-bottom:5px}
+.lc-store-fact strong.lc-expandable-description.is-collapsed{max-height:5.8em;overflow:hidden}
+.lc-description-more{display:inline-block;width:auto;min-height:0;margin:0 0 16px;padding:0;border:0;background:transparent;color:#9d602d;font:inherit;font-size:.78rem;font-weight:750;line-height:1.4;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.lc-description-more:hover{text-decoration:underline}
+.lc-description-more:focus-visible{outline:2px solid #b76c32;outline-offset:3px;border-radius:2px}
+.lc-description-more[hidden]{display:none!important}
+.lc-store-fact .lc-description-more{margin:7px 0 0}
   </style>
 </head>
 <body>
@@ -2144,6 +2154,7 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
               </div>
               <div class="product-details-section-title">Description</div>
               <div class="product-details-description" id="productDetailsDescription"></div>
+              <button type="button" class="lc-description-more" id="productDetailsDescriptionMore" aria-controls="productDetailsDescription" aria-expanded="false" hidden>See more</button>
               <div class="product-details-stock" id="productDetailsStock"></div>
               <div class="product-details-actions">
                 <button class="product-details-btn product-details-cart" type="button" id="productDetailsCart"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.4 13.1a2 2 0 0 0 2 1.7H20a2 2 0 0 0 2-1.7L23 6H6"/></svg><span>Add to Cart</span></button>
@@ -2218,6 +2229,31 @@ const detailCart=$('productDetailsCart'), detailSave=$('productDetailsSave');
 const toast=$('marketplaceToast'),csrf=<?php echo json_encode($_SESSION['marketplace_csrf'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 let selectedProduct=null,toastTimeout=null;
 let selectedStoreId=0,storeFetchToken=0,reviewsFetchToken=0,reviewOffset=0,reviewBusy=false,reviewHasMore=false;
+function syncExpandableDescription(content,more){
+  if(!content||!more||!content.isConnected||!content.clientWidth)return;
+  const expanded=more.getAttribute('aria-expanded')==='true';
+  content.classList.add('is-collapsed');
+  const overflowing=content.scrollHeight>content.clientHeight+2;
+  more.hidden=!overflowing;
+  content.classList.toggle('has-more',overflowing);
+  content.classList.toggle('is-collapsed',!expanded);
+  more.textContent=expanded?'See less':'See more';
+}
+function toggleExpandableDescription(content,more){
+  const expanded=more.getAttribute('aria-expanded')!=='true';
+  more.setAttribute('aria-expanded',String(expanded));
+  content.classList.toggle('is-collapsed',!expanded);
+  more.textContent=expanded?'See less':'See more';
+}
+function syncStoreBusinessDescription(){
+  const content=$('lcStoreBusinessDescription'),more=$('lcStoreBusinessDescriptionMore');
+  if(!$('lcStoreInfo')?.hidden)syncExpandableDescription(content,more);
+}
+function syncProductDescription(){
+  if(productModal?.classList.contains('is-open'))syncExpandableDescription($('productDetailsDescription'),$('productDetailsDescriptionMore'));
+}
+$('productDetailsDescriptionMore')?.addEventListener('click',()=>toggleExpandableDescription($('productDetailsDescription'),$('productDetailsDescriptionMore')));
+window.addEventListener('resize',()=>requestAnimationFrame(()=>{syncProductDescription();syncStoreBusinessDescription();}));
 const savedStates=new Map(),storeCache=new Map();
 // Each overlay is a navigation level, including nested store and product photo views.
 // Using actual browser history means Android/iPhone Back closes one level at a time.
@@ -2311,6 +2347,7 @@ function render(){
   }
   if(frame?.type==='product'&&productModal){$('lcProductInfoScroll')?.scrollTo(0,frame.scrollTop||0);}
   viewportFit();
+  if(frame?.type==='product')requestAnimationFrame(syncProductDescription);
 }
 function openProduct(product){
   const top=currentFrame();
@@ -2353,7 +2390,13 @@ function renderProduct(product){
   $('productDetailsPrice').textContent=product.cost||money(product.cost_value);
   $('productDetailsLocation').textContent=productLocation(product)||'Location unavailable';
   $('productDetailsCategory').textContent=product.craft_category||'Handmade';
-  $('productDetailsDescription').textContent=product.description||'No description provided.';
+  const description=$('productDetailsDescription'),descriptionMore=$('productDetailsDescriptionMore');
+  description.textContent=String(product.description||'').trim()||'No description provided.';
+  description.classList.add('is-collapsed');
+  description.classList.remove('has-more');
+  descriptionMore.hidden=true;
+  descriptionMore.setAttribute('aria-expanded','false');
+  descriptionMore.textContent='See more';
   $('productDetailsStock').textContent=Number(product.stock)>0?'Available: '+Math.max(0,Number(product.stock)||0):'Out of Stock';
   $('sellerDetailsName').textContent=product.seller_business||product.seller_name||product.seller_person||'Local Seller';
   const chatLink=$('sellerDetailsChat'),sellerId=Number(product.seller_id);chatLink.href=Number.isSafeInteger(sellerId)&&sellerId>0?'messages.php?seller_id='+encodeURIComponent(String(sellerId)):'messages.php';
@@ -2419,7 +2462,16 @@ function storeFact(key,value,wide=false){
   };
   const tile=document.createElement('span');tile.className='lc-store-fact-icon';tile.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(glyphs[key]||glyphs['Business Description'])+'</svg>';
   const copy=document.createElement('span');copy.className='lc-store-fact-copy';
-  const label=document.createElement('small');label.textContent=key;const strong=document.createElement('strong');strong.textContent=value||'Not provided';copy.append(label,strong);div.append(tile,copy);return div;
+  const label=document.createElement('small');label.textContent=key;const strong=document.createElement('strong');strong.textContent=value||'Not provided';copy.append(label,strong);
+  if(key==='Business Description'){
+    strong.id='lcStoreBusinessDescription';
+    strong.classList.add('lc-expandable-description','is-collapsed');
+    const more=document.createElement('button');more.type='button';more.id='lcStoreBusinessDescriptionMore';more.className='lc-description-more';more.hidden=true;more.textContent='See more';
+    more.setAttribute('aria-controls',strong.id);more.setAttribute('aria-expanded','false');
+    more.addEventListener('click',()=>toggleExpandableDescription(strong,more));
+    copy.append(more);
+  }
+  div.append(tile,copy);return div;
 }
 function makeStoreProduct(product){
   const id=Number(product.product_id),outOfStock=Number(product.stock)<=0;
@@ -2499,7 +2551,7 @@ function renderStore(data){
   else items.forEach(item=>listing.append(makeStoreProduct(item)));
 }
 function openStore(sellerId){if(!Number(sellerId))return;selectedStoreId=0;push('store',{sellerId:Number(sellerId)});}
-$('lcStoreMore')?.addEventListener('click',()=>{const info=$('lcStoreInfo'),exp=info.hidden;info.hidden=!exp;const btn=$('lcStoreMore');btn.setAttribute('aria-expanded',exp?'true':'false');btn.querySelector('span').textContent=exp?'Hide Business Details':'See Business Details';});
+$('lcStoreMore')?.addEventListener('click',()=>{const info=$('lcStoreInfo'),exp=info.hidden;info.hidden=!exp;const btn=$('lcStoreMore');btn.setAttribute('aria-expanded',exp?'true':'false');btn.querySelector('span').textContent=exp?'Hide Business Details':'See Business Details';if(exp)requestAnimationFrame(syncStoreBusinessDescription);});
 storeClose?.addEventListener('click',()=>{if(currentFrame()?.type==='store')backOne();});
 $('sellerDetailsName')?.addEventListener('click',()=>openStore(selectedProduct?.seller_id));
 $('lcSellerAvatar')?.addEventListener('click',()=>openStore(selectedProduct?.seller_id));
