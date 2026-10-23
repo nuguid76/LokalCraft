@@ -165,6 +165,94 @@ function validateComparisonImage(array $file): array
         'name' => basename((string)($file['name'] ?? 'product-image')),
     ];
 }
+class MarketComparisonUnsafeUploadException extends RuntimeException {}
+class MarketComparisonScannerUnavailableException extends RuntimeException {}
+/** Write all bytes of a ClamAV INSTREAM frame, even if the socket writes partially. */
+function marketComparisonClamavWrite($socket, string $bytes): void
+{
+    $offset = 0;
+    $length = strlen($bytes);
+    while ($offset < $length) {
+        $written = @fwrite($socket, substr($bytes, $offset));
+        if ($written === false || $written === 0) {
+            throw new MarketComparisonScannerUnavailableException('ClamAV connection interrupted.');
+        }
+        $offset += $written;
+    }
+}
+/** Scan the existing temporary upload without moving or modifying the image. */
+function marketComparisonClamavScanOnce(string $temporaryPath): void
+{
+    $socket = null;
+    $fileHandle = null;
+    try {
+        $socket = @stream_socket_client(
+            'unix:///run/clamav/clamd.ctl',
+            $socketError,
+            $socketErrorMessage,
+            3,
+            STREAM_CLIENT_CONNECT
+        );
+        if ($socket === false) {
+            throw new MarketComparisonScannerUnavailableException('ClamAV socket is unavailable.');
+        }
+        stream_set_timeout($socket, 10);
+        $fileHandle = @fopen($temporaryPath, 'rb');
+        if ($fileHandle === false) {
+            throw new MarketComparisonScannerUnavailableException('Unable to read the image for scanning.');
+        }
+        marketComparisonClamavWrite($socket, "zINSTREAM\0");
+        while (!feof($fileHandle)) {
+            $chunk = fread($fileHandle, 32768);
+            if ($chunk === false || ($chunk === '' && !feof($fileHandle))) {
+                throw new MarketComparisonScannerUnavailableException('Unable to stream the image for scanning.');
+            }
+            if ($chunk === '') {
+                break;
+            }
+            marketComparisonClamavWrite($socket, pack('N', strlen($chunk)) . $chunk);
+        }
+        marketComparisonClamavWrite($socket, pack('N', 0));
+        $response = @stream_get_line($socket, 4096, "\0");
+        if ($response === 'stream: OK') {
+            return;
+        }
+        if (is_string($response) && preg_match('/^stream: .+ FOUND$/D', $response) === 1) {
+            throw new MarketComparisonUnsafeUploadException(
+                'This image did not pass our file safety check. Please choose another image.'
+            );
+        }
+        throw new MarketComparisonScannerUnavailableException('ClamAV returned an incomplete or failed scan.');
+    } finally {
+        if (is_resource($fileHandle)) {
+            fclose($fileHandle);
+        }
+        if (is_resource($socket)) {
+            fclose($socket);
+        }
+    }
+}
+function marketComparisonVerifyImageSafe(string $temporaryPath): void
+{
+    // Local Windows XAMPP has no ClamAV daemon; the Linux VPS must pass a real scan.
+    if (PHP_OS_FAMILY === 'Windows') {
+        return;
+    }
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        try {
+            marketComparisonClamavScanOnce($temporaryPath);
+            return;
+        } catch (MarketComparisonScannerUnavailableException $e) {
+            error_log('LokalCraft market comparison scan unavailable: ' . $e->getMessage());
+            if ($attempt < 2) {
+                usleep(250000);
+            }
+        }
+    }
+    throw new MarketComparisonScannerUnavailableException(
+        'Image safety verification is temporarily unavailable. Please try again shortly.'
+    );
+}
 function requestImageEmbedding(array $image): array
 {
     if (!function_exists('curl_init')) {
@@ -555,7 +643,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 try {
     $sellerId = (int)$sellerId;
-    if (!hash_equals($_SESSION['costing_csrf'] ?? '', (string)($_POST['csrf_token'] ?? ''))) {
+    $sessionCsrf = $_SESSION['costing_csrf'] ?? null;
+    $requestCsrf = $_POST['csrf_token'] ?? null;
+    if (
+        !is_string($sessionCsrf) || $sessionCsrf === ''
+        || !is_string($requestCsrf) || $requestCsrf === ''
+        || !hash_equals($sessionCsrf, $requestCsrf)
+    ) {
         jsonResponse(false, 'Your session token expired. Please refresh the page and try again.', [], 403);
     }
     $productName = trim((string)($_POST['product_name'] ?? ''));
@@ -576,6 +670,14 @@ try {
         $comparisonImage = validateComparisonImage($_FILES['product_image'] ?? []);
     } catch (InvalidArgumentException $e) {
         jsonResponse(false, $e->getMessage(), [], 422);
+    }
+    // A scanner failure is not an AI failure: never fall back to text for an unscanned image.
+    try {
+        marketComparisonVerifyImageSafe($comparisonImage['tmp_path']);
+    } catch (MarketComparisonUnsafeUploadException $e) {
+        jsonResponse(false, $e->getMessage(), [], 422);
+    } catch (MarketComparisonScannerUnavailableException $e) {
+        jsonResponse(false, $e->getMessage(), [], 503);
     }
     $sourcesWorked = 0;
     $items = [];

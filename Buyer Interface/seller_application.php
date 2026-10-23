@@ -6,6 +6,11 @@ $authUserName = trim((string)($userName ?? 'Buyer'));
 $error = '';
 $errorField = '';
 $success = '';
+$sellerAppAjaxSubmission = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
+    && strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+    && stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false;
+$sellerAppAjaxStatus = 422;
+$sellerAppSubmissionSucceeded = false;
 $applicationStatus = 'none';
 $rejectionReason = '';
 $applicationId = 0;
@@ -39,6 +44,98 @@ if (empty($_SESSION['seller_application_csrf'])) {
 $csrfToken = $_SESSION['seller_application_csrf'];
 class SellerApplicationUploadException extends RuntimeException
 {
+}
+class SellerApplicationScannerUnavailableException extends SellerApplicationUploadException
+{
+}
+
+/** Write the complete binary frame to the local ClamAV socket. */
+function sellerAppClamavWrite($socket, string $bytes): void
+{
+    $length = strlen($bytes);
+    $offset = 0;
+    while ($offset < $length) {
+        $written = @fwrite($socket, substr($bytes, $offset));
+        if ($written === false || $written === 0) {
+            throw new SellerApplicationScannerUnavailableException('ClamAV connection interrupted.');
+        }
+        $offset += $written;
+    }
+}
+
+/** Scan the temporary upload with ClamAV before moving it into private storage. */
+function sellerAppClamavScanOnce(string $temporaryPath, string $label): void
+{
+    $socket = null;
+    $fileHandle = null;
+    try {
+        $socket = @stream_socket_client(
+            'unix:///run/clamav/clamd.ctl',
+            $socketError,
+            $socketErrorMessage,
+            3,
+            STREAM_CLIENT_CONNECT
+        );
+        if ($socket === false) {
+            throw new SellerApplicationScannerUnavailableException('ClamAV socket is unavailable.');
+        }
+        stream_set_timeout($socket, 10);
+        $fileHandle = @fopen($temporaryPath, 'rb');
+        if ($fileHandle === false) {
+            throw new SellerApplicationScannerUnavailableException('Unable to read the uploaded document for scanning.');
+        }
+        sellerAppClamavWrite($socket, "zINSTREAM\0");
+        while (!feof($fileHandle)) {
+            $chunk = fread($fileHandle, 32768);
+            if ($chunk === false || ($chunk === '' && !feof($fileHandle))) {
+                throw new SellerApplicationScannerUnavailableException('Unable to stream the uploaded document.');
+            }
+            if ($chunk === '') {
+                break;
+            }
+            sellerAppClamavWrite($socket, pack('N', strlen($chunk)) . $chunk);
+        }
+        sellerAppClamavWrite($socket, pack('N', 0));
+        $response = @stream_get_line($socket, 4096, "\0");
+        if ($response === 'stream: OK') {
+            return;
+        }
+        if (is_string($response) && preg_match('/^stream: .+ FOUND$/D', $response) === 1) {
+            throw new SellerApplicationUploadException(
+                "The {$label} did not pass our file safety check. Please choose another file."
+            );
+        }
+        throw new SellerApplicationScannerUnavailableException('ClamAV returned an incomplete or failed scan.');
+    } finally {
+        if (is_resource($fileHandle)) {
+            fclose($fileHandle);
+        }
+        if (is_resource($socket)) {
+            fclose($socket);
+        }
+    }
+}
+
+function sellerAppVerifyUploadIsSafe(string $temporaryPath, string $label): void
+{
+    // Windows XAMPP retains existing validation; Linux production must pass ClamAV.
+    if (PHP_OS_FAMILY === 'Windows') {
+        return;
+    }
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        try {
+            sellerAppClamavScanOnce($temporaryPath, $label);
+            return;
+        } catch (SellerApplicationScannerUnavailableException $e) {
+            error_log('LokalCraft seller application scan unavailable: ' . $e->getMessage());
+            if ($attempt < 2) {
+                usleep(250000);
+            }
+        }
+    }
+    throw new SellerApplicationScannerUnavailableException(
+        'Document verification is temporarily unavailable. Your information is still here. Please try again shortly.'
+    );
 }
 function sellerAppTextLength(string $value): int
 {
@@ -111,6 +208,7 @@ function sellerAppSaveUpload(array $file, string $label, string $uploadDirectory
             $allowPdf ? "{$label} must be PDF, JPG, PNG, or WEBP." : "{$label} must be JPG, PNG, or WEBP."
         );
     }
+    sellerAppVerifyUploadIsSafe($file['tmp_name'], $label);
     if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0700, true) && !is_dir($uploadDirectory)) {
         throw new SellerApplicationUploadException('Unable to prepare private document storage.');
     }
@@ -411,6 +509,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($limit > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $limit) {
         $error = 'Uploads exceed the server request limit. Choose smaller files.';
         $errorField = 'business_permit';
+        $sellerAppAjaxStatus = 413;
     }
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
@@ -418,6 +517,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
         ? $_POST['csrf_token'] : '';
     if ($postedToken === '' || !hash_equals($csrfToken, $postedToken)) {
         $error = 'Your session expired. Please refresh the page and try again.';
+        $sellerAppAjaxStatus = 403;
     } elseif ($applicationStatus === 'pending') {
         $error = 'Your seller application is still under review.';
     } elseif ($isApplicationApproved || $sellerAccountApproved) {
@@ -776,8 +876,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                     $_SESSION['seller_business_name'],
                     $_SESSION['seller_application_rejection_reason']
                 );
-                header('Location: seller_application.php?submitted=1', true, 303);
-                exit;
+                $_SESSION['seller_application_submission_success'] = true;
+                $sellerAppSubmissionSucceeded = true;
+                if (!$sellerAppAjaxSubmission) {
+                    header('Location: seller_application.php?submitted=1', true, 303);
+                    exit;
+                }
             } catch (Throwable $e) {
                 if ($transactionStarted) {
                     try {
@@ -794,6 +898,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                     }
                 }
                 error_log('Buyer seller application submission failed: ' . $e->getMessage());
+                $sellerAppAjaxStatus = $e instanceof SellerApplicationScannerUnavailableException ? 503 : 422;
                 $error = $e instanceof SellerApplicationUploadException
                     ? $e->getMessage()
                     : 'Unable to submit your seller application. Please try again.';
@@ -801,7 +906,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
         }
     }
 }
-if (isset($_GET['submitted']) && $_GET['submitted'] === '1') {
+if ($sellerAppAjaxSubmission) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    if ($sellerAppSubmissionSucceeded) {
+        echo json_encode([
+            'success' => true,
+            'redirect' => 'seller_application.php?submitted=1',
+        ], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code($sellerAppAjaxStatus);
+        echo json_encode([
+            'success' => false,
+            'message' => $error !== '' ? $error : 'Unable to submit your seller application. Please try again.',
+            'field' => $errorField,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+if (
+    ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET'
+    && (string)($_GET['submitted'] ?? '') === '1'
+    && !empty($_SESSION['seller_application_submission_success'])
+) {
+    unset($_SESSION['seller_application_submission_success']);
     $success = 'Your seller application has been submitted and is now pending administrator review.';
     $applicationStatus = 'pending';
 }
@@ -839,6 +967,7 @@ button{cursor:pointer}
 .app-notice{padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--app-line);font-size:.85rem;margin-bottom:15px;overflow-wrap:anywhere}
 .app-notice.error{background:#fff5f3;color:#a73232;border-color:#ebbbbb}
 .app-notice.success{background:#effaf1;color:#267342;border-color:#c3e3cc}
+.app-submit-error{margin:0 24px 15px}
 .app-status{border-radius:16px;background:#fff;border:1px solid var(--app-line);padding:26px;text-align:center}
 .app-status h2{margin:0 0 8px;font-size:1.25rem}
 .app-status p{margin:0 0 14px;color:var(--app-muted);font-size:.89rem}
@@ -937,6 +1066,7 @@ body.app-modal-open{overflow:hidden}
 .viewer-frame{display:block;width:100%;height:65dvh;border:0}
 @media(max-width:840px){.page{display:flex!important;flex-direction:column!important}.page>.content{width:100%!important;max-width:100%!important;margin-left:0!important;padding:79px 13px 32px!important;min-height:100vh!important;overflow:visible!important}.field input:not([type=file]):not([type=checkbox]),.field select,.field textarea,.category-toggle,.barangay-option{font-size:16px!important}}
 @media(max-width:620px){.app-top h1{font-size:1.45rem}.app-top{align-items:flex-start}.back-link{font-size:.73rem;padding:8px 10px}.app-steps{gap:5px}.step-label{flex-direction:column;gap:4px;justify-content:center;padding:9px 3px;text-align:center}.step-label .step-copy{font-size:.66rem}.step-label .number{width:25px;height:25px;flex:0 0 25px}.wizard-panel{padding:18px 15px 8px}.field-grid,.doc-row,.review-grid{grid-template-columns:1fr}.field.wide,.review-group.wide{grid-column:auto}.app-actions{padding:14px 15px 18px}.app-actions button{min-width:104px;padding:11px 12px}.tip-bubble{left:-80px;top:26px;max-width:240px}.field input:not([type=file]):not([type=checkbox]),.field select,.field textarea,.category-toggle,.barangay-option{font-size:16px!important}.category-choice{font-size:16px}.app-wrap{min-width:0}.app-form{min-width:0}}
+@media(max-width:620px){.app-submit-error{margin:0 15px 12px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
 /* Reachable wizard tabs. Future steps stay disabled until validated. */
@@ -1246,6 +1376,7 @@ body, .page, .page > .content.buyer-seller-application-content {
 </div>
 <label class="agreement" id="agreementCard"><input id="agree_terms" type="checkbox" name="agree_terms" value="1" aria-describedby="agree_termsFeedback"><span>I agree to the <a href="#" data-open-modal="terms-modal">Terms &amp; Conditions</a>, <a href="#" data-open-modal="privacy-modal">Privacy Policy</a>, and <a href="#" data-open-modal="seller-agreement-modal">Seller Agreement</a>.</span></label><small class="field-feedback agreement-feedback" id="agree_termsFeedback" data-feedback="agree_terms" role="status"></small>
 </section>
+<div class="app-notice error app-submit-error" id="sellerAppSubmitError" role="alert" hidden></div>
 <div class="app-actions"><button id="wizardBack" type="button" hidden>Back</button><span id="wizardSpacer"></span><button type="button" id="wizardNext" class="primary">Next</button><button id="wizardSubmit" class="primary" type="submit" hidden><?php echo $applicationStatus === 'rejected' ? 'Resubmit Application' : 'Submit Application'; ?></button></div>
 </form>
 <?php endif; ?>
@@ -1630,12 +1761,55 @@ byId('zipcode')?.addEventListener('input',()=>{changedFields.add('zipcode');vali
 byId('zipcode')?.addEventListener('blur',()=>{changedFields.add('zipcode');validateField('zipcode')});
 function updateCounter(){const n=textLen(input('businessdescription'));byId('descriptionCounter').textContent=`${n}/300`;byId('descriptionCounter').classList.toggle('ok',n>=20&&n<=300)}
 updateCounter();
-FORM.addEventListener('submit',event=>{
+FORM.addEventListener('submit',async event=>{
  if(submitting){event.preventDefault();return}
  if(!validateStep(1)){event.preventDefault();sellerAppGoToStep(1);return}
  if(!validateStep(2)){event.preventDefault();sellerAppGoToStep(2);return}
  if(!validateStep(3)){event.preventDefault();sellerAppGoToStep(3);return}
- submitting=true;byId('wizardSubmit').disabled=true;byId('wizardSubmit').textContent='Submitting...';
+ event.preventDefault();
+ submitting=true;
+ const submitButton=byId('wizardSubmit'),submitLabel=submitButton.textContent;
+ const submitError=byId('sellerAppSubmitError');
+ submitError.hidden=true;
+ submitError.textContent='';
+ submitButton.disabled=true;
+ submitButton.textContent='Verifying Documents...';
+ let redirecting=false;
+ const showSubmitError=message=>{
+  submitError.textContent=message;
+  submitError.hidden=false;
+  submitError.scrollIntoView({behavior:'smooth',block:'nearest'});
+ };
+ try{
+  const response=await fetch(FORM.action,{
+   method:'POST',
+   body:new FormData(FORM),
+   credentials:'same-origin',
+   headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}
+  });
+  if(!(response.headers.get('content-type')||'').includes('application/json')){
+   showSubmitError(response.status===413
+    ?'The selected files exceed the server request limit. Please choose smaller files and try again.'
+    :'We could not confirm your submission. Please check your application status before trying again.');
+   return;
+  }
+  const result=await response.json();
+  if(response.ok&&result.success&&typeof result.redirect==='string'){
+   redirecting=true;
+   window.location.assign(result.redirect);
+   return;
+  }
+  if(result.field&&errorOf(result.field))mark(result.field,result.message||'Please check this field.');
+  showSubmitError(result.message||'Unable to submit your seller application. Please try again.');
+ }catch(_){
+  showSubmitError('We could not confirm your submission. Please check your application status before trying again.');
+ }finally{
+  if(!redirecting){
+   submitting=false;
+   submitButton.disabled=false;
+   submitButton.textContent=submitLabel;
+  }
+ }
 });
 if(SERVER_FIELD&&SERVER_ERROR){mark(SERVER_FIELD,SERVER_ERROR);sellerAppBaseStep=stepFields[2].includes(SERVER_FIELD)?2:stepFields[3].includes(SERVER_FIELD)?3:1;}
 showStep(sellerAppBaseStep);

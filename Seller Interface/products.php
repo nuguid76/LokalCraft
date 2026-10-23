@@ -2229,7 +2229,7 @@ body .page > main.content.products-main {
 <div class="photo-empty" id="photo-empty">Product image preview</div>
 </div>
 <div class="photo-fields">
-<div class="field-title-row"><label for="product-photo">Product Photo</label><details class="help-tip help-tip--up"><summary aria-label="Product photo requirements" title="Photo requirements">i</summary><div class="help-tip-copy" id="product-photo-note">New product: JPG, PNG, or WEBP · up to 5 MB.</div></details></div>
+<div class="field-title-row"><label for="product-photo">Product Photo</label><details class="help-tip help-tip--up"><summary aria-label="Product photo requirements" title="Photo requirements">i</summary><div class="help-tip-copy" id="product-photo-note">JPG, PNG, WEBP, or supported iPhone photos. Large photos are optimized to 5 MB.</div></details></div>
 <input id="product-photo" name="product_photo" type="file" accept="image/jpeg,image/png,image/webp">
 <div class="image-safety-status idle" id="product-image-safety" role="status" aria-live="polite">Choose an image to run the safety check.</div>
 </div>
@@ -2344,6 +2344,10 @@ body .page > main.content.products-main {
     const productCsrfToken = productForm?.querySelector('input[name="csrf_token"]')?.value || '';
     let imageSafetyState = 'idle';
     let imageSafetyRequestId = 0;
+    let imageSelectionRequestId = 0;
+    const maxProductImageBytes = <?= (int)MAX_PRODUCT_IMAGE_BYTES ?>;
+    const maxOriginalProductImageBytes = 32 * 1024 * 1024;
+    let preparedProductPhoto = null;
     const listingPreviewImage = document.getElementById('listing-preview-image');
     const listingPreviewPlaceholder = document.getElementById('listing-preview-placeholder');
     const listingPreviewStatus = document.getElementById('listing-preview-status');
@@ -2621,6 +2625,63 @@ body .page > main.content.products-main {
       setPageScrollLock();
       productPhoto?.focus();
     }
+    async function prepareProductPhoto(file) {
+      const acceptedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif'];
+      const knownExtension = /\.(jpe?g|png|webp|heic|heif|avif)$/i.test(file.name || '');
+      if (!acceptedTypes.includes(file.type) && !(file.type === '' && knownExtension)) {
+        throw new Error('Choose a JPG, PNG, WEBP, or supported iPhone photo.');
+      }
+      if (!file.size || file.size > maxOriginalProductImageBytes) {
+        throw new Error('This photo is too large to prepare. Please choose an image under 32 MB.');
+      }
+      // Preserve smaller PNG/WEBP originals (including transparent backgrounds).
+      // Re-encode JPEGs and supported iPhone formats so Pillow receives standard JPEG bytes.
+      if ((file.type === 'image/png' || file.type === 'image/webp') && file.size <= maxProductImageBytes) {
+        return file;
+      }
+      const objectUrl = URL.createObjectURL(file);
+      let decodedImage;
+      try {
+        decodedImage = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('This photo could not be opened. Please export it as JPG and try again.'));
+          img.src = objectUrl;
+        });
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+      const width = decodedImage.naturalWidth;
+      const height = decodedImage.naturalHeight;
+      if (!width || !height) {
+        throw new Error('This photo has invalid dimensions. Please choose another image.');
+      }
+      const scale = Math.min(1, 2400 / Math.max(width, height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const context = canvas.getContext('2d');
+      if (!context || typeof canvas.toBlob !== 'function') {
+        throw new Error('Photo preparation is not supported on this browser. Please choose a JPG image.');
+      }
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(decodedImage, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.90, 0.82, 0.72, 0.60]) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (blob && blob.type === 'image/jpeg' && blob.size > 0 && blob.size <= maxProductImageBytes) {
+          return new File([blob], 'product-photo.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+        }
+      }
+      throw new Error('The photo could not be reduced to 5 MB. Please choose a smaller image.');
+    }
+    // Safari fallback: replace the file in the actual multipart submission if the
+    // browser cannot assign a generated File to the native file input.
+    productForm?.addEventListener('formdata', (event) => {
+      if (preparedProductPhoto && productPhoto?.files?.length) {
+        event.formData.set('product_photo', preparedProductPhoto, preparedProductPhoto.name);
+      }
+    });
     async function checkSelectedProductImage(file) {
       const requestId = ++imageSafetyRequestId;
       if (!file) {
@@ -2634,7 +2695,7 @@ body .page > main.content.products-main {
         );
         return;
       }
-      if (file.size > <?= (int)MAX_PRODUCT_IMAGE_BYTES ?>) {
+      if (file.size > maxProductImageBytes) {
         const message = 'Product photo must not exceed 5 MB.';
         setImageSafetyState('error', message);
         openImageWarning(message);
@@ -2737,6 +2798,9 @@ body .page > main.content.products-main {
       }
     }
     function openCreateModal() {
+      ++imageSelectionRequestId;
+      ++imageSafetyRequestId;
+      preparedProductPhoto = null;
       activeProductCard = null;
       editingAdminRemoved = false;
       modalTitle.textContent = 'Add Product';
@@ -2750,7 +2814,7 @@ body .page > main.content.products-main {
       productCost.value = '0';
       productStock.value = '0';
       productPhoto.required = true;
-      if (productPhotoNote) productPhotoNote.textContent = 'New product: JPG, PNG, or WEBP · up to 5 MB.';
+      if (productPhotoNote) productPhotoNote.textContent = 'JPG, PNG, WEBP, or supported iPhone photos. Large photos are optimized to 5 MB.';
       configureSavedCalculation('create');
       previewImage.removeAttribute('src');
       previewImage.classList.remove('show');
@@ -2764,6 +2828,9 @@ body .page > main.content.products-main {
     }
     function openEditModal(source) {
       if (!source) return;
+      ++imageSelectionRequestId;
+      ++imageSafetyRequestId;
+      preparedProductPhoto = null;
       activeProductCard = source;
       editingAdminRemoved = source.dataset.adminRemoved === '1';
       modalTitle.textContent = 'Edit Product';
@@ -2781,10 +2848,10 @@ body .page > main.content.products-main {
       productPhoto.value = '';
       productPhoto.required = !(source.dataset.photo || '');
       if (productPhotoNote) productPhotoNote.textContent = editingAdminRemoved
-        ? 'Admin removed this listing. Upload a new image to make it available again. JPG, PNG, or WEBP · up to 5 MB.'
+        ? 'Admin removed this listing. Upload a new image to make it available again. Large photos are optimized to 5 MB.'
         : source.dataset.photo
-          ? 'Leave blank to keep the current image. JPG, PNG, or WEBP · up to 5 MB.'
-          : 'Image required. JPG, PNG, or WEBP · up to 5 MB.';
+          ? 'Leave blank to keep the current image. Large photos are optimized to 5 MB.'
+          : 'Image required. Large photos are optimized to 5 MB.';
       configureSavedCalculation('edit');
       if (source.dataset.photo) {
         previewImage.src = '../' + source.dataset.photo;
@@ -2811,6 +2878,9 @@ body .page > main.content.products-main {
       setPageScrollLock();
     }
     function closeModal() {
+      ++imageSelectionRequestId;
+      ++imageSafetyRequestId;
+      preparedProductPhoto = null;
       modal.classList.remove('show');
       modal.setAttribute('aria-hidden', 'true');
       setPageScrollLock();
@@ -2874,7 +2944,10 @@ body .page > main.content.products-main {
       productCost.value = Number(option.dataset.price || 0).toFixed(2);
       updateListingPreview();
     });
-    productPhoto?.addEventListener('change', () => {
+    productPhoto?.addEventListener('change', async () => {
+      const selectionId = ++imageSelectionRequestId;
+      ++imageSafetyRequestId;
+      preparedProductPhoto = null;
       const file = productPhoto.files?.[0] || null;
       updateListingPreview();
       if (!file) {
@@ -2891,15 +2964,60 @@ body .page > main.content.products-main {
         checkSelectedProductImage(null);
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        previewImage.src = event.target.result;
-        previewImage.classList.add('show');
-        if (photoEmpty) photoEmpty.style.display = 'none';
+      setImageSafetyState('checking', 'Preparing product photo...');
+      try {
+        const readyFile = await prepareProductPhoto(file);
+        if (selectionId !== imageSelectionRequestId) return;
+        preparedProductPhoto = readyFile;
+        if (readyFile !== file) {
+          let replacedInput = false;
+          try {
+            const transfer = new DataTransfer();
+            transfer.items.add(readyFile);
+            productPhoto.files = transfer.files;
+            replacedInput = productPhoto.files?.[0]?.name === readyFile.name
+              && productPhoto.files[0].size === readyFile.size;
+          } catch (error) {
+            // Native file-input assignment is unavailable on some Safari versions.
+          }
+          if (!replacedInput) {
+            const submission = new FormData(productForm);
+            const submittedImage = submission.get('product_photo');
+            if (!(submittedImage instanceof File)
+                || submittedImage.name !== readyFile.name
+                || submittedImage.size !== readyFile.size) {
+              throw new Error('Your browser cannot prepare this photo for upload. Please export it as JPG and try again.');
+            }
+          }
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (selectionId !== imageSelectionRequestId) return;
+          previewImage.src = event.target.result;
+          previewImage.classList.add('show');
+          if (photoEmpty) photoEmpty.style.display = 'none';
+          updateListingPreview();
+        };
+        reader.readAsDataURL(readyFile);
+        checkSelectedProductImage(readyFile);
+      } catch (error) {
+        if (selectionId !== imageSelectionRequestId) return;
+        preparedProductPhoto = null;
+        productPhoto.value = '';
+        if (formAction.value === 'update_product' && activeProductCard?.dataset.photo) {
+          previewImage.src = '../' + activeProductCard.dataset.photo;
+          previewImage.classList.add('show');
+          if (photoEmpty) photoEmpty.style.display = 'none';
+        } else {
+          previewImage.removeAttribute('src');
+          previewImage.classList.remove('show');
+          if (photoEmpty) photoEmpty.style.display = 'block';
+        }
         updateListingPreview();
-      };
-      reader.readAsDataURL(file);
-      checkSelectedProductImage(file);
+        const message = error instanceof Error ? error.message : 'The selected photo could not be prepared.';
+        setImageSafetyState('error', message);
+        openImageWarning(message);
+      }
     });
     [productName, craftCategory, productCost, productStock, productStatus].forEach((field) => {
       field?.addEventListener('input', updateListingPreview);

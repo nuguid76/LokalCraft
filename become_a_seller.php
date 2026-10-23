@@ -21,8 +21,105 @@ if (empty($_SESSION['seller_application_csrf'])) {
 }
 $error = '';
 $application_submitted = false;
+$sellerAjaxSubmission = $_SERVER['REQUEST_METHOD'] === 'POST'
+    && strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+    && stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false;
+$sellerAjaxStatus = 422;
 $sellerOtpFlow = 'seller_registration';
 class SellerUploadException extends RuntimeException {}
+class SellerScannerUnavailableException extends SellerUploadException {}
+
+/** Send every byte, including the NUL-terminated ClamAV protocol frames. */
+function sellerClamavWrite($socket, string $bytes): void
+{
+    $length = strlen($bytes);
+    $offset = 0;
+    while ($offset < $length) {
+        $written = @fwrite($socket, substr($bytes, $offset));
+        if ($written === false || $written === 0) {
+            throw new SellerScannerUnavailableException('ClamAV connection interrupted.');
+        }
+        $offset += $written;
+    }
+}
+
+/** Scan the PHP upload temporary file through ClamAV's local INSTREAM socket. */
+function sellerClamavScanOnce(string $temporaryPath, string $label): void
+{
+    $socket = null;
+    $fileHandle = null;
+    try {
+        $socket = @stream_socket_client(
+            'unix:///run/clamav/clamd.ctl',
+            $socketError,
+            $socketErrorMessage,
+            3,
+            STREAM_CLIENT_CONNECT
+        );
+        if ($socket === false) {
+            throw new SellerScannerUnavailableException('ClamAV socket is unavailable.');
+        }
+        stream_set_timeout($socket, 10);
+        $fileHandle = @fopen($temporaryPath, 'rb');
+        if ($fileHandle === false) {
+            throw new SellerScannerUnavailableException('Unable to read the uploaded document for scanning.');
+        }
+
+        sellerClamavWrite($socket, "zINSTREAM\0");
+        while (!feof($fileHandle)) {
+            $chunk = fread($fileHandle, 32768);
+            if ($chunk === false || ($chunk === '' && !feof($fileHandle))) {
+                throw new SellerScannerUnavailableException('Unable to stream the uploaded document.');
+            }
+            if ($chunk === '') {
+                break;
+            }
+            sellerClamavWrite($socket, pack('N', strlen($chunk)) . $chunk);
+        }
+        sellerClamavWrite($socket, pack('N', 0));
+        $response = @stream_get_line($socket, 4096, "\0");
+        if ($response === 'stream: OK') {
+            return;
+        }
+        if (is_string($response) && preg_match('/^stream: .+ FOUND$/D', $response) === 1) {
+            throw new SellerUploadException(
+                "The {$label} did not pass our file safety check. Please choose another file."
+            );
+        }
+        throw new SellerScannerUnavailableException('ClamAV returned an incomplete or failed scan.');
+    } finally {
+        if (is_resource($fileHandle)) {
+            fclose($fileHandle);
+        }
+        if (is_resource($socket)) {
+            fclose($socket);
+        }
+    }
+}
+
+function sellerVerifyUploadIsSafe(string $temporaryPath, string $label): void
+{
+    // The existing Windows XAMPP development workflow has no ClamAV daemon.
+    // On the Linux production VPS every upload must pass a real scan.
+    if (PHP_OS_FAMILY === 'Windows') {
+        return;
+    }
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        try {
+            sellerClamavScanOnce($temporaryPath, $label);
+            return;
+        } catch (SellerScannerUnavailableException $e) {
+            error_log('LokalCraft seller upload scan unavailable: ' . $e->getMessage());
+            if ($attempt < 2) {
+                usleep(250000);
+            }
+        }
+    }
+    throw new SellerScannerUnavailableException(
+        'Document verification is temporarily unavailable. Your information is still here. Please try again shortly.'
+    );
+}
+
 function sellerTextLength(string $value): int
 {
     return function_exists('mb_strlen')
@@ -94,6 +191,8 @@ function saveSellerUpload(
             : "The {$label} must be a JPG, PNG, or WEBP image.";
         throw new SellerUploadException($message);
     }
+    // Fail closed before the document can enter permanent private storage.
+    sellerVerifyUploadIsSafe($file['tmp_name'], $label);
     if (
         !is_dir($uploadDirectory)
         && !mkdir($uploadDirectory, 0700, true)
@@ -294,6 +393,7 @@ if ($craftCategories === []) {
 $requestTooLarge = sellerRequestTooLarge();
 if ($requestTooLarge) {
     $error = 'The selected files are too large for the server request limit. Please upload smaller files and try again.';
+    $sellerAjaxStatus = 413;
 }
 $otpActions = [
     'seller_check_email',
@@ -468,6 +568,14 @@ if (
         )
     ) {
         http_response_code(403);
+        if ($sellerAjaxSubmission) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Your form session expired. Reload the page and try again.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         exit('Invalid form token. Reload the page and try again.');
     }
     $firstname = trim((string)($_POST['firstname'] ?? ''));
@@ -768,6 +876,7 @@ if (
                 }
             }
             error_log('Seller registration failed: ' . $e->getMessage());
+            $sellerAjaxStatus = $e instanceof SellerScannerUnavailableException ? 503 : 422;
             $error = $e instanceof SellerUploadException
                 ? $e->getMessage()
                 : 'Unable to submit the application. Please try again.';
@@ -782,6 +891,32 @@ if (
             }
         }
     }
+}
+if ($sellerAjaxSubmission) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    if ($application_submitted) {
+        $_SESSION['seller_application_success_flash'] = true;
+        echo json_encode([
+            'success' => true,
+            'redirect' => 'become_a_seller.php?submitted=1',
+        ], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code($sellerAjaxStatus);
+        echo json_encode([
+            'success' => false,
+            'message' => $error !== '' ? $error : 'Unable to submit the application. Please try again.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+if (
+    $_SERVER['REQUEST_METHOD'] === 'GET'
+    && (string)($_GET['submitted'] ?? '') === '1'
+    && !empty($_SESSION['seller_application_success_flash'])
+) {
+    unset($_SESSION['seller_application_success_flash']);
+    $application_submitted = true;
 }
 if ($application_submitted) {
 ?>
@@ -2279,6 +2414,7 @@ if ($application_submitted) {
           <input type="checkbox" id="agreeTerms" name="agreeTerms" required>
           <label for="agreeTerms">I agree to the <a href="#" data-policy="terms">Terms and Conditions, Privacy Policy</a>, and <a href="#" data-policy="seller-agreement">Seller Agreement</a>. I understand that my seller account will be reviewed and approved by LokalCraft administrators.</label>
         </div>
+        <div class="error-box" id="sellerSubmitError" role="alert" hidden></div>
         <div class="form-buttons">
           <button type="button" class="btn btn-back" onclick="prevStep(4)">Back</button>
           <button type="submit" class="btn btn-submit" id="submitBtn">Submit Application</button>
@@ -3738,7 +3874,12 @@ if ($application_submitted) {
       event.preventDefault();
     }
   });
-  document.getElementById('sellerForm').addEventListener('submit', function(e) {
+  let sellerSubmissionInProgress = false;
+  document.getElementById('sellerForm').addEventListener('submit', async function(e) {
+    if (sellerSubmissionInProgress) {
+      e.preventDefault();
+      return;
+    }
     for (const step of [1, 2, 3]) {
       if (!validateStep(step)) {
         e.preventDefault();
@@ -3768,10 +3909,58 @@ if ($application_submitted) {
       return;
     }
     clearFieldError('agreeTerms');
+    e.preventDefault();
+    sellerSubmissionInProgress = true;
     const submitButton = document.getElementById('submitBtn');
+    const submitError = document.getElementById('sellerSubmitError');
+    submitError.hidden = true;
+    submitError.textContent = '';
     if (submitButton) {
       submitButton.disabled = true;
-      submitButton.textContent = 'Submitting Application...';
+      submitButton.textContent = 'Verifying Documents...';
+    }
+    let redirecting = false;
+    try {
+      const response = await fetch(this.action, {
+        method: 'POST',
+        body: new FormData(this),
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+      if (!(response.headers.get('content-type') || '').includes('application/json')) {
+        if (response.status === 413) {
+          submitError.textContent = 'The selected files exceed the server request limit. Please choose smaller files and try again.';
+        } else {
+          submitError.textContent = 'We could not confirm your submission. Please check whether your account was created before trying again.';
+        }
+        submitError.hidden = false;
+        submitError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+      const result = await response.json();
+      if (response.ok && result.success && typeof result.redirect === 'string') {
+        redirecting = true;
+        window.location.assign(result.redirect);
+        return;
+      }
+      submitError.textContent = result.message || 'Unable to submit the application. Please try again.';
+      submitError.hidden = false;
+      submitError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (_) {
+      submitError.textContent = 'We could not confirm your submission. Please check whether your account was created before trying again.';
+      submitError.hidden = false;
+      submitError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } finally {
+      if (!redirecting) {
+        sellerSubmissionInProgress = false;
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = 'Submit Application';
+        }
+      }
     }
   });
   document.getElementById('agreeTerms')?.addEventListener('change', function() {
