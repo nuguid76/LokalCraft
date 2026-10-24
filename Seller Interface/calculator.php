@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         }
         $laborCost = round(max(0, (float)($_POST['labor_cost'] ?? 0)), 2);
         $packagingCost = round(max(0, (float)($_POST['packaging_cost'] ?? 0)), 2);
-        $profitMargin = max(0, min(89.99, (float)($_POST['profit_margin'] ?? 0)));
+        $targetMarkup = max(0, min(500, (float)($_POST['target_markup'] ?? 0)));
         $materialIds = $_POST['saved_material_id'] ?? [];
         $materialQuantities = $_POST['material_quantity'] ?? [];
         $overheadNames = $_POST['overhead_name'] ?? [];
@@ -186,25 +186,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $overheadCost += $cost;
         }
         $totalCost = round($totalMaterialCost + $laborCost + $packagingCost + $otherDirectCost + $overheadCost, 2);
-        // Target margin is the seller's net profit as a percentage of the selling price
-        // after the estimated 5% LokalCraft platform fee.
-        // Selling price = total cost / (1 - target net margin - platform fee rate).
-        $marginDecimal = $profitMargin / 100;
-        $pricingDenominator = 1 - $marginDecimal - ESTIMATED_PLATFORM_FEE_RATE;
-        if ($pricingDenominator <= 0) {
-            jsonResponse(false, 'The target net profit margin is too high after including the platform fee.');
-        }
-        $suggestedPrice = $totalCost > 0
-            ? round($totalCost / $pricingDenominator, 2)
-            : 0.0;
+        // Cost-plus pricing: add the seller's target markup to total cost.
+        $markupDecimal = $targetMarkup / 100;
+        $markupAmount = round($totalCost * $markupDecimal, 2);
+        $suggestedPrice = round($totalCost + $markupAmount, 2);
         $estimatedPlatformFee = round($suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE, 2);
         $estimatedSellerPayout = round($suggestedPrice - $estimatedPlatformFee, 2);
-        $desiredProfit = round(max(0, $estimatedSellerPayout - $totalCost), 2);
+        $desiredProfit = round($estimatedSellerPayout - $totalCost, 2);
+        $netProfitMargin = $suggestedPrice > 0
+            ? round(($desiredProfit / $suggestedPrice) * 100, 2)
+            : 0.0;
         $savedImagePath = saveCostingImage($_FILES['product_image'] ?? [], $sellerId);
         $conn->begin_transaction();
         $costingStmt = $conn->prepare(
             'INSERT INTO products_costing
-            (seller_id, product_title, craft_category, product_image, labor_cost, packaging_cost, other_direct_cost, overhead_cost, desired_profit, target_profit_margin, total_material_cost, total_cost, suggested_price, created_at)
+            (seller_id, product_title, craft_category, product_image, labor_cost, packaging_cost, other_direct_cost, overhead_cost, desired_profit, target_markup, total_material_cost, total_cost, suggested_price, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())'
         );
         $costingStmt->bind_param(
@@ -218,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $otherDirectCost,
             $overheadCost,
             $desiredProfit,
-            $profitMargin,
+            $targetMarkup,
             $totalMaterialCost,
             $totalCost,
             $suggestedPrice
@@ -332,7 +328,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             'overhead_cost' => round($overheadCost, 2),
             'total_cost' => round($totalCost, 2),
             'desired_profit' => round($desiredProfit, 2),
-            'profit_margin' => round($profitMargin, 2),
+            'target_markup' => round($targetMarkup, 2),
+            'markup_amount' => round($markupAmount, 2),
+            'net_profit_margin' => round($netProfitMargin, 2),
             'suggested_price' => round($suggestedPrice, 2),
         ]);
     } catch (Throwable $e) {
@@ -2561,6 +2559,7 @@ try {
             background: var(--cta-gradient);
             color: #fff;
         }
+            .cost-sidebar-row strong.is-loss { color: #b42318; }
     </style>
 </head>
 <body>
@@ -2751,25 +2750,24 @@ try {
                         </section>
                         <section class="step" data-step="4">
                             <div class="step-kicker">STEP 4 · PROFIT &amp; MARKET COMPARISON</div>
-                            <h2>Set your target net profit margin, then compare</h2>
-                            <p class="step-help small-help">Set profit and compare prices. <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price comparison">i</button><span class="tooltip-box">Your costs and profit set the suggested price. Similar listings are for comparison only.</span></span></p>
+                            <h2>Set your target markup, then compare</h2>
+                            <p class="step-help small-help">Add your markup and compare prices. <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price comparison">i</button><span class="tooltip-box">Your total cost and markup set the suggested price. Similar listings are for comparison only.</span></span></p>
                             <div class="step-error-summary" data-step-error-summary="4"></div>
                             <div class="profit-margin-card">
                                 <div>
-                                    <h3 class="label-with-tip">Target Net Profit Margin (%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About net profit margin">i</button><span class="tooltip-box">The percentage of the selling price you want to keep as profit after the estimated 5% platform fee.</span></span></h3>
+                                    <h3 class="label-with-tip">Target Markup (%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About target markup">i</button><span class="tooltip-box">The percentage you want to add to your total cost to determine the suggested selling price.</span></span></h3>
                                 </div>
-                                <label>
-                                    Target Net Profit Margin
+                                <label aria-label="Target Markup">
                                     <div class="percentage-input">
-                                        <input id="profit-margin" type="number" min="0" max="89.99" step="0.01" inputmode="decimal" placeholder="e.g. 30" />
+                                        <input id="target-markup" type="number" min="0" max="500" step="0.01" inputmode="decimal" placeholder="e.g. 30" />
                                         <span>%</span>
                                     </div>
-                                    <small>Choose the percentage of the selling price you want to earn as net profit after the estimated 5% platform fee.</small>
+                                    <small>Choose the percentage you want to add to your total cost.</small>
                                 </label>
-                                <div class="margin-presets" aria-label="Quick profit margin choices">
-                                    <button type="button" class="margin-preset" data-margin="20">20%</button>
-                                    <button type="button" class="margin-preset" data-margin="30">30%</button>
-                                    <button type="button" class="margin-preset" data-margin="40">40%</button>
+                                <div class="margin-presets" aria-label="Quick markup choices">
+                                    <button type="button" class="margin-preset" data-markup="20">20%</button>
+                                    <button type="button" class="margin-preset" data-markup="30">30%</button>
+                                    <button type="button" class="margin-preset" data-markup="40">40%</button>
                                 </div>
                             </div>
                             <div class="market-box smart-market-box" id="market-box">
@@ -2833,7 +2831,7 @@ try {
                 <aside class="cost-sidebar" aria-label="Cost breakdown">
                     <div class="cost-sidebar-card">
                         <div class="cost-sidebar-kicker">COST BREAKDOWN</div>
-                        <div class="cost-sidebar-title label-with-tip">Suggested Selling Price <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price calculation">i</button><span class="tooltip-box">Calculated to cover your total cost, target net profit margin, and the estimated 5% platform fee.</span></span></div>
+                        <div class="cost-sidebar-title label-with-tip">Suggested Selling Price <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price calculation">i</button><span class="tooltip-box">Calculated by adding the markup amount to your total cost.</span></span></div>
                         <div class="cost-sidebar-price" id="sidebar-price">₱0.00</div>
                         <div class="cost-sidebar-rule"></div>
                         <div class="cost-sidebar-section-label">Direct Costs</div>
@@ -2859,26 +2857,36 @@ try {
                             <strong id="sidebar-overhead">₱0.00</strong>
                         </div>
                         <div class="cost-sidebar-rule"></div>
-                        <div class="cost-sidebar-section-label">Price Summary</div>
+                        <div class="cost-sidebar-section-label">Pricing</div>
                         <div class="cost-sidebar-row total">
                             <span>Total Cost</span>
                             <strong id="sidebar-total-cost">₱0.00</strong>
                         </div>
                         <div class="cost-sidebar-row">
-                            <span>Target Net Profit Margin</span>
-                            <strong id="sidebar-margin">0%</strong>
+                            <span>Target Markup</span>
+                            <strong id="sidebar-markup">0%</strong>
                         </div>
-                        <div class="cost-sidebar-row pricing-profit-row">
-                            <span>Net Profit</span>
-                            <strong id="sidebar-profit">₱0.00</strong>
+                        <div class="cost-sidebar-row">
+                            <span>Markup Amount</span>
+                            <strong id="sidebar-markup-amount">₱0.00</strong>
                         </div>
+                        <div class="cost-sidebar-rule"></div>
+                        <div class="cost-sidebar-section-label">Estimated Earnings</div>
                         <div class="cost-sidebar-row platform-fee-row">
-                            <span class="label-with-tip">Estimated Platform Fee (5%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About estimated platform fee">i</button><span class="tooltip-box">Estimated 5% of your suggested selling price. This fee is included when calculating the price needed to reach your target net profit margin.</span></span></span>
+                            <span class="label-with-tip">Estimated Platform Fee (5%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About estimated platform fee">i</button><span class="tooltip-box">Estimated 5% of your suggested selling price. This fee is deducted from the amount you will receive.</span></span></span>
                             <strong id="sidebar-platform-fee">−₱0.00</strong>
                         </div>
                         <div class="cost-sidebar-row seller-payout-row">
-                            <span>Estimated Amount You'll Receive</span>
+                            <span>Amount You'll Receive</span>
                             <strong id="sidebar-seller-payout">₱0.00</strong>
+                        </div>
+                        <div class="cost-sidebar-row">
+                            <span>Net Profit</span>
+                            <strong id="sidebar-profit">₱0.00</strong>
+                        </div>
+                        <div class="cost-sidebar-row">
+                            <span>Net Profit Margin</span>
+                            <strong id="sidebar-net-margin">0%</strong>
                         </div>
                     </div>
                 </aside>
@@ -2999,7 +3007,7 @@ try {
         1: 'Add the product details first',
         2: 'Calculate direct materials, direct labor, and packaging',
         3: 'Add the indirect costs (overheads) that support production',
-        4: 'Set the target net profit margin and review the market comparison'
+        4: 'Set the target markup and review the market comparison'
     };
     const MIN_STEP = 1;
     const MAX_STEP = 4;
@@ -3021,9 +3029,9 @@ try {
     };
     const roundMoney = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     const getNumber = selector => Math.max(0, Number(document.querySelector(selector)?.value || 0));
-    const getProfitMargin = () => Math.min(
-        89.99,
-        Math.max(0, Number(document.getElementById('profit-margin')?.value || 0))
+    const getTargetMarkup = () => Math.min(
+        500,
+        Math.max(0, Number(document.getElementById('target-markup')?.value || 0))
     );
     function infoLabel(text, tooltip) {
         return `<span class="label-with-tip">${text}<span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="${text} information">i</button><span class="tooltip-box">${tooltip}</span></span></span>`;
@@ -3517,15 +3525,15 @@ try {
             overheadCost += roundMoney(Math.max(0, Number(input.value || 0)));
         });
         const totalCost = roundMoney(directCost + overheadCost);
-        const profitMargin = getProfitMargin();
-        const marginDecimal = profitMargin / 100;
-        const pricingDenominator = 1 - marginDecimal - ESTIMATED_PLATFORM_FEE_RATE;
-        const suggestedPrice = totalCost > 0 && pricingDenominator > 0
-            ? roundMoney(totalCost / pricingDenominator)
-            : 0;
+        const targetMarkup = getTargetMarkup();
+        const markupAmount = roundMoney(totalCost * (targetMarkup / 100));
+        const suggestedPrice = roundMoney(totalCost + markupAmount);
         const estimatedPlatformFee = roundMoney(suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE);
         const estimatedSellerPayout = roundMoney(suggestedPrice - estimatedPlatformFee);
-        const profitAmount = roundMoney(Math.max(0, estimatedSellerPayout - totalCost));
+        const profitAmount = roundMoney(estimatedSellerPayout - totalCost);
+        const netProfitMargin = suggestedPrice > 0
+            ? Math.round(((profitAmount / suggestedPrice) * 100 + Number.EPSILON) * 100) / 100
+            : 0;
         latestPricing = {
             materialTotal,
             laborHours,
@@ -3535,8 +3543,10 @@ try {
             directCost,
             overheadCost,
             totalCost,
-            profitMargin,
+            targetMarkup,
+            markupAmount,
             profitAmount,
+            netProfitMargin,
             suggestedPrice
         };
         const setMoney = (id, value) => {
@@ -3549,17 +3559,23 @@ try {
         setMoney('sidebar-direct', directCost);
         setMoney('sidebar-overhead', overheadCost);
         setMoney('sidebar-total-cost', totalCost);
+        setMoney('sidebar-markup-amount', markupAmount);
         setMoney('sidebar-profit', profitAmount);
         setMoney('sidebar-price', suggestedPrice);
         const sidebarPlatformFee = document.getElementById('sidebar-platform-fee');
         if (sidebarPlatformFee) sidebarPlatformFee.textContent = `−${formatMoney(estimatedPlatformFee)}`;
         setMoney('sidebar-seller-payout', estimatedSellerPayout);
-        const sidebarMargin = document.getElementById('sidebar-margin');
-        if (sidebarMargin) sidebarMargin.textContent = formatPercent(profitMargin);
+        const sidebarMarkup = document.getElementById('sidebar-markup');
+        if (sidebarMarkup) sidebarMarkup.textContent = formatPercent(targetMarkup);
+        const sidebarNetMargin = document.getElementById('sidebar-net-margin');
+        if (sidebarNetMargin) sidebarNetMargin.textContent = formatPercent(netProfitMargin);
+        const sidebarProfit = document.getElementById('sidebar-profit');
+        sidebarProfit?.classList.toggle('is-loss', profitAmount < 0);
+        sidebarNetMargin?.classList.toggle('is-loss', netProfitMargin < 0);
         document.querySelectorAll('.margin-preset').forEach(button => {
             button.classList.toggle(
                 'active',
-                Number(button.dataset.margin) === Number(profitMargin)
+                Number(button.dataset.markup) === Number(targetMarkup)
             );
         });
         if (currentStep === 4 && marketComparison.state === 'results' && marketComparison.items.length > 0) {
@@ -3575,8 +3591,10 @@ try {
             directCost,
             overheadCost,
             totalCost,
-            profitMargin,
+            targetMarkup,
+            markupAmount,
             profitAmount,
+            netProfitMargin,
             suggestedPrice
         };
     }
@@ -3833,18 +3851,18 @@ try {
             }
         }
         if (currentStep === 4) {
-            const marginInput = document.getElementById('profit-margin');
-            const margin = getProfitMargin();
-            if (margin <= 0) {
+            const markupInput = document.getElementById('target-markup');
+            const targetMarkup = getTargetMarkup();
+            if (targetMarkup <= 0) {
                 return showFieldError(
-                    marginInput,
-                    'Enter your desired profit margin. You can type your own percentage or use a quick option.'
+                    markupInput,
+                    'Enter your target markup. You can type your own percentage or use a quick option.'
                 );
             }
-            if (Number(marginInput.value) >= 90) {
+            if (Number(markupInput.value) > 500) {
                 return showFieldError(
-                    marginInput,
-                    'Choose a profit margin below 90%.'
+                    markupInput,
+                    'Choose a target markup from 0% to 500%.'
                 );
             }
         }
@@ -3859,7 +3877,7 @@ try {
         const totals = calculate();
         data.append('labor_cost', String(totals.laborCost));
         data.append('packaging_cost', String(totals.packagingCost));
-        data.append('profit_margin', String(totals.profitMargin));
+        data.append('target_markup', String(totals.targetMarkup));
         const image = document.getElementById('product-image').files[0];
         if (image) data.append('product_image', image);
         document.querySelectorAll('.material-row').forEach(row => {
@@ -4039,7 +4057,7 @@ try {
             || Boolean(document.getElementById('craft-category').value)
             || Boolean(document.getElementById('product-image').files.length)
             || materialTouched || expenseTouched
-            || ['labor-hours','hourly-rate','packaging-cost','profit-margin'].some(id =>
+            || ['labor-hours','hourly-rate','packaging-cost','target-markup'].some(id =>
                 Number(document.getElementById(id).value || 0) > 0
             );
         if (!hasWork) {
@@ -4047,7 +4065,7 @@ try {
             return;
         }
         const data = {
-            version: 2,
+            version: 3,
             step: currentStep,
             highestVisitedStep,
             productTitle: document.getElementById('product-title').value,
@@ -4060,7 +4078,7 @@ try {
             laborHours: document.getElementById('labor-hours').value,
             hourlyRate: document.getElementById('hourly-rate').value,
             packaging: document.getElementById('packaging-cost').value,
-            margin: document.getElementById('profit-margin').value,
+            targetMarkup: document.getElementById('target-markup').value,
             overheads: [...document.querySelectorAll('#overheads .expense-row')].map(row => ({
                 name: row.querySelector('.overhead-name')?.value || '',
                 cost: row.querySelector('.overhead-cost')?.value ?? ''
@@ -4106,10 +4124,13 @@ try {
     }
     async function navigateWithDraft(destination) {
         handleNavigation(destination);
+        writeDraft();
+        const currentImage = document.getElementById('product-image')?.files?.[0] || null;
+        if (currentImage) queueImageWrite(currentImage);
         // An unavailable/blocked image database must never trap the seller on this page.
         await Promise.race([
             Promise.resolve(imageWrite).catch(() => {}),
-            new Promise(resolve => window.setTimeout(resolve, 700))
+            new Promise(resolve => window.setTimeout(resolve, 900))
         ]);
         window.location.assign(destination);
     }
@@ -4118,7 +4139,7 @@ try {
         if (!raw) return false;
         let draft;
         try { draft = JSON.parse(raw); } catch (_) { return false; }
-        if (!draft || draft.version !== 2) return false;
+        if (!draft || ![2, 3].includes(Number(draft.version))) return false;
         restoringDraft = true;
         try {
             document.getElementById('product-title').value = draft.productTitle || '';
@@ -4126,7 +4147,7 @@ try {
             document.getElementById('labor-hours').value = Number(draft.laborHours || 0) === 0 ? '' : draft.laborHours;
             document.getElementById('hourly-rate').value = Number(draft.hourlyRate || 0) === 0 ? '' : draft.hourlyRate;
             document.getElementById('packaging-cost').value = Number(draft.packaging || 0) === 0 ? '' : draft.packaging;
-            document.getElementById('profit-margin').value = Number(draft.margin || 0) === 0 ? '' : draft.margin;
+            document.getElementById('target-markup').value = Number(draft.targetMarkup ?? draft.margin ?? 0) === 0 ? '' : (draft.targetMarkup ?? draft.margin);
             document.getElementById('materials').replaceChildren();
             for (const item of (Array.isArray(draft.materials) ? draft.materials : [])) {
                 const row = addMaterialRow({ focus: false, atTop: false });
@@ -4157,6 +4178,7 @@ try {
         }
         // Restore the image independently so a slow IndexedDB cannot block the form.
         void restoreDraftImage();
+        setAllowedReturn(false);
         return true;
     }
     function resetCosting() {
@@ -4167,7 +4189,7 @@ try {
         syncProductImageDisplay();
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         previewUrl = '';
-        for (const id of ['labor-hours','hourly-rate','packaging-cost','profit-margin']) {
+        for (const id of ['labor-hours','hourly-rate','packaging-cost','target-markup']) {
             document.getElementById(id).value = '';
         }
         document.getElementById('materials').replaceChildren();
@@ -4524,9 +4546,9 @@ try {
     document.getElementById('hourly-rate').addEventListener('input', event => {
         if (Number(event.target.value || 0) > 0) clearFieldError(event.target);
     });
-    document.getElementById('profit-margin').addEventListener('input', event => {
+    document.getElementById('target-markup').addEventListener('input', event => {
         const value = Number(event.target.value || 0);
-        if (value > 0 && value < 90) clearFieldError(event.target);
+        if (value > 0 && value <= 500) clearFieldError(event.target);
     });
     document.getElementById('materials').addEventListener('input', event => {
         const row = event.target.closest('.material-row');
@@ -4629,8 +4651,8 @@ try {
     });
     document.querySelectorAll('.margin-preset').forEach(button => {
         button.addEventListener('click', () => {
-            const marginInput = document.getElementById('profit-margin');
-            marginInput.value = button.dataset.margin || '0';
+            const markupInput = document.getElementById('target-markup');
+            markupInput.value = button.dataset.markup || '0';
             calculate();
             queueDraftSave();
         });

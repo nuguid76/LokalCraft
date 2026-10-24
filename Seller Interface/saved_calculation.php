@@ -177,13 +177,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             jsonResponse(false, 'Labor cost is too large.');
         }
         $packagingCost = round(max(0, (float)($_POST['packaging_cost'] ?? 0)), 2);
-        $rawProfitMargin = $_POST['profit_margin'] ?? null;
-        if (!is_scalar($rawProfitMargin) || trim((string)$rawProfitMargin) === '' || !is_numeric($rawProfitMargin)) {
-            jsonResponse(false, 'Enter your target net profit margin.');
+        $rawTargetMarkup = $_POST['target_markup'] ?? null;
+        if (!is_scalar($rawTargetMarkup) || trim((string)$rawTargetMarkup) === '' || !is_numeric($rawTargetMarkup)) {
+            jsonResponse(false, 'Enter your target markup.');
         }
-        $profitMargin = (float)$rawProfitMargin;
-        if (!is_finite($profitMargin) || $profitMargin < 0 || $profitMargin >= 90) {
-            jsonResponse(false, 'Choose a target net profit margin from 0% to below 90%.');
+        $targetMarkup = (float)$rawTargetMarkup;
+        if (!is_finite($targetMarkup) || $targetMarkup < 0 || $targetMarkup > 500) {
+            jsonResponse(false, 'Choose a target markup from 0% to 500%.');
         }
         $materialIds = $_POST['saved_material_id'] ?? [];
         $materialQuantities = $_POST['material_quantity'] ?? [];
@@ -266,23 +266,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $overheads[] = ['name' => $name, 'cost' => $cost];
             $overheadCost += $cost;
         }
-        // Match calculator.php: the target margin is net profit after the estimated 5% platform fee.
+        // Match calculator.php: cost-plus price equals total cost plus target markup.
         $totalCost = round($totalMaterialCost + $laborCost + $packagingCost + $otherDirectCost + $overheadCost, 2);
-        $marginDecimal = $profitMargin / 100;
-        $pricingDenominator = 1 - $marginDecimal - ESTIMATED_PLATFORM_FEE_RATE;
-        if ($pricingDenominator <= 0) {
-            jsonResponse(false, 'The target net profit margin is too high after including the platform fee.');
-        }
-        $suggestedPrice = $totalCost > 0 ? round($totalCost / $pricingDenominator, 2) : 0.0;
+        $markupAmount = round($totalCost * ($targetMarkup / 100), 2);
+        $suggestedPrice = round($totalCost + $markupAmount, 2);
         $estimatedPlatformFee = round($suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE, 2);
         $estimatedSellerPayout = round($suggestedPrice - $estimatedPlatformFee, 2);
-        $desiredProfit = round(max(0, $estimatedSellerPayout - $totalCost), 2);
+        $desiredProfit = round($estimatedSellerPayout - $totalCost, 2);
+        $netProfitMargin = $suggestedPrice > 0
+            ? round(($desiredProfit / $suggestedPrice) * 100, 2)
+            : 0.0;
         $newImagePath = saveOptionalCostingImage($_FILES['product_image'] ?? [], $sellerId);
         $imageToSave = $newImagePath !== '' ? $newImagePath : $oldImagePath;
         $conn->begin_transaction();
         $updateStmt = $conn->prepare(
             'UPDATE products_costing
-             SET product_title = ?, craft_category = ?, product_image = ?, labor_cost = ?, packaging_cost = ?, other_direct_cost = ?, overhead_cost = ?, desired_profit = ?, target_profit_margin = ?, total_material_cost = ?, total_cost = ?, suggested_price = ?
+             SET product_title = ?, craft_category = ?, product_image = ?, labor_cost = ?, packaging_cost = ?, other_direct_cost = ?, overhead_cost = ?, desired_profit = ?, target_markup = ?, total_material_cost = ?, total_cost = ?, suggested_price = ?
              WHERE costing_id = ? AND seller_id = ?'
         );
         $updateStmt->bind_param(
@@ -295,7 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $otherDirectCost,
             $overheadCost,
             $desiredProfit,
-            $profitMargin,
+            $targetMarkup,
             $totalMaterialCost,
             $totalCost,
             $suggestedPrice,
@@ -359,7 +358,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             'total_material_cost' => round($totalMaterialCost, 2),
             'total_cost' => round($totalCost, 2),
             'desired_profit' => round($desiredProfit, 2),
-            'profit_margin' => round($profitMargin, 2),
+            'target_markup' => round($targetMarkup, 2),
+            'markup_amount' => round($markupAmount, 2),
+            'net_profit_margin' => round($netProfitMargin, 2),
             'suggested_price' => round($suggestedPrice, 2),
         ]);
     } catch (Throwable $e) {
@@ -419,7 +420,7 @@ try {
             pc.other_direct_cost,
             pc.overhead_cost,
             pc.desired_profit,
-            pc.target_profit_margin,
+            pc.target_markup,
             pc.total_material_cost,
             pc.total_cost,
             pc.suggested_price,
@@ -462,19 +463,21 @@ try {
         $storedSuggestedPrice = (float)($row['suggested_price'] ?? 0);
         $storedTotalCost = (float)($row['total_cost'] ?? 0);
         $storedPlatformFee = round($storedSuggestedPrice * ESTIMATED_PLATFORM_FEE_RATE, 2);
-        $storedNetProfit = round(max(0, $storedSuggestedPrice - $storedPlatformFee - $storedTotalCost), 2);
+        $storedNetProfit = round($storedSuggestedPrice - $storedPlatformFee - $storedTotalCost, 2);
         $row['desired_profit'] = $storedNetProfit;
         $row['estimated_platform_fee'] = $storedPlatformFee;
         $row['estimated_seller_payout'] = round(max(0, $storedSuggestedPrice - $storedPlatformFee), 2);
 
         // New records keep the seller's exact input. Older records with NULL use a
         // best-effort value derived from their already-rounded monetary amounts.
-        $storedTargetMargin = $row['target_profit_margin'];
-        $row['profit_margin'] = $storedTargetMargin !== null
-            ? round(max(0, min(89.99, (float)$storedTargetMargin)), 2)
-            : ($storedSuggestedPrice > 0
-                ? round(max(0, min(89.99, ($storedNetProfit / $storedSuggestedPrice) * 100)), 2)
-                : 0);
+        $storedTargetMarkup = $row['target_markup'];
+        $row['target_markup'] = $storedTargetMarkup !== null
+            ? round(max(0, min(500, (float)$storedTargetMarkup)), 2)
+            : 0.0;
+        $row['markup_amount'] = round(max(0, $storedSuggestedPrice - $storedTotalCost), 2);
+        $row['net_profit_margin'] = $storedSuggestedPrice > 0
+            ? round(($storedNetProfit / $storedSuggestedPrice) * 100, 2)
+            : 0.0;
         $costings[] = $row;
     }
     $materialDetailStmt->close();
@@ -1266,7 +1269,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                                 <div class="costing-price"><?= formatMoney($costing['suggested_price']) ?></div>
                                 <div class="costing-meta">
                                     Total Cost: <strong><?= formatMoney($costing['total_cost']) ?></strong><br>
-                                    Net Profit Margin: <strong><?= htmlspecialchars(rtrim(rtrim(number_format((float)($payload['profit_margin'] ?? 0), 2, '.', ''), '0'), '.'), ENT_QUOTES, 'UTF-8') ?>%</strong>
+                                    Target Markup: <strong><?= htmlspecialchars(rtrim(rtrim(number_format((float)($payload['target_markup'] ?? 0), 2, '.', ''), '0'), '.'), ENT_QUOTES, 'UTF-8') ?>%</strong>
                                 </div>
                                 <div class="costing-date"><?= htmlspecialchars(date('M d, Y h:i A', strtotime($costing['created_at'])), ENT_QUOTES, 'UTF-8') ?></div>
                             </div>
@@ -1425,24 +1428,23 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                             <div>
                                 <span class="section-number">04</span>
                                 <div>
-                                    <h3>Target Net Profit Margin</h3>
+                                    <h3>Target Markup</h3>
                                 </div>
                             </div>
                         </div>
                         <div class="profit-editor">
-                            <label>
-                                Target Net Profit Margin
+                            <label aria-label="Target Markup">
                                 <div class="percentage-input">
-                                    <input type="number" name="profit_margin" id="profit-margin" min="0" max="89.99" step="0.01" inputmode="decimal" placeholder="e.g. 30">
+                                    <input type="number" name="target_markup" id="target-markup" min="0" max="500" step="0.01" inputmode="decimal" placeholder="e.g. 30">
                                     <span>%</span>
                                 </div>
 
-                                <small>Choose the percentage of the selling price you want to earn as net profit after the estimated 5% platform fee.</small>
+                                <small>Choose the percentage you want to add to your total cost.</small>
                             </label>
                             <div class="margin-presets">
-                                <button type="button" class="margin-preset" data-margin="20">20%</button>
-                                <button type="button" class="margin-preset" data-margin="30">30%</button>
-                                <button type="button" class="margin-preset" data-margin="40">40%</button>
+                                <button type="button" class="margin-preset" data-markup="20">20%</button>
+                                <button type="button" class="margin-preset" data-markup="30">30%</button>
+                                <button type="button" class="margin-preset" data-markup="40">40%</button>
                             </div>
 
                         </div>
@@ -1462,12 +1464,16 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                         <div class="cost-sidebar-section-label">Indirect Costs</div>
                         <div class="cost-sidebar-row"><span>Overhead</span><strong id="sum-overhead">₱0.00</strong></div>
                         <div class="cost-sidebar-rule"></div>
-                        <div class="cost-sidebar-section-label">Price Summary</div>
+                        <div class="cost-sidebar-section-label">Pricing</div>
                         <div class="cost-sidebar-row total"><span>Total Cost</span><strong id="sum-total-cost">₱0.00</strong></div>
-                        <div class="cost-sidebar-row"><span>Target Net Profit Margin</span><strong id="sum-margin">0%</strong></div>
-                        <div class="cost-sidebar-row pricing-profit-row"><span>Net Profit</span><strong id="sum-profit">₱0.00</strong></div>
+                        <div class="cost-sidebar-row"><span>Target Markup</span><strong id="sum-markup">0%</strong></div>
+                        <div class="cost-sidebar-row"><span>Markup Amount</span><strong id="sum-markup-amount">₱0.00</strong></div>
+                        <div class="cost-sidebar-rule"></div>
+                        <div class="cost-sidebar-section-label">Estimated Earnings</div>
                         <div class="cost-sidebar-row"><span>Estimated Platform Fee (5%)</span><strong id="sum-platform-fee">−₱0.00</strong></div>
-                        <div class="cost-sidebar-row pricing-payout-row"><span>Estimated Amount You'll Receive</span><strong id="sum-payout">₱0.00</strong></div>
+                        <div class="cost-sidebar-row pricing-payout-row"><span>Amount You'll Receive</span><strong id="sum-payout">₱0.00</strong></div>
+                        <div class="cost-sidebar-row"><span>Net Profit</span><strong id="sum-profit">₱0.00</strong></div>
+                        <div class="cost-sidebar-row"><span>Net Profit Margin</span><strong id="sum-net-margin">0%</strong></div>
                     </div>
                 </aside>
             </div>
@@ -1802,20 +1808,22 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             });
         const directTotal = roundMoney(materials + labor + packaging);
         const totalCost = roundMoney(directTotal + overhead);
-        const marginInput = document.getElementById('profit-margin');
-        const margin = Math.min(
-            89.99,
+        const markupInput = document.getElementById('target-markup');
+        const targetMarkup = Math.min(
+            500,
             Math.max(
                 0,
-                Number(marginInput.value || 0)
+                Number(markupInput.value || 0)
             )
         );
-        const pricingDenominator = 1 - margin / 100 - ESTIMATED_PLATFORM_FEE_RATE;
-        const suggestedPrice = totalCost > 0 && pricingDenominator > 0
-            ? roundMoney(totalCost / pricingDenominator) : 0;
+        const markupAmount = roundMoney(totalCost * (targetMarkup / 100));
+        const suggestedPrice = roundMoney(totalCost + markupAmount);
         const estimatedPlatformFee = roundMoney(suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE);
         const estimatedSellerPayout = roundMoney(suggestedPrice - estimatedPlatformFee);
-        const profitAmount = roundMoney(Math.max(0, estimatedSellerPayout - totalCost));
+        const profitAmount = roundMoney(estimatedSellerPayout - totalCost);
+        const netProfitMargin = suggestedPrice > 0
+            ? Math.round(((profitAmount / suggestedPrice) * 100 + Number.EPSILON) * 100) / 100
+            : 0;
         document.getElementById('sum-materials').textContent =
             formatMoney(materials);
         document.getElementById('sum-labor').textContent =
@@ -1828,8 +1836,12 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             formatMoney(overhead);
         document.getElementById('sum-total-cost').textContent =
             formatMoney(totalCost);
-        document.getElementById('sum-margin').textContent =
-            formatPercent(margin);
+        document.getElementById('sum-markup').textContent =
+            formatPercent(targetMarkup);
+        document.getElementById('sum-markup-amount').textContent =
+            formatMoney(markupAmount);
+        document.getElementById('sum-net-margin').textContent =
+            formatPercent(netProfitMargin);
         document.getElementById('sum-profit').textContent =
             formatMoney(profitAmount);
         document.getElementById('sum-platform-fee').textContent =
@@ -1841,7 +1853,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         document.querySelectorAll('.margin-preset').forEach(button => {
             button.classList.toggle(
                 'active',
-                Number(button.dataset.margin) === Number(margin)
+                Number(button.dataset.markup) === Number(targetMarkup)
             );
         });
         return {
@@ -1851,8 +1863,10 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             overhead,
             directTotal,
             totalCost,
-            margin,
+            targetMarkup,
+            markupAmount,
             profitAmount,
+            netProfitMargin,
             estimatedPlatformFee,
             estimatedSellerPayout,
             suggestedPrice
@@ -1865,7 +1879,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         const laborHours = document.getElementById('labor-hours');
         const hourlyRate = document.getElementById('hourly-rate');
         const packaging = document.getElementById('packaging-cost');
-        const margin = document.getElementById('profit-margin');
+        const markupInput = document.getElementById('target-markup');
         if (!title.value.trim()) {
             return showFieldError(
                 title,
@@ -1945,17 +1959,17 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                 );
             }
         }
-        if (margin.value.trim() === '') {
+        if (markupInput.value.trim() === '') {
             return showFieldError(
-                margin,
-                'Enter your target net profit margin, or choose a quick percentage.'
+                markupInput,
+                'Enter your target markup, or choose a quick percentage.'
             );
         }
-        const marginValue = Number(margin.value);
-        if (!Number.isFinite(marginValue) || marginValue < 0 || marginValue >= 90) {
+        const markupValue = Number(markupInput.value);
+        if (!Number.isFinite(markupValue) || markupValue < 0 || markupValue > 500) {
             return showFieldError(
-                margin,
-                'Use a target net profit margin from 0% to below 90%.'
+                markupInput,
+                'Use a target markup from 0% to 500%.'
             );
         }
         return true;
@@ -1982,10 +1996,10 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         document.getElementById('hourly-rate').value = savedLaborTotal > 0 ? savedLaborTotal.toFixed(2) : '';
         document.getElementById('packaging-cost').value =
             Number(costing.packaging_cost || 0) > 0 ? Number(costing.packaging_cost).toFixed(2) : '';
-        const savedMargin = Number(costing.profit_margin || 0);
+        const savedMarkup = Number(costing.target_markup || 0);
         const hasSavedPrice = Number(costing.suggested_price || 0) > 0;
-        document.getElementById('profit-margin').value =
-            savedMargin > 0 ? Number(savedMargin.toFixed(2)).toString()
+        document.getElementById('target-markup').value =
+            savedMarkup > 0 ? Number(savedMarkup.toFixed(2)).toString()
             : (hasSavedPrice ? '0' : '');
         productImageInput.value = '';
         restoreSavedImage();
@@ -2090,8 +2104,8 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         .forEach(button => {
             button.addEventListener('click', () => {
                 document.getElementById(
-                    'profit-margin'
-                ).value = button.dataset.margin || '0';
+                    'target-markup'
+                ).value = button.dataset.markup || '0';
                 calculate();
             });
         });

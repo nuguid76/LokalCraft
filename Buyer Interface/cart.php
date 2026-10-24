@@ -4260,6 +4260,7 @@ html, body, .page { background-color: #FFF8ED; }
                   <option value="cash">Cash</option>
                 </select>
               </div>
+              <p class="lc-checkout-helper" id="paymentMethodNote" aria-live="polite">Cash is available for Meetup or Pickup. QR Ph is available for all delivery methods.</p>
               <p class="lc-checkout-field-error" id="checkoutPaymentError" hidden role="status"></p>
             </div>
           </div>
@@ -5625,7 +5626,7 @@ for(const row of document.querySelectorAll('.cart-item')){
       const value = checkoutPayment?.value || '';
       const delivery = checkoutDelivery?.value || '';
       if (!['paymongo', 'cash'].includes(value)) return checkoutCashReset
-        ? 'Cash is not available for Third-Party Delivery. Choose QR Ph.'
+        ? 'Cash was removed because Third-Party Delivery requires QR Ph.'
         : 'Please choose a payment method.';
       if (delivery === 'third_party_delivery' && value === 'cash') {
         return 'Cash is only available for Meetup or Pickup. Choose QR Ph.';
@@ -5671,20 +5672,25 @@ for(const row of document.querySelectorAll('.cart-item')){
       document.body.classList.toggle('modal-open', open);
     }
     function updatePaymentHint() {
-      if (!checkoutPayment || !checkoutDelivery || !paymentMethodNote) return;
+      if (!checkoutPayment || !checkoutDelivery) return;
       const thirdParty = checkoutDelivery.value === 'third_party_delivery';
       const cashOption = checkoutPayment.querySelector('option[value="cash"]');
+      const removedCashSelection = thirdParty && checkoutPayment.value === 'cash';
       if (cashOption) cashOption.disabled = thirdParty;
-      if (thirdParty && checkoutPayment.value === 'cash') {
+      if (removedCashSelection) {
         checkoutPayment.value = '';
         checkoutCashReset = true;
         checkoutTouched.payment = true;
       } else if (!thirdParty) {
         checkoutCashReset = false;
       }
-      paymentMethodNote.textContent = thirdParty
-        ? 'QR Ph only for Third-Party Delivery.'
-        : 'Cash: Meetup or Pickup · QR Ph: after seller accepts';
+      if (paymentMethodNote) {
+        paymentMethodNote.textContent = removedCashSelection
+          ? 'Cash was removed because Third-Party Delivery requires QR Ph.'
+          : (thirdParty
+              ? 'QR Ph only for Third-Party Delivery. Cash is unavailable.'
+              : 'Cash is available for Meetup or Pickup. QR Ph is available for all delivery methods.');
+      }
       validateCheckoutPreferences();
     }
     async function openCheckoutModal() {
