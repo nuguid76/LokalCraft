@@ -2,6 +2,7 @@
 require_once __DIR__ . '/seller_auth.php';
 $activePage = 'pricing';
 const MAX_COSTING_IMAGE_BYTES = 5242880;
+const ESTIMATED_PLATFORM_FEE_RATE = 0.05;
 if (empty($_SESSION['costing_csrf'])) {
     $_SESSION['costing_csrf'] = bin2hex(random_bytes(32));
 }
@@ -185,23 +186,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $overheadCost += $cost;
         }
         $totalCost = round($totalMaterialCost + $laborCost + $packagingCost + $otherDirectCost + $overheadCost, 2);
-        // Margin is a percentage of selling price, excluding any order-level fees.
-        // Selling price = total cost / (1 - target margin).
+        // Target margin is the seller's net profit as a percentage of the selling price
+        // after the estimated 5% LokalCraft platform fee.
+        // Selling price = total cost / (1 - target net margin - platform fee rate).
         $marginDecimal = $profitMargin / 100;
-        $pricingDenominator = 1 - $marginDecimal;
+        $pricingDenominator = 1 - $marginDecimal - ESTIMATED_PLATFORM_FEE_RATE;
+        if ($pricingDenominator <= 0) {
+            jsonResponse(false, 'The target net profit margin is too high after including the platform fee.');
+        }
         $suggestedPrice = $totalCost > 0
             ? round($totalCost / $pricingDenominator, 2)
             : 0.0;
-        $desiredProfit = round(max(0, $suggestedPrice - $totalCost), 2);
+        $estimatedPlatformFee = round($suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE, 2);
+        $estimatedSellerPayout = round($suggestedPrice - $estimatedPlatformFee, 2);
+        $desiredProfit = round(max(0, $estimatedSellerPayout - $totalCost), 2);
         $savedImagePath = saveCostingImage($_FILES['product_image'] ?? [], $sellerId);
         $conn->begin_transaction();
         $costingStmt = $conn->prepare(
             'INSERT INTO products_costing
-            (seller_id, product_title, craft_category, product_image, labor_cost, packaging_cost, other_direct_cost, overhead_cost, desired_profit, total_material_cost, total_cost, suggested_price, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())'
+            (seller_id, product_title, craft_category, product_image, labor_cost, packaging_cost, other_direct_cost, overhead_cost, desired_profit, target_profit_margin, total_material_cost, total_cost, suggested_price, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())'
         );
         $costingStmt->bind_param(
-            'isssdddddddd',
+            'isssddddddddd',
             $sellerId,
             $productTitle,
             $craftCategory,
@@ -211,6 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $otherDirectCost,
             $overheadCost,
             $desiredProfit,
+            $profitMargin,
             $totalMaterialCost,
             $totalCost,
             $suggestedPrice
@@ -2743,20 +2751,20 @@ try {
                         </section>
                         <section class="step" data-step="4">
                             <div class="step-kicker">STEP 4 · PROFIT &amp; MARKET COMPARISON</div>
-                            <h2>Set your desired profit margin, then compare</h2>
+                            <h2>Set your target net profit margin, then compare</h2>
                             <p class="step-help small-help">Set profit and compare prices. <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price comparison">i</button><span class="tooltip-box">Your costs and profit set the suggested price. Similar listings are for comparison only.</span></span></p>
                             <div class="step-error-summary" data-step-error-summary="4"></div>
                             <div class="profit-margin-card">
                                 <div>
-                                    <h3 class="label-with-tip">Desired Profit Margin (%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About profit margin">i</button><span class="tooltip-box">Your profit as a percentage of the selling price. No platform fee is added here.</span></span></h3>
+                                    <h3 class="label-with-tip">Target Net Profit Margin (%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About net profit margin">i</button><span class="tooltip-box">The percentage of the selling price you want to keep as profit after the estimated 5% platform fee.</span></span></h3>
                                 </div>
                                 <label>
-                                    Desired Profit Margin
+                                    Target Net Profit Margin
                                     <div class="percentage-input">
-                                        <input id="profit-margin" type="number" min="0" max="90" step="1" placeholder="e.g. 30" />
+                                        <input id="profit-margin" type="number" min="0" max="89.99" step="0.01" inputmode="decimal" placeholder="e.g. 30" />
                                         <span>%</span>
                                     </div>
-                                    <small>Choose a percentage based on your costs, effort, product quality, and target earnings.</small>
+                                    <small>Choose the percentage of the selling price you want to earn as net profit after the estimated 5% platform fee.</small>
                                 </label>
                                 <div class="margin-presets" aria-label="Quick profit margin choices">
                                     <button type="button" class="margin-preset" data-margin="20">20%</button>
@@ -2825,7 +2833,7 @@ try {
                 <aside class="cost-sidebar" aria-label="Cost breakdown">
                     <div class="cost-sidebar-card">
                         <div class="cost-sidebar-kicker">COST BREAKDOWN</div>
-                        <div class="cost-sidebar-title label-with-tip">Suggested Selling Price <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price calculation">i</button><span class="tooltip-box">Total cost plus your desired profit. Optional add-ons are priced separately.</span></span></div>
+                        <div class="cost-sidebar-title label-with-tip">Suggested Selling Price <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About price calculation">i</button><span class="tooltip-box">Calculated to cover your total cost, target net profit margin, and the estimated 5% platform fee.</span></span></div>
                         <div class="cost-sidebar-price" id="sidebar-price">₱0.00</div>
                         <div class="cost-sidebar-rule"></div>
                         <div class="cost-sidebar-section-label">Direct Costs</div>
@@ -2857,15 +2865,15 @@ try {
                             <strong id="sidebar-total-cost">₱0.00</strong>
                         </div>
                         <div class="cost-sidebar-row">
-                            <span>Profit Margin</span>
+                            <span>Target Net Profit Margin</span>
                             <strong id="sidebar-margin">0%</strong>
                         </div>
                         <div class="cost-sidebar-row pricing-profit-row">
-                            <span>Profit</span>
+                            <span>Net Profit</span>
                             <strong id="sidebar-profit">₱0.00</strong>
                         </div>
                         <div class="cost-sidebar-row platform-fee-row">
-                            <span class="label-with-tip">Estimated Platform Fee (5%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About estimated platform fee">i</button><span class="tooltip-box">Estimated 5% of your suggested selling price. This fee is not included in your costing formula.</span></span></span>
+                            <span class="label-with-tip">Estimated Platform Fee (5%) <span class="info-tip-wrap"><button class="info-tip" type="button" aria-label="About estimated platform fee">i</button><span class="tooltip-box">Estimated 5% of your suggested selling price. This fee is included when calculating the price needed to reach your target net profit margin.</span></span></span>
                             <strong id="sidebar-platform-fee">−₱0.00</strong>
                         </div>
                         <div class="cost-sidebar-row seller-payout-row">
@@ -2991,7 +2999,7 @@ try {
         1: 'Add the product details first',
         2: 'Calculate direct materials, direct labor, and packaging',
         3: 'Add the indirect costs (overheads) that support production',
-        4: 'Set the desired profit margin and review the market comparison'
+        4: 'Set the target net profit margin and review the market comparison'
     };
     const MIN_STEP = 1;
     const MAX_STEP = 4;
@@ -3007,6 +3015,10 @@ try {
     let latestPricing = { suggestedPrice: 0 };
     const ESTIMATED_PLATFORM_FEE_RATE = 0.05;
     const formatMoney = value => `₱${Number(value || 0).toFixed(2)}`;
+    const formatPercent = value => {
+        const rounded = Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+        return `${rounded.toFixed(2).replace(/\.?0+$/, '')}%`;
+    };
     const roundMoney = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     const getNumber = selector => Math.max(0, Number(document.querySelector(selector)?.value || 0));
     const getProfitMargin = () => Math.min(
@@ -3507,12 +3519,13 @@ try {
         const totalCost = roundMoney(directCost + overheadCost);
         const profitMargin = getProfitMargin();
         const marginDecimal = profitMargin / 100;
-        const pricingDenominator = 1 - marginDecimal;
-        const suggestedPrice = totalCost > 0 ? roundMoney(totalCost / pricingDenominator) : 0;
-        const profitAmount = roundMoney(Math.max(0, suggestedPrice - totalCost));
-        // Informational only: this estimate does not change the saved costing formula.
+        const pricingDenominator = 1 - marginDecimal - ESTIMATED_PLATFORM_FEE_RATE;
+        const suggestedPrice = totalCost > 0 && pricingDenominator > 0
+            ? roundMoney(totalCost / pricingDenominator)
+            : 0;
         const estimatedPlatformFee = roundMoney(suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE);
         const estimatedSellerPayout = roundMoney(suggestedPrice - estimatedPlatformFee);
+        const profitAmount = roundMoney(Math.max(0, estimatedSellerPayout - totalCost));
         latestPricing = {
             materialTotal,
             laborHours,
@@ -3542,7 +3555,7 @@ try {
         if (sidebarPlatformFee) sidebarPlatformFee.textContent = `−${formatMoney(estimatedPlatformFee)}`;
         setMoney('sidebar-seller-payout', estimatedSellerPayout);
         const sidebarMargin = document.getElementById('sidebar-margin');
-        if (sidebarMargin) sidebarMargin.textContent = `${profitMargin.toFixed(0)}%`;
+        if (sidebarMargin) sidebarMargin.textContent = formatPercent(profitMargin);
         document.querySelectorAll('.margin-preset').forEach(button => {
             button.classList.toggle(
                 'active',

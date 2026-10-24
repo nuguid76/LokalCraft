@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/seller_auth.php';
 $activePage = 'pricing';
+const ESTIMATED_PLATFORM_FEE_RATE = 0.05;
 if (empty($_SESSION['saved_costing_csrf'])) {
     $_SESSION['saved_costing_csrf'] = bin2hex(random_bytes(32));
 }
@@ -178,11 +179,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         $packagingCost = round(max(0, (float)($_POST['packaging_cost'] ?? 0)), 2);
         $rawProfitMargin = $_POST['profit_margin'] ?? null;
         if (!is_scalar($rawProfitMargin) || trim((string)$rawProfitMargin) === '' || !is_numeric($rawProfitMargin)) {
-            jsonResponse(false, 'Enter your target profit margin.');
+            jsonResponse(false, 'Enter your target net profit margin.');
         }
         $profitMargin = (float)$rawProfitMargin;
         if (!is_finite($profitMargin) || $profitMargin < 0 || $profitMargin >= 90) {
-            jsonResponse(false, 'Choose a target profit margin from 0% to below 90%.');
+            jsonResponse(false, 'Choose a target net profit margin from 0% to below 90%.');
         }
         $materialIds = $_POST['saved_material_id'] ?? [];
         $materialQuantities = $_POST['material_quantity'] ?? [];
@@ -265,22 +266,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $overheads[] = ['name' => $name, 'cost' => $cost];
             $overheadCost += $cost;
         }
-        // Same product costing formula as calculator.php; any order-level fees are separate.
+        // Match calculator.php: the target margin is net profit after the estimated 5% platform fee.
         $totalCost = round($totalMaterialCost + $laborCost + $packagingCost + $otherDirectCost + $overheadCost, 2);
         $marginDecimal = $profitMargin / 100;
-        $pricingDenominator = 1 - $marginDecimal;
+        $pricingDenominator = 1 - $marginDecimal - ESTIMATED_PLATFORM_FEE_RATE;
+        if ($pricingDenominator <= 0) {
+            jsonResponse(false, 'The target net profit margin is too high after including the platform fee.');
+        }
         $suggestedPrice = $totalCost > 0 ? round($totalCost / $pricingDenominator, 2) : 0.0;
-        $desiredProfit = round(max(0, $suggestedPrice - $totalCost), 2);
+        $estimatedPlatformFee = round($suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE, 2);
+        $estimatedSellerPayout = round($suggestedPrice - $estimatedPlatformFee, 2);
+        $desiredProfit = round(max(0, $estimatedSellerPayout - $totalCost), 2);
         $newImagePath = saveOptionalCostingImage($_FILES['product_image'] ?? [], $sellerId);
         $imageToSave = $newImagePath !== '' ? $newImagePath : $oldImagePath;
         $conn->begin_transaction();
         $updateStmt = $conn->prepare(
             'UPDATE products_costing
-             SET product_title = ?, craft_category = ?, product_image = ?, labor_cost = ?, packaging_cost = ?, other_direct_cost = ?, overhead_cost = ?, desired_profit = ?, total_material_cost = ?, total_cost = ?, suggested_price = ?
+             SET product_title = ?, craft_category = ?, product_image = ?, labor_cost = ?, packaging_cost = ?, other_direct_cost = ?, overhead_cost = ?, desired_profit = ?, target_profit_margin = ?, total_material_cost = ?, total_cost = ?, suggested_price = ?
              WHERE costing_id = ? AND seller_id = ?'
         );
         $updateStmt->bind_param(
-            'sssddddddddii',
+            'sssdddddddddii',
             $productTitle,
             $craftCategory,
             $imageToSave,
@@ -289,6 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $otherDirectCost,
             $overheadCost,
             $desiredProfit,
+            $profitMargin,
             $totalMaterialCost,
             $totalCost,
             $suggestedPrice,
@@ -412,6 +419,7 @@ try {
             pc.other_direct_cost,
             pc.overhead_cost,
             pc.desired_profit,
+            pc.target_profit_margin,
             pc.total_material_cost,
             pc.total_cost,
             pc.suggested_price,
@@ -452,12 +460,21 @@ try {
             $row['overheads'][] = $expenseRow;
         }
         $storedSuggestedPrice = (float)($row['suggested_price'] ?? 0);
-        $storedDesiredProfit = (float)($row['desired_profit'] ?? 0);
-        // The saved profit is net of any historical fee. Do not count an old fee as profit.
-        // This also matches new no-fee costings: margin = desired_profit / selling_price.
-        $row['profit_margin'] = $storedSuggestedPrice > 0
-            ? round(max(0, min(89.99, ($storedDesiredProfit / $storedSuggestedPrice) * 100)), 2)
-            : 0;
+        $storedTotalCost = (float)($row['total_cost'] ?? 0);
+        $storedPlatformFee = round($storedSuggestedPrice * ESTIMATED_PLATFORM_FEE_RATE, 2);
+        $storedNetProfit = round(max(0, $storedSuggestedPrice - $storedPlatformFee - $storedTotalCost), 2);
+        $row['desired_profit'] = $storedNetProfit;
+        $row['estimated_platform_fee'] = $storedPlatformFee;
+        $row['estimated_seller_payout'] = round(max(0, $storedSuggestedPrice - $storedPlatformFee), 2);
+
+        // New records keep the seller's exact input. Older records with NULL use a
+        // best-effort value derived from their already-rounded monetary amounts.
+        $storedTargetMargin = $row['target_profit_margin'];
+        $row['profit_margin'] = $storedTargetMargin !== null
+            ? round(max(0, min(89.99, (float)$storedTargetMargin)), 2)
+            : ($storedSuggestedPrice > 0
+                ? round(max(0, min(89.99, ($storedNetProfit / $storedSuggestedPrice) * 100)), 2)
+                : 0);
         $costings[] = $row;
     }
     $materialDetailStmt->close();
@@ -1077,6 +1094,8 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         .cost-sidebar-row.total strong { color: #c96d20; font-size: .92rem; }
         .cost-sidebar-row.pricing-profit-row { margin-top: 8px; padding: 11px 12px; border: 1px solid #efdccc; border-radius: 9px; background: #fff4e8; color: #855126; font-weight: 700; }
         .cost-sidebar-row.pricing-profit-row strong { color: #c96d20; }
+        .cost-sidebar-row.pricing-payout-row { margin-top: 8px; padding: 11px 12px; border: 1px solid #efdccc; border-radius: 9px; background: #fff4e8; color: #855126; font-weight: 700; }
+        .cost-sidebar-row.pricing-payout-row strong { color: #c96d20; }
         /* Fast, visible additions without changing stored order. */
         .row-added { animation: costingSavedRow .3s ease-out both; }
         @keyframes costingSavedRow { from { opacity: .45; transform: translateY(-8px); background-color: #fff1df; } to { opacity: 1; transform: translateY(0); } }
@@ -1247,7 +1266,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                                 <div class="costing-price"><?= formatMoney($costing['suggested_price']) ?></div>
                                 <div class="costing-meta">
                                     Total Cost: <strong><?= formatMoney($costing['total_cost']) ?></strong><br>
-                                    Profit Margin: <strong><?= htmlspecialchars(rtrim(rtrim(number_format((float)($payload['profit_margin'] ?? 0), 2, '.', ''), '0'), '.'), ENT_QUOTES, 'UTF-8') ?>%</strong>
+                                    Net Profit Margin: <strong><?= htmlspecialchars(rtrim(rtrim(number_format((float)($payload['profit_margin'] ?? 0), 2, '.', ''), '0'), '.'), ENT_QUOTES, 'UTF-8') ?>%</strong>
                                 </div>
                                 <div class="costing-date"><?= htmlspecialchars(date('M d, Y h:i A', strtotime($costing['created_at'])), ENT_QUOTES, 'UTF-8') ?></div>
                             </div>
@@ -1406,18 +1425,19 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                             <div>
                                 <span class="section-number">04</span>
                                 <div>
-                                    <h3>Target Profit Margin</h3>
+                                    <h3>Target Net Profit Margin</h3>
                                 </div>
                             </div>
                         </div>
                         <div class="profit-editor">
                             <label>
-                                Desired Profit Margin
+                                Target Net Profit Margin
                                 <div class="percentage-input">
-                                    <input type="number" name="profit_margin" id="profit-margin" min="0" max="89.99" step="any" placeholder="e.g. 30">
+                                    <input type="number" name="profit_margin" id="profit-margin" min="0" max="89.99" step="0.01" inputmode="decimal" placeholder="e.g. 30">
                                     <span>%</span>
                                 </div>
 
+                                <small>Choose the percentage of the selling price you want to earn as net profit after the estimated 5% platform fee.</small>
                             </label>
                             <div class="margin-presets">
                                 <button type="button" class="margin-preset" data-margin="20">20%</button>
@@ -1444,8 +1464,10 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                         <div class="cost-sidebar-rule"></div>
                         <div class="cost-sidebar-section-label">Price Summary</div>
                         <div class="cost-sidebar-row total"><span>Total Cost</span><strong id="sum-total-cost">₱0.00</strong></div>
-                        <div class="cost-sidebar-row"><span>Profit Margin</span><strong id="sum-margin">0%</strong></div>
-                        <div class="cost-sidebar-row pricing-profit-row"><span>Profit</span><strong id="sum-profit">₱0.00</strong></div>
+                        <div class="cost-sidebar-row"><span>Target Net Profit Margin</span><strong id="sum-margin">0%</strong></div>
+                        <div class="cost-sidebar-row pricing-profit-row"><span>Net Profit</span><strong id="sum-profit">₱0.00</strong></div>
+                        <div class="cost-sidebar-row"><span>Estimated Platform Fee (5%)</span><strong id="sum-platform-fee">−₱0.00</strong></div>
+                        <div class="cost-sidebar-row pricing-payout-row"><span>Estimated Amount You'll Receive</span><strong id="sum-payout">₱0.00</strong></div>
                     </div>
                 </aside>
             </div>
@@ -1482,6 +1504,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
 })();
 (() => {
     const savedMaterials = <?= $savedMaterialsJson ?: '[]' ?>;
+    const ESTIMATED_PLATFORM_FEE_RATE = 0.05;
     const materialMap = new Map(
         savedMaterials.map(item => [String(item.material_id), item])
     );
@@ -1490,6 +1513,10 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         })}`;
+    const formatPercent = value => {
+        const rounded = Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+        return `${rounded.toFixed(2).replace(/\.?0+$/, '')}%`;
+    };
     const modal = document.getElementById('costing-modal');
     const modalBackdrop = document.getElementById('modal-backdrop');
     const modalClose = document.getElementById('modal-close');
@@ -1783,10 +1810,12 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                 Number(marginInput.value || 0)
             )
         );
-        const pricingDenominator = 1 - margin / 100;
+        const pricingDenominator = 1 - margin / 100 - ESTIMATED_PLATFORM_FEE_RATE;
         const suggestedPrice = totalCost > 0 && pricingDenominator > 0
             ? roundMoney(totalCost / pricingDenominator) : 0;
-        const profitAmount = roundMoney(Math.max(0, suggestedPrice - totalCost));
+        const estimatedPlatformFee = roundMoney(suggestedPrice * ESTIMATED_PLATFORM_FEE_RATE);
+        const estimatedSellerPayout = roundMoney(suggestedPrice - estimatedPlatformFee);
+        const profitAmount = roundMoney(Math.max(0, estimatedSellerPayout - totalCost));
         document.getElementById('sum-materials').textContent =
             formatMoney(materials);
         document.getElementById('sum-labor').textContent =
@@ -1800,9 +1829,13 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         document.getElementById('sum-total-cost').textContent =
             formatMoney(totalCost);
         document.getElementById('sum-margin').textContent =
-            `${Number(margin.toFixed(2))}%`;
+            formatPercent(margin);
         document.getElementById('sum-profit').textContent =
             formatMoney(profitAmount);
+        document.getElementById('sum-platform-fee').textContent =
+            `−${formatMoney(estimatedPlatformFee)}`;
+        document.getElementById('sum-payout').textContent =
+            formatMoney(estimatedSellerPayout);
         document.getElementById('sum-price').textContent =
             formatMoney(suggestedPrice);
         document.querySelectorAll('.margin-preset').forEach(button => {
@@ -1820,6 +1853,8 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             totalCost,
             margin,
             profitAmount,
+            estimatedPlatformFee,
+            estimatedSellerPayout,
             suggestedPrice
         };
     }
@@ -1913,14 +1948,14 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         if (margin.value.trim() === '') {
             return showFieldError(
                 margin,
-                'Enter your target profit margin, or choose a quick percentage.'
+                'Enter your target net profit margin, or choose a quick percentage.'
             );
         }
         const marginValue = Number(margin.value);
         if (!Number.isFinite(marginValue) || marginValue < 0 || marginValue >= 90) {
             return showFieldError(
                 margin,
-                'Use a target profit margin from 0% to below 90%.'
+                'Use a target net profit margin from 0% to below 90%.'
             );
         }
         return true;
