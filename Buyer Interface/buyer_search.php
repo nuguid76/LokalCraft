@@ -19,6 +19,9 @@ if ($headerInitials === '') {
 if (empty($_SESSION['buyer_logout_csrf'])) {
     $_SESSION['buyer_logout_csrf'] = bin2hex(random_bytes(32));
 }
+if (empty($_SESSION['buyer_role_switch_csrf'])) {
+    $_SESSION['buyer_role_switch_csrf'] = bin2hex(random_bytes(32));
+}
 ?>
 <style>
   .buyer-header-tools {
@@ -729,6 +732,7 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
       transition: none;
     }
   }
+
 </style>
 
 <div class="buyer-header-tools <?php echo ($activePage ?? '') === 'marketplace' ? 'marketplace-header' : ''; ?>">
@@ -797,12 +801,12 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
             <span class="buyer-account-chevron" aria-hidden="true">›</span>
           </a>
           <?php if ($headerCanSwitchToSeller): ?>
-          <a class="buyer-account-item buyer-account-switch" id="buyerRoleSwitch"
-             href="../Seller%20Interface/seller_dashboard.php" data-role-target="seller" role="menuitem">
+          <button class="buyer-account-item buyer-account-switch" id="buyerRoleSwitch"
+             type="button" data-role-target="seller" data-role-form="buyerRoleSwitchForm" role="menuitem">
             <span class="buyer-account-item-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h14l-3-3M21 7l-3 3M17 17H3l3 3M3 17l3-3"/></svg></span>
             <span class="buyer-account-item-copy"><strong>Switch to Seller</strong><small>Manage your LokalCraft shop</small></span>
             <span class="buyer-account-chevron" aria-hidden="true">↗</span>
-          </a>
+          </button>
           <?php endif; ?>
         </div>
         <div class="buyer-account-footer">
@@ -874,6 +878,10 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
     </div>
   </div>
 </div>
+
+<form id="buyerRoleSwitchForm" method="POST" action="../Seller%20Interface/switch_to_seller.php" hidden>
+  <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['buyer_role_switch_csrf'], ENT_QUOTES, 'UTF-8'); ?>">
+</form>
 <script>
 (function () {
   document.querySelector('.buyer-header-tools')?.closest('.content')?.classList.add('buyer-header-search-only');
@@ -1263,6 +1271,8 @@ if (empty($_SESSION['buyer_logout_csrf'])) {
   document.addEventListener('click', event => {
     if (!event.target.closest('.buyer-account')) closeAccountMenu();
   });
+
+
   const logoutButton = document.getElementById('buyerLogoutButton');
   const logoutModal = document.getElementById('buyerLogoutModal');
   const logoutCancel = document.getElementById('buyerLogoutCancel');

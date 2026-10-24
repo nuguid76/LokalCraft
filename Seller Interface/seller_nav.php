@@ -712,7 +712,7 @@ body.seller-menu-open {
 
   place-items: center;
 
-  background: rgba(255,248,237,.96);
+  background: #FFF8ED;
 
   opacity: 0;
 
@@ -764,29 +764,19 @@ body.seller-menu-open {
 
 
 
-.role-transition-mark {
+.role-transition-logo {
 
-  width: 44px;
+  display: block;
 
-  height: 44px;
+  width: min(220px, 68vw);
 
-  display: grid;
+  height: auto;
 
-  place-items: center;
+  margin-bottom: 8px;
 
-  margin-bottom: 10px;
+  overflow: visible;
 
-  border-radius: 12px;
-
-  background: linear-gradient(135deg, #f7b875, #ea8a3a);
-
-  color: #fff;
-
-  font-size: 1.15rem;
-
-  font-weight: 800;
-
-  box-shadow: 0 8px 18px rgba(234,138,58,.18);
+  filter: drop-shadow(0 7px 14px rgba(201,109,32,.10));
 
 }
 
@@ -794,7 +784,7 @@ body.seller-menu-open {
 
 .role-transition-title {
 
-  color: #3c3028;
+  color: #4a3426;
 
   font-size: .9rem;
 
@@ -808,9 +798,53 @@ body.seller-menu-open {
 
   margin-top: 4px;
 
-  color: #8a817a;
+  color: #8a6d58;
 
   font-size: .66rem;
+
+}
+
+.role-transition-loader {
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 6px;
+
+  min-height: 8px;
+
+  margin-top: 12px;
+
+}
+
+.role-transition-loader span {
+
+  width: 6px;
+
+  height: 6px;
+
+  border-radius: 999px;
+
+  background: #D77A2F;
+
+  opacity: .35;
+
+  animation: lokalcraftRoleDot 1s ease-in-out infinite;
+
+}
+
+.role-transition-loader span:nth-child(2) { animation-delay: .14s; }
+
+.role-transition-loader span:nth-child(3) { animation-delay: .28s; }
+
+@keyframes lokalcraftRoleDot {
+
+  0%, 60%, 100% { opacity: .3; transform: translateY(0) scale(.88); }
+
+  30% { opacity: 1; transform: translateY(-3px) scale(1); }
 
 }
 
@@ -829,6 +863,8 @@ body.role-transitioning .content {
   transform: translateX(8px);
 
   opacity: .55;
+
+  transition: transform .24s ease, opacity .24s ease;
 
 }
 
@@ -868,9 +904,13 @@ body.role-transitioning .content {
 
   .role-transition-screen,
 
-  .role-transition-card {
+  .role-transition-card,
+
+  .role-transition-loader span {
 
     transition: none !important;
+
+    animation: none !important;
 
   }
 
@@ -1062,11 +1102,22 @@ body.role-transitioning .content {
 
   <div class="role-transition-card">
 
-    <div class="role-transition-mark">L</div>
+    <svg class="role-transition-logo" xmlns="http://www.w3.org/2000/svg" viewBox="23 6 234 76" role="img" aria-label="LokalCraft" focusable="false">
+      <defs>
+        <linearGradient id="sellerTransitionLogoGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#C96D20"/>
+          <stop offset="52%" stop-color="#EA8A3A"/>
+          <stop offset="100%" stop-color="#F2B36F"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#sellerTransitionLogoGradient)" fill-rule="evenodd" d="M187.50,40.50 187.00,41.50 187.00,46.25 187.25,46.50 188.25,46.50 191.00,44.75 192.75,44.50 194.00,43.75 195.75,43.75 197.25,44.50 198.25,45.50 198.50,46.25 197.75,47.00 193.25,47.25 191.75,48.00 190.00,48.00 186.75,50.00 185.25,52.50 185.25,56.25 186.25,58.50 187.50,59.75 189.50,60.75 195.00,60.75 197.75,59.25 198.50,59.50 198.50,60.50 199.00,60.75 206.75,60.75 207.25,60.50 207.25,47.50 206.75,44.50 205.50,42.00 203.25,40.00 202.50,40.00 200.50,39.00 192.25,39.00Z M198.25,51.25 198.50,53.00 198.00,54.25 196.00,56.00 194.75,55.75 193.50,54.25 193.75,52.50 195.50,51.50 197.50,51.00Z M169.25,39.00 168.75,39.50 168.75,52.25 169.00,52.50 168.75,60.25 169.25,60.75 178.00,60.75 178.50,60.25 178.50,49.25 178.75,48.50 180.00,46.75 182.00,45.75 183.00,45.75 185.00,46.75 185.75,46.50 186.00,39.50 185.50,39.00 182.00,39.00 179.00,41.00 178.00,39.00Z M149.50,32.00 146.75,34.00 145.00,36.00 143.25,39.00 142.25,42.25 142.25,50.00 144.00,54.25 145.00,55.75 147.75,58.25 150.50,59.75 151.50,59.75 153.50,60.75 163.25,60.75 167.00,59.50 167.00,53.00 167.25,52.75 167.00,52.25 165.25,52.00 161.75,53.00 159.00,53.00 156.00,52.00 154.25,50.75 152.75,48.75 152.25,46.25 152.75,42.00 156.00,38.75 159.00,37.75 161.75,37.75 165.25,38.75 167.00,38.50 167.25,38.00 167.00,37.50 167.00,32.25 167.25,32.00 167.00,31.25 166.25,30.50 164.50,30.00 154.75,30.00Z M36.50,30.25 36.25,30.75 36.50,31.00 36.50,60.50 37.00,60.75 56.50,60.75 57.00,60.25 56.75,55.50 57.50,54.75 60.00,58.00 61.75,59.25 63.50,59.75 64.50,60.50 73.75,60.75 75.75,59.75 76.50,59.75 78.50,58.50 81.25,55.25 82.50,51.75 82.50,47.50 81.50,44.75 80.00,42.75 78.00,41.00 73.50,39.00 65.75,39.00 63.75,40.00 62.75,40.00 59.75,42.00 57.25,45.75 56.75,48.25 56.75,51.50 57.25,53.50 56.75,54.00 47.00,54.00 46.25,53.25 46.25,31.00 46.50,30.75 45.75,30.00 37.00,30.00Z M69.00,45.75 71.00,46.00 72.50,47.50 72.75,48.25 72.50,52.00 71.50,53.25 70.00,54.00 68.50,53.75 67.00,52.50 66.50,51.50 66.50,48.00 67.75,46.50Z M215.00,29.75 213.00,31.75 212.25,33.00 211.50,35.50 211.50,38.25 210.75,39.00 208.25,39.00 207.75,39.50 208.00,44.50 208.25,44.75 210.75,44.75 211.50,45.50 211.50,60.50 212.00,60.75 220.75,60.75 221.25,60.00 221.00,59.75 221.00,45.50 222.00,44.75 227.75,44.75 228.50,45.50 228.75,55.25 229.25,57.00 231.75,59.75 233.75,60.75 241.25,60.75 242.00,60.50 242.75,59.50 242.75,54.50 242.25,54.00 240.00,54.00 238.50,52.75 238.25,52.25 238.25,45.50 239.00,44.75 242.25,44.75 242.75,44.25 242.75,39.50 242.25,39.00 239.00,39.00 238.25,38.25 238.25,32.25 236.50,32.00 234.50,33.00 232.75,33.00 230.75,34.00 229.00,34.25 228.50,34.75 228.50,38.25 227.75,39.00 222.00,39.00 221.00,38.25 221.25,36.50 222.75,35.00 224.75,34.75 225.50,35.25 226.50,35.25 226.75,34.50 226.75,28.75 226.50,28.25 226.00,28.00 218.75,28.00Z M131.50,28.00 131.00,28.75 131.25,29.25 131.25,60.50 131.50,60.75 140.25,60.75 140.75,60.25 140.75,49.25 140.50,49.00 140.75,28.50 140.25,28.00Z M83.75,28.50 83.75,46.50 84.00,46.75 83.75,60.25 84.25,60.75 93.00,60.75 93.50,60.25 93.50,53.25 94.00,52.75 94.75,53.25 97.50,60.00 98.25,60.75 108.00,60.75 108.50,60.25 108.00,59.50 108.25,59.00 111.25,60.75 116.75,60.75 119.50,59.25 120.25,59.75 120.75,60.75 128.75,60.75 129.25,60.00 129.00,59.50 129.00,46.50 127.75,42.50 125.50,40.25 122.25,39.00 114.00,39.00 111.75,40.00 109.75,40.25 109.00,41.25 109.00,46.25 109.50,46.75 113.00,44.75 113.75,44.75 116.00,43.75 117.75,43.75 119.25,44.50 120.25,45.50 120.25,46.50 119.50,47.00 115.00,47.25 113.00,48.00 111.75,48.00 109.50,49.25 107.50,51.50 107.00,53.25 107.25,55.50 107.00,56.25 106.50,56.50 105.75,55.75 104.50,52.75 102.75,50.00 102.50,48.50 103.50,47.25 105.75,43.00 106.50,42.25 107.00,40.75 108.00,39.75 107.75,39.00 97.75,39.00 96.25,41.50 96.25,42.25 95.25,43.75 94.75,45.50 94.00,46.00 93.50,45.50 93.50,28.50 93.00,28.00 84.25,28.00Z M120.25,51.50 120.00,54.00 118.25,55.75 117.00,56.00 115.50,54.50 115.75,52.25 116.25,51.75 118.25,51.50 119.25,51.00Z"/>
+    </svg>
 
     <div class="role-transition-title">Switching Portal</div>
 
-    <div class="role-transition-subtitle" id="sellerRoleTransitionSubtitle">Opening Buyer Portal...</div>
+    <div class="role-transition-subtitle" id="sellerRoleTransitionSubtitle">Preparing Buyer Portal...</div>
+
+    <div class="role-transition-loader" aria-hidden="true"><span></span><span></span><span></span></div>
 
   </div>
 
@@ -1316,9 +1367,9 @@ body.role-transitioning .content {
 
     roleTransitionSubtitle.textContent = target === 'buyer'
 
-      ? 'Opening Buyer Portal...'
+      ? 'Preparing Buyer Portal...'
 
-      : 'Opening Seller Portal...';
+      : 'Preparing Seller Portal...';
 
     try {
 
@@ -1340,7 +1391,7 @@ body.role-transitioning .content {
 
       form.submit();
 
-    }, 230);
+    }, 650);
 
   }
 
@@ -1398,23 +1449,27 @@ body.role-transitioning .content {
 
     roleTransition.setAttribute('aria-hidden', 'false');
 
-    requestAnimationFrame(() => {
-
-      document.body.classList.remove('role-transitioning');
-
-      sidebarElement.classList.add('role-returning');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
 
       window.setTimeout(() => {
+
+        document.body.classList.remove('role-transitioning');
+
+        sidebarElement.classList.add('role-returning');
 
         roleTransition.classList.remove('show');
 
         roleTransition.setAttribute('aria-hidden', 'true');
 
-        sidebarElement.classList.remove('role-returning');
+        window.setTimeout(() => {
 
-      }, 220);
+          sidebarElement.classList.remove('role-returning');
 
-    });
+        }, 320);
+
+      }, 180);
+
+    }));
 
   }
 
