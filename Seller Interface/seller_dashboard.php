@@ -662,6 +662,65 @@ body .app > main.dashboard-main > .dashboard-content {
     <?php require __DIR__ . '/seller_nav.php'; ?>
     <main class="main dashboard-main">
       <div class="dashboard-search-shell" id="dashboardSearchShell"><?php require __DIR__ . '/seller_search.php'; ?></div>
+      <style>
+      /* Dashboard-only header. Search is hidden because this module has no
+         searchable list. Shared notification, account, and menu behavior stay intact. */
+      #dashboardSearchShell .seller-header-tools .filters,
+      #dashboardSearchShell .seller-header-tools .seller-search-layout {
+          display: none !important;
+      }
+      #dashboardSearchShell .seller-header-tools {
+          align-items: center;
+          flex-wrap: nowrap;
+      }
+      #dashboardSearchShell .seller-header-actions {
+          flex: 0 0 auto;
+          margin-left: auto !important;
+      }
+      .dashboard-mobile-header-title {
+          display: none;
+      }
+      @media (max-width: 760px) {
+          #dashboardSearchShell .seller-header-tools {
+              gap: 7px;
+          }
+          #dashboardSearchShell .dashboard-mobile-header-title {
+              display: block;
+              flex: 0 0 auto;
+              max-width: 132px;
+              margin: 0 3px 0 4px;
+              overflow: hidden;
+              color: #382d25;
+              font: 800 18px/1.2 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+              letter-spacing: -.02em;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+          }
+          #dashboardSearchShell .seller-header-actions {
+              margin-left: auto !important;
+          }
+          body .app > main.dashboard-main > .dashboard-content > .page-heading {
+              display: none;
+          }
+          body .app > main.dashboard-main > .dashboard-content {
+              padding-top: 14px !important;
+          }
+      }
+      </style>
+      <script>
+      (() => {
+          const shell = document.getElementById('dashboardSearchShell');
+          const header = shell?.querySelector('.seller-header-tools');
+          const menu = header?.querySelector('.seller-menu-toggle');
+          if (!header || !menu || header.querySelector('.dashboard-mobile-header-title')) return;
+
+          const label = document.createElement('span');
+          label.className = 'dashboard-mobile-header-title';
+          label.textContent = 'Dashboard';
+          label.setAttribute('aria-hidden', 'true');
+          menu.insertAdjacentElement('afterend', label);
+      })();
+      </script>
       <section class="content dashboard-content">
         <div class="page-heading">
           <h1>Dashboard</h1>

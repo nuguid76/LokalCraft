@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
-if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 date_default_timezone_set('Asia/Manila');
 $activePage = 'wallet';
-header('Cache-Control: private, no-store, max-age=0');
+$isDataRequest = isset($_GET['wallet_data']);
+
 function walletEsc($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
@@ -33,49 +33,6 @@ function walletValue($value): string {
 function walletMoneyOptional($value): string {
     return $value === null || $value === '' ? 'Not recorded' : walletMoney($value);
 }
-function walletAdmin(mysqli $conn): ?array {
-    foreach (['user_id', 'admin_id', 'logged_id', 'id'] as $key) {
-        $candidate = $_SESSION[$key] ?? null;
-        if (!is_scalar($candidate) || !ctype_digit((string)$candidate) || (int)$candidate < 1) continue;
-        $id = (int)$candidate;
-        $stmt = $conn->prepare('SELECT firstname, lastname, AdminOrNot, account_status FROM users WHERE id = ? LIMIT 1');
-        $stmt->bind_param('i', $id);
-        $stmt->execute();
-        $stmt->bind_result($first, $last, $isAdmin, $status);
-        $found = $stmt->fetch();
-        $stmt->close();
-        if ($found && (int)$isAdmin === 1 && !in_array(strtolower(trim((string)$status)), ['disabled', 'inactive', 'suspended', 'blocked', 'banned'], true)) {
-            return ['id' => $id, 'name' => trim((string)$first . ' ' . (string)$last) ?: 'Admin'];
-        }
-    }
-    return null;
-}
-$isDataRequest = isset($_GET['wallet_data']);
-try {
-    $currentAdmin = walletAdmin($conn);
-} catch (Throwable $error) {
-    error_log('LokalCraft wallet admin access: ' . $error->getMessage());
-    if ($isDataRequest) {
-        http_response_code(503);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['success' => false, 'message' => 'Admin verification is currently unavailable.']);
-        exit;
-    }
-    http_response_code(503);
-    exit('Admin verification is currently unavailable.');
-}
-if ($currentAdmin === null) {
-    if ($isDataRequest) {
-        http_response_code(403);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['success' => false, 'message' => 'Admin session expired or access denied.']);
-        exit;
-    }
-    header('Location: ../login.php');
-    exit;
-}
-$adminName = $currentAdmin['name'];
-$_SESSION['admin_name'] = $adminName;
 function walletLoad(mysqli $conn): array {
     $balance = $conn->query("SELECT COALESCE(SUM(balance), 0) AS total FROM wallet_accounts WHERE wallet_type = 'admin'")->fetch_assoc();
     $fees = $conn->query("SELECT COALESCE(SUM(wt.amount), 0) AS total_fees, COUNT(*) AS fee_count FROM wallet_transactions wt INNER JOIN wallet_accounts wa ON wa.wallet_id = wt.wallet_id WHERE wa.wallet_type = 'admin' AND wt.transaction_category = 'platform_fee' AND wt.direction = 'credit'")->fetch_assoc();
@@ -278,13 +235,30 @@ body.wallet-dialog-open{overflow:hidden}
 @media(max-width:840px){.page>.content{padding:92px 18px 36px}.wallet-header{margin-bottom:18px}}
 @media(max-width:620px){.page>.content{padding-left:14px;padding-right:14px}.wallet-header{flex-direction:column;gap:8px}.wallet-header-note{text-align:left;max-width:100%}.wallet-stats{gap:9px;margin-bottom:15px}.wallet-stat{padding:12px;min-height:97px}.wallet-stat-value{font-size:1.1rem}.wallet-stat-icon{flex-basis:31px;width:31px;height:31px;font-size:.96rem}.wallet-stat-name{font-size:.7rem}.wallet-panel{padding:15px 12px}.wallet-panel-head{align-items:flex-start}.wallet-sync{font-size:.67rem}.wallet-controls{flex-direction:column;align-items:stretch;gap:10px}.wallet-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.wallet-filter{min-width:0;padding:8px 4px;font-size:.72rem;gap:4px}.wallet-search{flex:none;width:100%}.wallet-row{position:relative;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-height:105px;padding:13px 4px}.wallet-row-main{grid-column:1;grid-row:1}.wallet-row-type{display:none}.wallet-row-date{grid-column:1;grid-row:2;padding-left:46px;font-size:.69rem}.wallet-row-end{grid-column:2;grid-row:1 / span 2;align-self:center;max-width:128px}.wallet-row-amount{font-size:.85rem}.wallet-row-end small{font-size:.61rem}.wallet-row-chevron{display:none}.wallet-entry-icon{flex-basis:34px;width:34px;height:34px}.wallet-row-identity strong{font-size:.78rem}.wallet-row-identity small{font-size:.66rem}.wallet-modal{padding:9px}.wallet-modal-card{max-height:calc(100dvh - 18px);border-radius:14px}.wallet-modal-head,.wallet-modal-footer{padding:13px 14px}.wallet-modal-body{padding:13px 14px}.wallet-hero{padding:12px;gap:7px}.wallet-hero strong{font-size:1.22rem}.wallet-detail-grid{gap:7px}.wallet-field{padding:9px}.wallet-field strong{font-size:.76rem}}
 @media(max-width:360px){.wallet-stat{gap:6px}.wallet-stat-icon{display:none}.wallet-stat-value{font-size:1.02rem}.wallet-modal-body{padding:11px}.wallet-detail-grid{grid-template-columns:1fr}}
+
+/* LokalCraft Admin Platform Wallet theme */
+:root{--w-bg:#fff8ed;--w-card:#fffefc;--w-text:#342d27;--w-muted:#80756b;--w-line:#eae0d7;--w-accent:#a55325;--w-shadow:0 8px 22px rgba(67,44,22,.045)}
+body,.page{background:var(--w-bg)}
+.page>.content{padding:28px 26px 42px}.wallet-wrap{width:100%;max-width:1600px;margin:0 auto}
+.wallet-header h1{color:#382c22;font-size:clamp(1.6rem,3.3vw,2.1rem);font-weight:800;letter-spacing:-.04em}.wallet-header p,.wallet-header-note{color:#80756b}
+.wallet-stat,.wallet-panel{background:#fffefc;border-color:#eae0d7;border-radius:18px;box-shadow:var(--w-shadow)}
+.wallet-stat-name{color:#80756b}.wallet-stat-value{color:#382c22;font-weight:800}
+.wallet-stat:nth-child(1) .wallet-stat-icon{background:#fff1e4;color:#a55325}.wallet-stat:nth-child(2) .wallet-stat-icon{background:#effaf3;color:#278553}.wallet-stat:nth-child(3) .wallet-stat-icon{background:#eef4ff;color:#4f78b8}.wallet-stat:nth-child(4) .wallet-stat-icon{background:#fff6e8;color:#b47543}
+.wallet-panel-title h2{color:#47372c;font-weight:800}.wallet-search input{background:#fffefc;border-color:#e5d9cf}.wallet-search input:focus{background:#fffefc;border-color:#d99a63;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.wallet-filter{background:#fffaf5;border-color:#eae0d7;color:#75685e}.wallet-filter:hover{background:#fff1e4}.wallet-filter.active{background:#a55325;border-color:#a55325;color:#fff8ed}.wallet-filter.active .wallet-count{background:rgba(255,255,255,.22)}
+.wallet-list-head{background:#fffaf5;border-color:#eae0d7;color:#75685e}.wallet-row{background:#fffefc;border-bottom-color:#f0e7de}.wallet-row:hover{background:#fffaf5}.wallet-category{background:#fff1e4;color:#a55325}
+.wallet-modal-card{background:#fffefc;border-color:#eae0d7}.wallet-modal-head,.wallet-modal-footer{background:#fffaf5}.wallet-hero{background:#fffaf5;border-color:#eee3da}.wallet-field,.wallet-description{background:#fffefc;border-color:#eae0d7}.wallet-done{background:#a55325;color:#fff8ed}.wallet-done:hover{background:#c2692e}
+.wallet-panel-footer{justify-content:flex-start;color:#887a6d}
+@media(max-width:840px){.page>.content{padding:93px 17px 80px}}
+@media(max-width:620px){.page>.content{padding-left:13px;padding-right:13px}.wallet-stat,.wallet-panel{border-radius:16px}}
 </style>
 </head>
 <body>
 <div class="page">
 <?php include __DIR__ . '/admin_nav.php'; ?>
 <main class="content">
-<header class="wallet-header"><div><h1>Platform Wallet</h1><p>View LokalCraft platform fees and wallet activity.</p></div><div class="wallet-header-note">Internal wallet records only. Balances do not confirm withdrawal or settlement to an external bank or e-wallet.</div></header>
+<div class="wallet-wrap">
+<header class="wallet-header"><div><h1>Platform Wallet</h1></div></header>
 <div class="wallet-error" id="walletError" role="status" <?= $errorMessage === '' ? 'hidden' : '' ?>><?= walletEsc($errorMessage) ?></div>
 <section class="wallet-stats" aria-label="Platform wallet summary">
 <article class="wallet-stat"><div><span class="wallet-stat-name">Platform Balance</span><strong class="wallet-stat-value" id="walletStatBalance"><?= walletEsc(walletMoney($data['platform_balance'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true">₱</span></article>
@@ -293,12 +267,13 @@ body.wallet-dialog-open{overflow:hidden}
 <article class="wallet-stat"><div><span class="wallet-stat-name">Fee Transactions</span><strong class="wallet-stat-value" id="walletStatCount"><?= number_format($data['fee_transactions']) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true">▤</span></article>
 </section>
 <section class="wallet-panel" aria-labelledby="walletHistoryTitle">
-<div class="wallet-panel-head"><div class="wallet-panel-title"><h2 id="walletHistoryTitle">Recent Transactions</h2><p>Click a transaction to view the full ledger details.</p></div><span class="wallet-sync" id="walletSync"><span class="wallet-sync-dot" aria-hidden="true"></span><span>Updates every 30 seconds</span></span></div>
+<div class="wallet-panel-head"><div class="wallet-panel-title"><h2 id="walletHistoryTitle">Recent Transactions</h2></div><span class="wallet-sync" id="walletSync" hidden aria-hidden="true"><span class="wallet-sync-dot"></span></span></div>
 <div class="wallet-controls"><div class="wallet-filters" aria-label="Transaction filters"><button type="button" class="wallet-filter active" data-filter="all" aria-pressed="true">All <span class="wallet-count" data-count="all"><?= (int)$counts['all'] ?></span></button><button type="button" class="wallet-filter" data-filter="credit" aria-pressed="false">Credits <span class="wallet-count" data-count="credit"><?= (int)$counts['credit'] ?></span></button><button type="button" class="wallet-filter" data-filter="debit" aria-pressed="false">Debits <span class="wallet-count" data-count="debit"><?= (int)$counts['debit'] ?></span></button></div><label class="wallet-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input type="search" id="walletSearch" autocomplete="off" placeholder="Search order, seller or reference" aria-label="Search wallet transactions"></label></div>
 <div class="wallet-list-head" aria-hidden="true"><span>Transaction</span><span>Category</span><span>Date</span><span style="text-align:right">Amount</span><span></span></div>
 <div id="walletRows"><?= walletRows($data['transactions']) ?></div>
-<footer class="wallet-panel-footer"><span><strong id="walletVisible"><?= number_format($counts['all']) ?></strong> transaction(s) shown · Latest 100 records</span><span id="walletUpdated">Last updated: <?= walletEsc($data['updated_at']) ?></span></footer>
+<footer class="wallet-panel-footer"><span><strong id="walletVisible"><?= number_format($counts['all']) ?></strong> transaction(s) shown · Latest 100 records</span></footer>
 </section>
+</div>
 </main>
 </div>
 <div class="wallet-modal" id="walletModal" aria-hidden="true"><div class="wallet-modal-card" role="dialog" aria-modal="true" aria-labelledby="walletModalTitle">
@@ -344,6 +319,8 @@ body.wallet-dialog-open{overflow:hidden}
     const formatter = new Intl.NumberFormat('en-PH');
     let currentFilter = 'all';
     let trigger = null;
+    let modalHistoryActive = false;
+    let closingFromHistory = false;
     let refreshing = false;
     let lastRefresh = Date.now();
     function applyFilters() {
@@ -395,13 +372,29 @@ body.wallet-dialog-open{overflow:hidden}
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('wallet-dialog-open');
+        if (!modalHistoryActive) {
+            const modalUrl = new URL(window.location.href);
+            modalUrl.searchParams.set('view_transaction', data.transaction_id || 'details');
+            window.history.pushState({ lokalcraftWalletModal: true }, '', modalUrl.toString());
+            modalHistoryActive = true;
+        }
         closeButton.focus();
     });
-    function closeModal() {
+    function hideModal() {
         modal.classList.remove('open');
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('wallet-dialog-open');
         if (trigger && trigger.isConnected) trigger.focus();
+    }
+    function closeModal() {
+        if (!modal.classList.contains('open')) return;
+        if (modalHistoryActive && !closingFromHistory) {
+            window.history.back();
+            return;
+        }
+        hideModal();
+        modalHistoryActive = false;
+        closingFromHistory = false;
     }
     closeButton.addEventListener('click', closeModal);
     doneButton.addEventListener('click', closeModal);
@@ -414,12 +407,20 @@ body.wallet-dialog-open{overflow:hidden}
         if (event.shiftKey && document.activeElement === focusables[0]) { event.preventDefault(); focusables[1].focus(); }
         if (!event.shiftKey && document.activeElement === focusables[1]) { event.preventDefault(); focusables[0].focus(); }
     });
+    window.addEventListener('popstate', () => {
+        if (!modal.classList.contains('open')) return;
+        closingFromHistory = true;
+        hideModal();
+        modalHistoryActive = false;
+        closingFromHistory = false;
+    });
     async function refreshWallet(force = false) {
         if (refreshing || document.hidden || modal.classList.contains('open')) return;
-        if (!force && Date.now() - lastRefresh < 29000) return;
+        if (!force && Date.now() - lastRefresh < 4500) return;
         refreshing = true;
         try {
             const url = new URL(window.location.href);
+            url.searchParams.delete('view_transaction');
             url.searchParams.set('wallet_data', '1');
             const response = await fetch(url.toString(), {credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
             if (response.status === 401 || response.status === 403) { window.location.href = '../login.php'; return; }
@@ -434,7 +435,6 @@ body.wallet-dialog-open{overflow:hidden}
             });
             rows.innerHTML = result.rows_html;
             applyFilters();
-            document.getElementById('walletUpdated').textContent = 'Last updated: ' + result.updated_at;
             error.hidden = true;
             document.getElementById('walletSync').classList.remove('is-error');
             lastRefresh = Date.now();
@@ -444,7 +444,7 @@ body.wallet-dialog-open{overflow:hidden}
             document.getElementById('walletSync').classList.add('is-error');
         } finally { refreshing = false; }
     }
-    window.setInterval(() => refreshWallet(), 30000);
+    window.setInterval(() => refreshWallet(), 5000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshWallet(); });
     window.addEventListener('focus', () => refreshWallet());
     applyFilters();

@@ -1,14 +1,4 @@
 <?php
-/*
- * LokalCraft email configuration.
- *
- * Recommended:
- * 1. Run: composer require phpmailer/phpmailer
- * 2. For Gmail, enable 2-Step Verification and create an App Password.
- * 3. Replace the placeholders below.
- * 4. Do NOT upload this file to a public repository with a real password.
- */
-
 return [
     'use_smtp' => true,
 
@@ -16,9 +6,9 @@ return [
     'port' => 587,
     'encryption' => 'tls',
 
-    'username' => 'nuguidrhenzie@gmail.com',
-    'password' => 'noxn wggh yryz bnpc',
+    'username' => 'lokalcraftstore@gmail.com',
+    'password' => 'ycll dxnp kuni ruvy',
 
-    'from_email' => 'LokalCraft@gmail.com',
+    'from_email' => 'lokalcraftstore@gmail.com',
     'from_name' => 'LokalCraft',
 ];

@@ -1,7 +1,7 @@
 <?php
-session_start();
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
 $activePage = 'monitoring';
+
 function e($value): string
 {
     return htmlspecialchars(
@@ -42,69 +42,6 @@ function orderMonitorStatus($value): string
         default => $status,
     };
 }
-$adminId = 0;
-foreach (['admin_id', 'user_id', 'logged_id', 'id'] as $key) {
-    $value = $_SESSION[$key] ?? null;
-    if (filter_var($value, FILTER_VALIDATE_INT) && (int)$value > 0) {
-        $adminId = (int)$value;
-        break;
-    }
-}
-if ($adminId <= 0) {
-    if (isset($_GET['monitor_data']) || isset($_GET['order_detail'])) {
-        http_response_code(401);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode([
-            'success' => false,
-            'message' => 'Session expired.'
-        ]);
-        exit;
-    }
-    header('Location: ../login.php');
-    exit;
-}
-try {
-    $adminStmt = $conn->prepare("
-        SELECT
-            firstname,
-            lastname,
-            AdminOrNot,
-            account_status
-        FROM users
-        WHERE id = ?
-        LIMIT 1
-    ");
-    if (!$adminStmt) {
-        throw new RuntimeException('Unable to verify admin.');
-    }
-    $adminStmt->bind_param('i', $adminId);
-    $adminStmt->execute();
-    $admin = $adminStmt->get_result()->fetch_assoc();
-    $adminStmt->close();
-    $accountStatus = strtolower(
-        trim((string)($admin['account_status'] ?? ''))
-    );
-    if (
-        !$admin ||
-        (int)$admin['AdminOrNot'] !== 1 ||
-        in_array(
-            $accountStatus,
-            ['inactive', 'disabled', 'suspended', 'blocked', 'banned'],
-            true
-        )
-    ) {
-        http_response_code(403);
-        exit('Access denied.');
-    }
-} catch (Throwable $e) {
-    error_log('Order monitoring authentication: ' . $e->getMessage());
-    http_response_code(503);
-    exit('Unable to verify admin access.');
-}
-$adminName = trim(
-    (string)$admin['firstname'] . ' ' . (string)$admin['lastname']
-) ?: 'Admin';
-$userName = $adminName;
 function omReadable($value, string $fallback = 'Not agreed yet'): string
 {
     $text = trim((string)($value ?? ''));
@@ -563,15 +500,49 @@ body.monitor-modal-open{overflow:hidden}
 @media(max-width:840px){.page>.content{padding:93px 18px 32px}.monitor-heading{margin-bottom:18px}.monitor-order-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.page>.content{padding-left:14px;padding-right:14px}.monitor-heading{flex-direction:column;gap:7px}.monitor-sync{margin-top:0}.monitor-stats{gap:9px;margin-bottom:15px}.monitor-stat{padding:12px;min-height:98px}.monitor-stat-icon{width:30px;height:30px;flex-basis:30px;font-size:1rem}.monitor-stat-value{font-size:1.47rem}.monitor-stat-title{font-size:.72rem}.monitor-stat-detail{font-size:.63rem}.monitor-controls{padding:15px 12px}.monitor-section-head{align-items:stretch;flex-direction:column}.monitor-search{width:100%}.monitor-filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.monitor-filter{min-height:39px;font-size:.76rem}.monitor-order-list{grid-template-columns:1fr;gap:10px}.monitor-order{min-height:0;padding:15px}.monitor-product-line{min-height:0}.monitor-modal{padding:10px}.monitor-modal-card{max-height:calc(100dvh - 20px)}.monitor-modal-head,.monitor-modal-bottom{padding:13px 14px}.monitor-modal-body{padding:8px 14px}.monitor-detail-row{gap:8px;font-size:.76rem}.monitor-detail-row span{flex-basis:38%}}
 @media(max-width:600px){.monitor-modal{padding:8px}.monitor-modal-card{width:100%;max-height:calc(100dvh - 16px);border-radius:15px}.monitor-modal-head{padding:14px 15px}.monitor-modal-head h2{font-size:1.12rem}.monitor-modal-body{padding:10px 13px 17px}.monitor-modal-hero{padding:12px}.monitor-modal-hero strong{font-size:1.22rem}.monitor-detail-grid{grid-template-columns:1fr;gap:11px;padding:12px}.monitor-detail-field.wide{grid-column:auto}.monitor-detail-section-head{padding:10px 12px}.monitor-chat{padding:12px;max-height:230px}.monitor-chat-message{max-width:95%}.monitor-modal-bottom{padding:11px 15px}.monitor-modal-bottom span{font-size:.65rem}}
+
+/* LokalCraft Admin Order Monitoring theme */
+:root{--monitor-bg:#fff8ed;--monitor-card:#fffefc;--monitor-line:#eae0d7;--monitor-text:#342d27;--monitor-muted:#80756b;--monitor-accent:#a55325;--monitor-orange-soft:#fff1e4;--monitor-shadow:0 8px 22px rgba(67,44,22,.045)}
+body,.page{background:var(--monitor-bg)}
+.page>.content{padding:28px 26px 42px}
+.monitor-wrap{width:100%;max-width:1600px;margin:0 auto}
+.monitor-heading{margin-bottom:22px}
+.monitor-heading h1{color:#382c22;font-size:clamp(1.6rem,3.3vw,2.1rem);font-weight:800;letter-spacing:-.04em}
+.monitor-heading p{color:#80756b}
+.monitor-stat,.monitor-controls,.monitor-order{background:#fffefc;border-color:#eae0d7;border-radius:18px;box-shadow:var(--monitor-shadow)}
+.monitor-stat-title{color:#80756b;font-weight:650}.monitor-stat-value{color:#382c22;font-weight:800}
+.monitor-stat.all .monitor-stat-icon{background:#fff1e4;color:#a55325}.monitor-stat.pending .monitor-stat-icon{background:#fff6e8;color:#b47543}.monitor-stat.accepted .monitor-stat-icon{background:#eef4ff;color:#4f78b8}.monitor-stat.completed .monitor-stat-icon{background:#effaf3;color:#278553}
+.monitor-controls{padding:20px 22px 18px}.monitor-section-head h2{color:#47372c;font-weight:800}
+.monitor-search input{background:#fffefc;border-color:#e5d9cf}.monitor-search input:focus{border-color:#d99a63;background:#fffefc;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.monitor-filter{background:#fffaf5;border-color:#eae0d7;color:#75685e}.monitor-filter:hover{background:#fff1e4;border-color:#f0d9be;color:#a55325}.monitor-filter.active{background:#a55325;border-color:#a55325;color:#fff8ed;box-shadow:0 5px 13px rgba(165,83,37,.16)}
+.monitor-order:hover{border-color:#e3b78f;box-shadow:0 12px 28px rgba(67,44,22,.09)}
+.monitor-order-store{background:#fffaf5}.monitor-order-link{color:#a55325}
+.monitor-modal-card{background:#fffefc;border-color:#eae0d7}.monitor-modal-head,.monitor-modal-bottom{background:#fffaf5;border-color:#eee3da}.monitor-detail-section{background:#fffefc;border-color:#eae0d7}.monitor-detail-section-head{background:#fffaf5}.monitor-done{background:#a55325;color:#fff8ed}.monitor-done:hover{background:#c2692e}
+.monitor-footer{justify-content:flex-start;color:#887a6d}
+@media(max-width:840px){.page>.content{padding:93px 17px 80px}}
+@media(max-width:600px){.page>.content{padding-left:13px;padding-right:13px}.monitor-stat,.monitor-controls,.monitor-order{border-radius:16px}}
+
+.monitor-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.monitor-pagination{display:flex;align-items:center;justify-content:center;gap:7px}
+.monitor-pagination[hidden]{display:none!important}
+.monitor-page-numbers{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
+.monitor-page-nav,.monitor-page-number{min-width:38px;min-height:38px;display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border:1px solid #eae0d7;border-radius:10px;background:#fffaf5;color:#75685e;font:inherit;font-size:.76rem;font-weight:750;cursor:pointer;transition:background .16s,border-color .16s,color .16s,transform .16s}
+.monitor-page-nav:hover,.monitor-page-number:hover{background:#fff1e4;border-color:#f0d9be;color:#a55325;transform:translateY(-1px)}
+.monitor-page-number.active{background:#a55325;border-color:#a55325;color:#fff8ed;box-shadow:0 5px 13px rgba(165,83,37,.16)}
+.monitor-page-nav:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.monitor-page-nav:focus-visible,.monitor-page-number:focus-visible{outline:3px solid rgba(201,109,32,.18);outline-offset:2px}
+.monitor-page-summary{color:#887a6d;font-size:.72rem}
+@media(max-width:600px){.monitor-footer{justify-content:center;text-align:center}.monitor-pagination{width:100%;order:3}.monitor-page-summary{width:100%;order:2}.monitor-page-nav{padding:7px 9px}.monitor-page-number{min-width:36px}}
 </style>
 </head>
 <body>
 <div class="page">
 <?php include __DIR__ . '/admin_nav.php'; ?>
 <main class="content">
+<div class="monitor-wrap">
 <header class="monitor-heading">
-<div><h1>Order Monitoring</h1><p>Track customer orders, fulfillment and payments across LokalCraft.</p></div>
-<div class="monitor-sync"><span class="monitor-sync-dot" aria-hidden="true"></span><span>Updates automatically every 30 seconds</span></div>
+<div><h1>Order Monitoring</h1></div>
+
 </header>
 <div class="monitor-error" id="monitorError" role="status" <?php echo $errorMessage === '' ? 'hidden' : ''; ?>><?php echo e($errorMessage); ?></div>
 <section class="monitor-stats" aria-label="Order overview">
@@ -581,15 +552,24 @@ body.monitor-modal-open{overflow:hidden}
 <article class="monitor-stat completed"><div class="monitor-stat-content"><span class="monitor-stat-title">Completed Orders</span><strong class="monitor-stat-value" id="stat-completed"><?php echo number_format($data['stats']['completed']); ?></strong><span class="monitor-stat-detail">Finished orders</span></div><span class="monitor-stat-icon" aria-hidden="true">✓</span></article>
 </section>
 <section class="monitor-controls" aria-label="Order monitoring filters">
-<div class="monitor-section-head"><div><h2>All Orders</h2><p>Choose a status or search for a specific order.</p></div><label class="monitor-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="orderSearch" type="search" placeholder="Search order, customer or product" aria-label="Search orders" autocomplete="off"></label></div>
+<div class="monitor-section-head"><div><h2>All Orders</h2></div><label class="monitor-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="orderSearch" type="search" placeholder="Search order, customer or product" aria-label="Search orders" autocomplete="off"></label></div>
 <nav class="monitor-filters" aria-label="Filter by order status">
 <?php foreach (['all'=>'All Orders','pending'=>'Pending','accepted'=>'Accepted','processing'=>'Processing','completed'=>'Completed','cancelled'=>'Cancelled'] as $key=>$label): ?>
 <button type="button" class="monitor-filter <?php echo $key === 'all' ? 'active' : ''; ?>" data-filter="<?php echo e($key); ?>" aria-pressed="<?php echo $key === 'all' ? 'true' : 'false'; ?>"><span><?php echo e($label); ?></span><span class="monitor-filter-count" data-count="<?php echo e($key); ?>"><?php echo number_format($filterCounts[$key]); ?></span></button>
 <?php endforeach; ?>
 </nav>
 <div class="monitor-order-list" id="orderList"><?php echo renderOrderRows($data['orders']); ?></div>
-<footer class="monitor-footer"><span><strong id="visibleOrders"><?php echo number_format(count($data['orders'])); ?></strong> order(s) displayed</span><span id="lastUpdated">Last updated: <?php echo e($data['updated_at']); ?> · Auto-refresh every 30 seconds</span></footer>
+<footer class="monitor-footer">
+<span><strong id="visibleOrders"><?php echo number_format(count($data['orders'])); ?></strong> matching order(s)</span>
+<nav class="monitor-pagination" id="orderPagination" aria-label="Order pages" hidden>
+<button type="button" class="monitor-page-nav" id="orderPrevPage" aria-label="Previous order page">Previous</button>
+<div class="monitor-page-numbers" id="orderPageNumbers"></div>
+<button type="button" class="monitor-page-nav" id="orderNextPage" aria-label="Next order page">Next</button>
+</nav>
+<span class="monitor-page-summary" id="orderPageSummary" aria-live="polite"></span>
+</footer>
 </section>
+</div>
 </main>
 </div>
 <div class="monitor-modal" id="orderModal" aria-hidden="true">
@@ -651,35 +631,84 @@ body.monitor-modal-open{overflow:hidden}
     const search = document.getElementById('orderSearch');
     const filters = [...document.querySelectorAll('.monitor-filter')];
     const errorBox = document.getElementById('monitorError');
+    const pagination = document.getElementById('orderPagination');
+    const pageNumbers = document.getElementById('orderPageNumbers');
+    const prevPage = document.getElementById('orderPrevPage');
+    const nextPage = document.getElementById('orderNextPage');
+    const pageSummary = document.getElementById('orderPageSummary');
     const modal = document.getElementById('orderModal');
     const modalClose = document.getElementById('modalClose');
     const modalDone = document.getElementById('modalDone');
+    const ORDERS_PER_PAGE = 8;
     let selectedFilter = 'all';
+    let currentPage = 1;
     let lastTrigger = null;
+    let modalHistoryActive = false;
+    let closingFromHistory = false;
     let refreshing = false;
     let lastRefreshTime = Date.now();
     const fields = ['customer','seller','products','quantity','total','payment-status','payment','paid-at','delivery','location','meet-date','meet-time','arrangement-status','arrangement-notes','buyer-confirmed','seller-confirmed','payment-option','payment-provider','payment-amount','payment-reference','date','notes'];
     let detailRequest = null;
     const formatter = new Intl.NumberFormat('en-PH');
-    function filterOrders() {
+    function renderPagination(totalPages, totalMatches) {
+        pagination.hidden = totalPages <= 1;
+        pageNumbers.replaceChildren();
+        prevPage.disabled = currentPage <= 1;
+        nextPage.disabled = currentPage >= totalPages;
+
+        if (totalMatches === 0) {
+            pageSummary.textContent = '';
+            return;
+        }
+
+        const firstShown = ((currentPage - 1) * ORDERS_PER_PAGE) + 1;
+        const lastShown = Math.min(currentPage * ORDERS_PER_PAGE, totalMatches);
+        pageSummary.textContent = 'Showing ' + formatter.format(firstShown) + '–' + formatter.format(lastShown) + ' of ' + formatter.format(totalMatches);
+
+        for (let page = 1; page <= totalPages; page++) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'monitor-page-number' + (page === currentPage ? ' active' : '');
+            button.textContent = formatter.format(page);
+            button.setAttribute('aria-label', 'Go to order page ' + page);
+            button.setAttribute('aria-current', page === currentPage ? 'page' : 'false');
+            button.addEventListener('click', () => {
+                currentPage = page;
+                filterOrders(false);
+                document.querySelector('.monitor-controls')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+            pageNumbers.append(button);
+        }
+    }
+
+    function filterOrders(resetPage = false) {
+        if (resetPage) currentPage = 1;
         const term = search.value.trim().toLocaleLowerCase();
-        const cards = list.querySelectorAll('[data-order]');
-        let visible = 0;
+        const cards = [...list.querySelectorAll('[data-order]')];
+        const matchedCards = cards.filter(card =>
+            (selectedFilter === 'all' || card.dataset.status === selectedFilter)
+            && (card.dataset.search || '').includes(term)
+        );
+        const totalPages = Math.max(1, Math.ceil(matchedCards.length / ORDERS_PER_PAGE));
+        currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+        const pageStart = (currentPage - 1) * ORDERS_PER_PAGE;
+        const pageEnd = pageStart + ORDERS_PER_PAGE;
+        const pageCards = new Set(matchedCards.slice(pageStart, pageEnd));
+
         cards.forEach(card => {
-            const matched = (selectedFilter === 'all' || card.dataset.status === selectedFilter)
-                && (card.dataset.search || '').includes(term);
-            card.hidden = !matched;
-            if (matched) visible++;
+            card.hidden = !pageCards.has(card);
         });
+
         const empty = document.getElementById('empty-orders');
         if (empty) {
-            empty.hidden = visible > 0;
+            empty.hidden = matchedCards.length > 0;
             const title = empty.querySelector('strong');
             const note = empty.querySelectorAll('span')[1];
             if (title) title.textContent = cards.length ? 'No matching orders' : 'No orders recorded yet';
             if (note) note.textContent = cards.length ? 'Try another search or filter.' : 'New customer orders will appear here automatically.';
         }
-        document.getElementById('visibleOrders').textContent = formatter.format(visible);
+        document.getElementById('visibleOrders').textContent = formatter.format(matchedCards.length);
+        renderPagination(totalPages, matchedCards.length);
     }
     filters.forEach(btn => btn.addEventListener('click', () => {
         selectedFilter = btn.dataset.filter || 'all';
@@ -688,9 +717,19 @@ body.monitor-modal-open{overflow:hidden}
             item.classList.toggle('active', active);
             item.setAttribute('aria-pressed', String(active));
         });
-        filterOrders();
+        filterOrders(true);
     }));
-    search.addEventListener('input', filterOrders);
+    search.addEventListener('input', () => filterOrders(true));
+    prevPage.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            filterOrders(false);
+        }
+    });
+    nextPage.addEventListener('click', () => {
+        currentPage++;
+        filterOrders(false);
+    });
     function makeNode(tag, className, text) {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -708,6 +747,7 @@ body.monitor-modal-open{overflow:hidden}
         try {
             const url = new URL(window.location.href);
             url.searchParams.delete('monitor_data');
+            url.searchParams.delete('view_order');
             url.searchParams.set('order_detail', id);
             const response = await fetch(url.toString(), {credentials:'same-origin', cache:'no-store', headers:{Accept:'application/json'}, signal:controller.signal});
             if (response.status === 401 || response.status === 403) {window.location.href = '../login.php'; return;}
@@ -759,15 +799,39 @@ body.monitor-modal-open{overflow:hidden}
         modal.classList.add('is-open');
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('monitor-modal-open');
+
+        if (!modalHistoryActive) {
+            const modalUrl = new URL(window.location.href);
+            modalUrl.searchParams.set('view_order', card.dataset.orderId);
+            window.history.pushState(
+                { lokalcraftOrderModal: true, orderId: card.dataset.orderId },
+                '',
+                modalUrl.toString()
+            );
+            modalHistoryActive = true;
+        }
+
         modalClose.focus();
         loadModalExtras(card.dataset.orderId);
     }
-    function closeModal() {
+    function hideModal() {
         if (detailRequest) {detailRequest.abort(); detailRequest = null;}
         modal.classList.remove('is-open');
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('monitor-modal-open');
         if (lastTrigger && lastTrigger.isConnected) lastTrigger.focus();
+    }
+    function closeModal() {
+        if (!modal.classList.contains('is-open')) return;
+
+        if (modalHistoryActive && !closingFromHistory) {
+            window.history.back();
+            return;
+        }
+
+        hideModal();
+        modalHistoryActive = false;
+        closingFromHistory = false;
     }
     list.addEventListener('click', event => {
         const card = event.target.closest('[data-order]');
@@ -778,12 +842,21 @@ body.monitor-modal-open{overflow:hidden}
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
     });
+    window.addEventListener('popstate', () => {
+        if (!modal.classList.contains('is-open')) return;
+        closingFromHistory = true;
+        hideModal();
+        modalHistoryActive = false;
+        closingFromHistory = false;
+    });
+
     async function refreshOrders(force = false) {
         if (refreshing || document.hidden || modal.classList.contains('is-open')) return;
-        if (!force && Date.now() - lastRefreshTime < 29000) return;
+        if (!force && Date.now() - lastRefreshTime < 4500) return;
         refreshing = true;
         try {
             const url = new URL(window.location.href);
+            url.searchParams.delete('view_order');
             url.searchParams.set('monitor_data', '1');
             const response = await fetch(url.toString(), { credentials:'same-origin', cache:'no-store', headers:{Accept:'application/json'} });
             if (response.status === 401 || response.status === 403) {
@@ -802,7 +875,6 @@ body.monitor-modal-open{overflow:hidden}
             });
             list.innerHTML = result.rows_html;
             filterOrders();
-            document.getElementById('lastUpdated').textContent = 'Last updated: ' + result.updated_at + ' · Auto-refresh every 30 seconds';
             errorBox.hidden = true;
             lastRefreshTime = Date.now();
         } catch (error) {
@@ -812,7 +884,7 @@ body.monitor-modal-open{overflow:hidden}
             refreshing = false;
         }
     }
-    window.setInterval(() => refreshOrders(), 30000);
+    window.setInterval(() => refreshOrders(), 5000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOrders(); });
     window.addEventListener('focus', () => refreshOrders());
     filterOrders();

@@ -1414,6 +1414,124 @@ function validateNotPastArrangementDateTime(
         );
     }
 }
+
+/** Seller Messages lifecycle helpers. These mirror orders_seller.php rules. */
+function sellerMessagesLoadLifecycleOrder(mysqli $conn, int $sellerId, int $buyerId, int $orderId): ?array
+{
+    $stmt = $conn->prepare(' 
+        SELECT
+            o.order_id,
+            o.buyer_id,
+            o.seller_id,
+            o.order_status,
+            o.total_amount,
+            p.payment_id,
+            p.payment_method,
+            p.payment_status,
+            oa.payment_option,
+            oa.arrangement_status
+        FROM orders o
+        LEFT JOIN order_arrangements oa
+            ON oa.order_id = o.order_id
+        LEFT JOIN payments p
+            ON p.payment_id = (
+                SELECT p2.payment_id
+                FROM payments p2
+                WHERE p2.order_id = o.order_id
+                ORDER BY p2.payment_id DESC
+                LIMIT 1
+            )
+        WHERE o.order_id = ?
+          AND o.seller_id = ?
+          AND o.buyer_id = ?
+        LIMIT 1
+        FOR UPDATE
+    ');
+    if (!$stmt) throw new RuntimeException('Unable to load this order.');
+    $stmt->bind_param('iii', $orderId, $sellerId, $buyerId);
+    $stmt->execute();
+    $order = $stmt->get_result()->fetch_assoc() ?: null;
+    $stmt->close();
+    return $order;
+}
+function sellerMessagesLoadLifecycleItems(mysqli $conn, int $orderId): array
+{
+    $stmt = $conn->prepare(' 
+        SELECT
+            oi.product_id,
+            oi.quantity,
+            p.product_name,
+            p.stock,
+            COALESCE(p.reserved_stock, 0) AS reserved_stock,
+            p.status
+        FROM order_items oi
+        INNER JOIN products p
+            ON p.product_id = oi.product_id
+        WHERE oi.order_id = ?
+        ORDER BY oi.order_item_id ASC
+        FOR UPDATE
+    ');
+    if (!$stmt) throw new RuntimeException('Unable to load the order items.');
+    $stmt->bind_param('i', $orderId);
+    $stmt->execute();
+    $items = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    if (!$items) throw new RuntimeException('This order has no items to complete.');
+    return $items;
+}
+function sellerMessagesFinalizeReservedStock(mysqli $conn, array $items): void
+{
+    foreach ($items as $item) {
+        $productId = (int)$item['product_id'];
+        $quantity = max(1, (int)$item['quantity']);
+        $stock = max(0, (int)$item['stock']);
+        $reserved = max(0, (int)$item['reserved_stock']);
+        if ($stock < $quantity || $reserved < $quantity) {
+            throw new RuntimeException('Reserved stock is no longer valid for ' . (string)$item['product_name'] . '.');
+        }
+        $nextStock = $stock - $quantity;
+        $nextReserved = $reserved - $quantity;
+        $currentStatus = chatStatusKey($item['status'] ?? '');
+        $nextStatus = $currentStatus === 'archived' ? 'Archived' : ($nextStock > 0 ? 'Available' : 'Out of Stock');
+        $stmt = $conn->prepare('UPDATE products SET stock = ?, reserved_stock = ?, status = ? WHERE product_id = ? AND stock = ? AND COALESCE(reserved_stock,0) = ?');
+        if (!$stmt) throw new RuntimeException('Unable to finalize inventory.');
+        $stmt->bind_param('iisiii', $nextStock, $nextReserved, $nextStatus, $productId, $stock, $reserved);
+        $stmt->execute();
+        $changed = $stmt->affected_rows;
+        $stmt->close();
+        if ($changed !== 1) throw new RuntimeException('Inventory changed while completing the order. Refresh and try again.');
+    }
+}
+function sellerMessagesMarkCashCommissionEarned(mysqli $conn, int $sellerId, int $orderId): void
+{
+    $stmt = $conn->prepare('SELECT commission_id, collection_method, commission_status FROM platform_commissions WHERE order_id = ? AND seller_id = ? LIMIT 1 FOR UPDATE');
+    if (!$stmt) throw new RuntimeException('Unable to verify the Cash platform fee.');
+    $stmt->bind_param('ii', $orderId, $sellerId);
+    $stmt->execute();
+    $commission = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$commission) throw new RuntimeException('The reserved Cash platform fee is missing. Open Wallet and contact support.');
+    if (chatStatusKey($commission['collection_method'] ?? '') !== 'seller_wallet') throw new RuntimeException('The Cash platform fee source is invalid.');
+    $status = chatStatusKey($commission['commission_status'] ?? '');
+    if ($status === 'earned') return;
+    if ($status !== 'reserved') throw new RuntimeException('The Cash platform fee is not reserved.');
+    $commissionId = (int)$commission['commission_id'];
+    $stmt = $conn->prepare('UPDATE platform_commissions SET commission_status = "earned", earned_at = COALESCE(earned_at,NOW()), updated_at = NOW() WHERE commission_id = ? AND commission_status = "reserved"');
+    if (!$stmt) throw new RuntimeException('Unable to finalize the Cash platform fee.');
+    $stmt->bind_param('i', $commissionId);
+    $stmt->execute();
+    if ($stmt->affected_rows !== 1) { $stmt->close(); throw new RuntimeException('The Cash platform fee changed. Refresh and try again.'); }
+    $stmt->close();
+}
+function sellerMessagesInsertLifecycleMessage(mysqli $conn, int $sellerId, int $buyerId, int $orderId, string $message): void
+{
+    $stmt = $conn->prepare('INSERT INTO messages (sender_id, receiver_id, order_id, message_text, sent_at, is_read) VALUES (?, ?, ?, ?, NOW(), 0)');
+    if (!$stmt) throw new RuntimeException('Unable to record the order update in Messages.');
+    $stmt->bind_param('iiis', $sellerId, $buyerId, $orderId, $message);
+    $stmt->execute();
+    $stmt->close();
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
     try {
@@ -1569,6 +1687,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['success' => true, 'orders' => $orders]);
             exit;
         }
+
+        if ($action === 'start_processing' || $action === 'complete_order') {
+            $buyerId = (int)($_POST['buyer_id'] ?? 0);
+            $orderId = (int)($_POST['order_id'] ?? 0);
+            if ($buyerId <= 0 || $orderId <= 0 || !conversationAllowed($conn, $sellerId, $buyerId)) {
+                throw new RuntimeException('This order action is unavailable for the conversation.');
+            }
+            require_once __DIR__ . '/../config/notification_events.php';
+            $conn->begin_transaction();
+            try {
+                $order = sellerMessagesLoadLifecycleOrder($conn, $sellerId, $buyerId, $orderId);
+                if (!$order) throw new RuntimeException('Order not found.');
+                $status = chatStatusKey($order['order_status'] ?? '');
+                $paymentStatus = chatStatusKey($order['payment_status'] ?? '');
+                $paymentMethod = chatStatusKey($order['payment_method'] ?? '');
+                $paymentOption = chatStatusKey($order['payment_option'] ?? '');
+                $arrangement = chatStatusKey($order['arrangement_status'] ?? '');
+                $isCash = $paymentOption === 'cash' || str_contains($paymentMethod, 'cash');
+                $isQr = $paymentOption === 'paymongo' || str_contains($paymentOption, 'qr') || str_contains($paymentMethod, 'qr') || str_contains($paymentMethod, 'paymongo');
+                if ($action === 'start_processing') {
+                    if (!in_array($status, ['accepted','confirmed'], true)) throw new RuntimeException('Only an Accepted order can move to Processing.');
+                    if ($arrangement !== 'accepted') throw new RuntimeException('The final arrangement must be accepted before Processing.');
+                    if ($isQr && $paymentStatus !== 'paid') throw new RuntimeException('QR Ph payment must be Paid before processing starts.');
+                    if ($isCash && $paymentStatus !== '' && !in_array($paymentStatus, ['pending','paid'], true)) throw new RuntimeException('This Cash order has an unexpected payment status.');
+                    if (!$isCash && !$isQr) throw new RuntimeException('Unsupported payment method for this order.');
+                    $stmt = $conn->prepare('UPDATE orders SET order_status = "Processing", updated_at = NOW() WHERE order_id = ? AND seller_id = ? AND LOWER(order_status) IN ("accepted","confirmed")');
+                    if (!$stmt) throw new RuntimeException('Unable to start processing the order.');
+                    $stmt->bind_param('ii', $orderId, $sellerId); $stmt->execute();
+                    if ($stmt->affected_rows !== 1) { $stmt->close(); throw new RuntimeException('The order status changed. Refresh the conversation.'); }
+                    $stmt->close();
+                    $messageText = 'Seller started processing Order #' . $orderId . '. Please coordinate the agreed handover through Messages.';
+                    $notificationType = 'order_processing'; $notificationTitle = 'Order Processing';
+                    $notificationMessage = 'Order #' . $orderId . ' is now being prepared by the seller.';
+                } else {
+                    if ($status !== 'processing') throw new RuntimeException('Only a Processing order can be completed.');
+                    if ($isQr && $paymentStatus !== 'paid') throw new RuntimeException('QR Ph payment is not confirmed.');
+                    if (!$isCash && !$isQr) throw new RuntimeException('Unsupported payment method for this order.');
+                    $items = sellerMessagesLoadLifecycleItems($conn, $orderId);
+                    sellerMessagesFinalizeReservedStock($conn, $items);
+                    if ($isCash) {
+                        if ($paymentStatus !== '' && !in_array($paymentStatus, ['pending','paid'], true)) throw new RuntimeException('This Cash order has an unexpected payment status.');
+                        $paymentId = (int)($order['payment_id'] ?? 0);
+                        if ($paymentId > 0 && $paymentStatus === 'pending') {
+                            $stmt = $conn->prepare('UPDATE payments SET payment_status = "paid", paid_at = COALESCE(paid_at,NOW()) WHERE payment_id = ? AND order_id = ? AND LOWER(payment_status) = "pending"');
+                            if (!$stmt) throw new RuntimeException('Unable to confirm the Cash payment.');
+                            $stmt->bind_param('ii',$paymentId,$orderId); $stmt->execute();
+                            if ($stmt->affected_rows !== 1) { $stmt->close(); throw new RuntimeException('The Cash payment status changed. Refresh the conversation.'); }
+                            $stmt->close();
+                        } elseif ($paymentId <= 0) {
+                            $amount=(float)($order['total_amount']??0); $method='Cash'; $provider='cash'; $paid='paid';
+                            $stmt=$conn->prepare('INSERT INTO payments (order_id,buyer_id,amount,payment_method,payment_provider,payment_status,paid_at,created_at) VALUES (?,?,?,?,?,?,NOW(),NOW())');
+                            if(!$stmt) throw new RuntimeException('Unable to create the Cash payment record.');
+                            $stmt->bind_param('iidsss',$orderId,$buyerId,$amount,$method,$provider,$paid); $stmt->execute(); $stmt->close();
+                        }
+                        sellerMessagesMarkCashCommissionEarned($conn,$sellerId,$orderId);
+                    }
+                    $stmt=$conn->prepare('UPDATE orders SET order_status="Completed", updated_at=NOW() WHERE order_id=? AND seller_id=? AND LOWER(order_status)="processing"');
+                    if(!$stmt) throw new RuntimeException('Unable to complete the order.');
+                    $stmt->bind_param('ii',$orderId,$sellerId); $stmt->execute();
+                    if($stmt->affected_rows!==1){$stmt->close();throw new RuntimeException('The order status changed. Refresh the conversation.');} $stmt->close();
+                    $stmt=$conn->prepare('UPDATE order_arrangements SET arrangement_status="completed", updated_at=NOW() WHERE order_id=? AND arrangement_status="accepted"');
+                    if(!$stmt) throw new RuntimeException('Unable to finalize the order arrangement.');
+                    $stmt->bind_param('i',$orderId);$stmt->execute();$stmt->close();
+                    $messageText='Order #'.$orderId.' was marked Completed. You can now leave a review and rating from your Orders page.';
+                    $notificationType='order_completed';$notificationTitle='Order Completed';
+                    $notificationMessage='Order #'.$orderId.' was marked Completed. You can now leave a review in Orders.';
+                }
+                sellerMessagesInsertLifecycleMessage($conn,$sellerId,$buyerId,$orderId,$messageText);
+                lokalcraftCreateNotification($conn,$buyerId,$notificationType,$notificationTitle,$notificationMessage,'order',$orderId,'order_'.$orderId.'_'.$action);
+                $conn->commit();
+                $updated=getSellerOrderDetails($conn,$sellerId,$buyerId,$orderId);
+                echo json_encode(['success'=>true,'message'=>$action==='start_processing'?'Order #'.$orderId.' is now Processing.':'Order #'.$orderId.' completed.','order'=>$updated],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
+                exit;
+            } catch(Throwable $e) {
+                try{$conn->rollback();}catch(Throwable $ignored){}
+                throw $e;
+            }
+        }
+
         if ($action === 'fetch_order_details') {
             $buyerId = (int)($_POST['buyer_id'] ?? 0);
             $orderId = (int)($_POST['order_id'] ?? 0);
@@ -5339,6 +5536,8 @@ if ($selectedBuyerId > 0) {
         <button class="arrangement-action secondary" id="saveArrangementButton" type="button">Save</button>
         <button class="arrangement-action primary" id="sendArrangementButton" type="button">Send to Buyer</button>
         <button class="arrangement-action accept" id="acceptOrderButton" type="button" hidden>Accept Order</button>
+        <button class="arrangement-action primary" id="startProcessingButton" type="button" hidden>Start Processing</button>
+        <button class="arrangement-action accept" id="completeOrderButton" type="button" hidden>Complete Order</button>
       </div>
     </form>
   </dialog>
@@ -5548,6 +5747,8 @@ if ($selectedBuyerId > 0) {
     const saveArrangementButton = document.getElementById('saveArrangementButton');
     const sendArrangementButton = document.getElementById('sendArrangementButton');
     const acceptOrderButton = document.getElementById('acceptOrderButton');
+    const startProcessingButton = document.getElementById('startProcessingButton');
+    const completeOrderButton = document.getElementById('completeOrderButton');
     let sellerMobileViewportBaseline = Math.max(
       window.innerHeight,
       document.documentElement.clientHeight
@@ -6467,9 +6668,10 @@ if ($selectedBuyerId > 0) {
         if (payment === 'paymongo' && paymentStatus !== 'paid') {
           return {tone: 'warning', text: 'Order accepted. Stock reserved; wait for confirmed QR Ph payment.'};
         }
-        return {tone: 'ready', text: 'Order accepted. Stock reserved; you can start processing from Orders.'};
+        return {tone: 'ready', text: 'Order accepted and ready. Start processing below when preparation begins.'};
       }
-      return {tone: 'closed', text: 'Open Orders to view the current status.'};
+      if (status === 'processing') return {tone: 'ready', text: 'Order is Processing. Mark it Complete after the agreed handover.'};
+      return {tone: 'closed', text: 'Order lifecycle details are shown below.'};
     }
     function refreshSellerActionGuide(order) {
       const guide = document.getElementById('sellerNextAction');
@@ -6483,6 +6685,49 @@ if ($selectedBuyerId > 0) {
       guide.dataset.tone = state.tone;
       guide.textContent = state.text;
       guide.hidden = false;
+    }
+
+    function refreshSellerLifecycleButtons(order) {
+      if (!startProcessingButton || !completeOrderButton) return;
+      const status = String(order?.order_status || '').toLowerCase();
+      const stage = String(order?.arrangement_status || '').toLowerCase();
+      const payment = String(order?.payment_option || '').toLowerCase();
+      const paymentStatus = String(order?.payment_status || '').toLowerCase();
+      const qrReady = payment === 'paymongo' && paymentStatus === 'paid';
+      const cashReady = payment === 'cash';
+      startProcessingButton.hidden = !(stage === 'accepted' && ['accepted','confirmed'].includes(status) && (qrReady || cashReady));
+      completeOrderButton.hidden = status !== 'processing';
+      startProcessingButton.disabled = false;
+      completeOrderButton.disabled = false;
+    }
+    async function submitSellerLifecycleAction(action) {
+      if (!activeOrderDetails || !selectedBuyerId || !selectedOrderId) return;
+      const button = action === 'start_processing' ? startProcessingButton : completeOrderButton;
+      if (!button || button.disabled) return;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = action === 'start_processing' ? 'Starting...' : 'Completing...';
+      setArrangementBottomFeedback(action === 'start_processing' ? 'Starting order preparation...' : 'Finalizing inventory and payment records...', '');
+      const formData = new FormData();
+      formData.append('action', action);
+      formData.append('buyer_id', String(selectedBuyerId));
+      formData.append('order_id', String(selectedOrderId));
+      try {
+        const data = await postForm(formData);
+        applyOrderDetails(data.order || null);
+        setArrangementBottomFeedback(data.message || 'Order updated.', 'success');
+        await loadConversation(
+          selectedBuyerId,
+          true,
+          selectedOrderId
+        );
+      } catch (error) {
+        setArrangementBottomFeedback(error.message || 'Unable to update the order.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+        refreshSellerLifecycleButtons(activeOrderDetails);
+      }
     }
     function sellerMissingArrangementDetails() {
       const order = activeOrderDetails;
@@ -6644,6 +6889,7 @@ if ($selectedBuyerId > 0) {
           });
       }
       refreshSellerActionGuide(activeOrderDetails);
+      refreshSellerLifecycleButtons(order);
       if (!order) {
         selectedOrderId = 0;
         orderSummary?.classList.remove('show');
@@ -7536,6 +7782,8 @@ if ($selectedBuyerId > 0) {
       'click',
       acceptSellerOrder
     );
+    startProcessingButton?.addEventListener('click', () => submitSellerLifecycleAction('start_processing'));
+    completeOrderButton?.addEventListener('click', () => submitSellerLifecycleAction('complete_order'));
     if (conversationItems) {
       conversationItems.addEventListener('click', (event) => {
         const item = event.target.closest('.conversation');

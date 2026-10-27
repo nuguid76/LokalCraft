@@ -1,30 +1,8 @@
 <?php
-session_start();
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
 require_once __DIR__ . '/../includes/seller_notification_service.php';
 date_default_timezone_set('Asia/Manila');
-$adminId = (int)($_SESSION['user_id'] ?? 0);
-if ($adminId <= 0 || empty($_SESSION['is_admin'])) {
-    header('Location: ../login.php');
-    exit;
-}
-$adminCheck = $conn->prepare("
-    SELECT firstname, lastname
-    FROM users
-    WHERE id = ?
-      AND AdminOrNot = 1
-      AND account_status = 'active'
-    LIMIT 1
-");
-$adminCheck->bind_param('i', $adminId);
-$adminCheck->execute();
-$adminRow = $adminCheck->get_result()->fetch_assoc();
-$adminCheck->close();
-if (!$adminRow) {
-    http_response_code(403);
-    exit('Access denied.');
-}
-$userName = trim(($adminRow['firstname'] ?? '') . ' ' . ($adminRow['lastname'] ?? ''));
+
 $activePage = 'seller_approvals';
 if (empty($_SESSION['seller_review_csrf'])) {
     $_SESSION['seller_review_csrf'] = bin2hex(random_bytes(32));
@@ -415,15 +393,89 @@ body.modal-open{overflow:hidden}
 }
 @media(max-width:385px){.content{padding-left:10px;padding-right:10px}.summary-card{padding:11px}.summary-icon{display:none}.seller-email{max-width:195px}.applications-table tr.application-row{padding:11px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* LokalCraft Dashboard-aligned Seller Approvals theme */
+:root{
+  --bg:#fff8ed;
+  --surface:#fffefc;
+  --ink:#342d27;
+  --muted:#80756b;
+  --line:#eae0d7;
+  --orange:#a55325;
+  --orange-pale:#fff1e4;
+  --green:#278553;
+  --green-pale:#effaf3;
+  --red:#c94141;
+  --red-pale:#fff1f1;
+  --shadow:0 8px 22px rgba(67,44,22,.045);
+}
+body,.page{background:var(--bg);color:var(--ink)}
+.content{padding:28px 26px 42px}
+.approvals-wrap{width:100%;max-width:1600px;margin:0 auto}
+.header{margin-bottom:22px}
+.header h1{margin:0;color:#382c22;font-size:clamp(1.6rem,3.3vw,2.1rem);font-weight:800;letter-spacing:-.04em}
+.review-flash{background:#fffefc;border-color:#eae0d7;border-radius:12px}
+.review-flash.success{background:#effaf3;border-color:#cfe8d9;color:#278553}
+.review-flash.error{background:#fff1f1;border-color:#efcaca;color:#c94141}
+.summary-grid{gap:13px;margin-bottom:20px}
+.summary-card,.list-panel{background:#fffefc;border-color:#eae0d7;border-radius:18px;box-shadow:var(--shadow)}
+.summary-card{padding:16px 18px}
+.summary-label{color:#80756b;font-weight:650}
+.summary-value{color:#382c22;font-weight:800}
+.summary-icon{background:#fff1e4;color:#a55325;border-radius:12px}
+.summary-card:nth-child(2) .summary-icon{background:#fff6e8;color:#b47543}
+.summary-card:nth-child(3) .summary-icon{background:#effaf3;color:#278553}
+.summary-card:nth-child(4) .summary-icon{background:#fff1f1;color:#c94141}
+.toolbar{background:#fffefc;border-bottom-color:#eae0d7;padding:18px 20px}
+.filter-tab{background:#fffaf5;border-color:#eae0d7;color:#75685e;border-radius:10px}
+.filter-tab:hover{background:#fff1e4;border-color:#f0d9be;color:#a55325}
+.filter-tab.active{background:#a55325;border-color:#a55325;color:#fff8ed;box-shadow:0 5px 13px rgba(165,83,37,.16)}
+.filter-tab.active .filter-count{background:rgba(255,255,255,.22)}
+.search-wrap{background:#fffefc;border-color:#e5d9cf;border-radius:11px}
+.search-wrap:focus-within{border-color:#d99a63;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.search-wrap svg{color:#a55325}
+.search-wrap input{color:#342d27}
+.table-shell,.table-scroll{background:#fffefc}
+.applications-table thead th{background:#fffaf5;color:#75685e;border-bottom-color:#eae0d7}
+.applications-table td{border-bottom-color:#f0e7de}
+.applications-table tbody tr:hover{background:#fffaf5}
+.seller-avatar,.business-avatar{background:#fff1e4;color:#a55325}
+.seller-name,.business-name{color:#47372c}
+.seller-email,.business-category,.application-extra,.applied-date{color:#80756b}
+.status-badge.status-pending{background:#fff1e4;color:#a55325;border-color:#f0d9be}
+.status-badge.status-approved{background:#effaf3;color:#278553;border-color:#cfe8d9}
+.status-badge.status-rejected{background:#fff1f1;color:#c94141;border-color:#efcaca}
+.row-arrow{color:#a55325}
+.no-results,.empty-state{color:#80756b}
+.modal-backdrop{background:rgba(52,38,28,.48)}
+.modal-card{background:#fffefc;border-color:#eae0d7;border-radius:20px;box-shadow:0 24px 72px rgba(51,34,21,.20)}
+.modal-header,.modal-footer{background:#fffaf5;border-color:#eee3da}
+.modal-header h2{color:#47372c;font-weight:800}
+.modal-header p{color:#80756b}
+.modal-close{background:#fffefc;border-color:#e5d9cf;color:#75685e}
+.modal-close:hover{background:#fff1e4;color:#a55325}
+.detail-section,.document-tile{background:#fffefc;border-color:#eae0d7}
+.detail-section h3,.detail-value,.document-title{color:#47372c}
+.detail-label,.detail-help,.document-meta{color:#80756b}
+.document-button,.btn-primary{background:#a55325;border-color:#a55325;color:#fff8ed}
+.document-button:hover,.btn-primary:hover{background:#c2692e;border-color:#c2692e}
+.btn-secondary{background:#fffaf5;border-color:#eae0d7;color:#75685e}
+.btn-secondary:hover{background:#fff1e4;color:#a55325}
+.btn-danger{background:#c94141;border-color:#c94141;color:#fff}
+.btn-danger:hover{background:#ad3535;border-color:#ad3535}
+.viewer-card{background:#fffefc;border-color:#eae0d7;border-radius:20px}
+.viewer-header{background:#fffaf5;border-color:#eee3da}
+@media(max-width:840px){.content{padding:93px 17px 80px}}
+@media(max-width:600px){.content{padding-left:13px;padding-right:13px}.summary-card,.list-panel{border-radius:16px}.toolbar{padding:15px 13px}}
 </style>
 </head>
 <body>
 <div class="page">
   <?php include __DIR__ . '/admin_nav.php'; ?>
   <main class="content">
+    <div class="approvals-wrap">
     <div class="header">
       <h1>Seller Approvals</h1>
-      <p>Open an application to review its details and take action.</p>
     </div>
     <?php if (!empty($flash)): ?>
       <div class="review-flash <?php echo $flash['type'] === 'success' ? 'success' : 'error'; ?>" role="status">

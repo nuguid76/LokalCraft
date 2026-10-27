@@ -1,12 +1,8 @@
 <?php
 /** LokalCraft Admin - Users: Buyer/Seller accounts only. */
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 $activePage = 'users';
-header('Cache-Control: private, no-store, max-age=0');
 
 function usersEsc($value): string
 {
@@ -19,149 +15,59 @@ function usersJson(array $data, int $code = 200): void
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
-function usersValidAdmin(mysqli $conn, int $id): ?array
-{
-    $stmt = $conn->prepare('SELECT firstname, lastname, AdminOrNot, account_status FROM users WHERE id = ? LIMIT 1');
-    $stmt->bind_param('i', $id);
-    $stmt->execute();
-    $stmt->bind_result($first, $last, $isAdmin, $status);
-    $exists = $stmt->fetch();
-    $stmt->close();
-    if (!$exists || (int)$isAdmin !== 1 || strtolower(trim((string)$status)) !== 'active') {
-        return null;
-    }
-    return ['id' => $id, 'name' => trim((string)$first . ' ' . (string)$last)];
-}
-function usersResolveAdmin(mysqli $conn): ?array
-{
-    foreach (['user_id', 'admin_id', 'logged_id', 'id'] as $key) {
-        $candidate = $_SESSION[$key] ?? null;
-        if (is_scalar($candidate) && ctype_digit((string)$candidate) && (int)$candidate > 0) {
-            return usersValidAdmin($conn, (int)$candidate);
-        }
-    }
-    foreach (['admin_email', 'loggedEmail', 'user_email', 'email'] as $key) {
-        $email = trim((string)($_SESSION[$key] ?? ''));
-        if ($email === '') continue;
-        $stmt = $conn->prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND AdminOrNot = 1 LIMIT 1');
-        $stmt->bind_param('s', $email);
-        $stmt->execute();
-        $stmt->bind_result($id);
-        $found = $stmt->fetch();
-        $stmt->close();
-        if ($found) {
-            $admin = usersValidAdmin($conn, (int)$id);
-            if ($admin !== null) return $admin;
-        }
-    }
-    return null;
-}
-try {
-    $currentAdmin = usersResolveAdmin($conn);
-} catch (Throwable $e) {
-    error_log('LokalCraft users auth: ' . $e->getMessage());
-    http_response_code(503);
-    exit('Admin access is temporarily unavailable.');
-}
-if ($currentAdmin === null) {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') usersJson(['success' => false, 'message' => 'Admin session has expired or access is denied.'], 403);
-    header('Location: ../login.php');
-    exit;
-}
-$adminName = $currentAdmin['name'] !== '' ? $currentAdmin['name'] : 'Admin';
 if (empty($_SESSION['admin_users_csrf'])) $_SESSION['admin_users_csrf'] = bin2hex(random_bytes(32));
 $usersCsrf = $_SESSION['admin_users_csrf'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? '');
-    if ($action !== 'update_user') usersJson(['success' => false, 'message' => 'Invalid request.'], 400);
+    if ($action !== 'update_user_status') {
+        usersJson(['success' => false, 'message' => 'Invalid request.'], 400);
+    }
     $token = $_POST['csrf_token'] ?? '';
     if (!is_string($token) || !hash_equals($usersCsrf, $token)) {
         usersJson(['success' => false, 'message' => 'Session expired. Refresh the page and retry.'], 403);
     }
     $targetId = filter_var($_POST['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-    if (!$targetId || (int)$targetId === (int)$currentAdmin['id']) {
+    if (!$targetId || (int)$targetId === (int)$adminId) {
         usersJson(['success' => false, 'message' => 'Invalid user account.'], 400);
     }
-    $first = trim((string)($_POST['firstname'] ?? ''));
-    $middle = trim((string)($_POST['middlename'] ?? ''));
-    $last = trim((string)($_POST['lastname'] ?? ''));
-    $email = trim((string)($_POST['email'] ?? ''));
-    $phone = trim((string)($_POST['phone'] ?? ''));
     $status = strtolower(trim((string)($_POST['account_status'] ?? '')));
-    $newPassword = (string)($_POST['new_password'] ?? '');
-    $confirmPassword = (string)($_POST['confirm_password'] ?? '');
-    foreach (['First name' => $first, 'Last name' => $last] as $label => $value) {
-        if ($value === '' || strlen($value) > 100 || preg_match('/[\x00-\x1F\x7F]/', $value)) {
-            usersJson(['success' => false, 'message' => $label . ' is required and must be at most 100 characters.'], 422);
-        }
-    }
-    if (strlen($middle) > 100 || preg_match('/[\x00-\x1F\x7F]/', $middle)) {
-        usersJson(['success' => false, 'message' => 'Middle name must be at most 100 characters.'], 422);
-    }
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 100) {
-        usersJson(['success' => false, 'message' => 'Enter a valid email address (maximum 100 characters).'], 422);
-    }
-    if (strlen($phone) > 20 || ($phone !== '' && !preg_match('/^[0-9+()\s-]{7,20}$/', $phone))) {
-        usersJson(['success' => false, 'message' => 'Enter a valid phone number (maximum 20 characters).'], 422);
-    }
     if (!in_array($status, ['active', 'pending', 'disabled'], true)) {
-        usersJson(['success' => false, 'message' => 'Choose a valid account status.'], 422);
+        usersJson(['success' => false, 'message' => 'Select a valid account status.'], 422);
     }
-    $passwordHash = null;
-    if ($newPassword !== '' || $confirmPassword !== '') {
-        if (strlen($newPassword) < 10 || strlen($newPassword) > 128 || $newPassword !== $confirmPassword) {
-            usersJson(['success' => false, 'message' => 'New passwords must match and contain 10 to 128 characters.'], 422);
-        }
-        $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
-        if ($passwordHash === false) usersJson(['success' => false, 'message' => 'Could not secure the new password.'], 500);
-    }
+
     try {
         $conn->begin_transaction();
-        $stmt = $conn->prepare('SELECT id, SellerOrNot FROM users WHERE id = ? AND COALESCE(AdminOrNot, 0) = 0 LIMIT 1 FOR UPDATE');
-        $stmt->bind_param('i', $targetId);
-        $stmt->execute();
-        $stmt->bind_result($existingId, $sellerFlag);
-        $found = $stmt->fetch();
-        $stmt->close();
+        $lock = $conn->prepare('SELECT SellerOrNot FROM users WHERE id = ? AND COALESCE(AdminOrNot, 0) = 0 FOR UPDATE');
+        $lock->bind_param('i', $targetId);
+        $lock->execute();
+        $lock->bind_result($sellerFlag);
+        $found = $lock->fetch();
+        $lock->close();
         if (!$found) {
             $conn->rollback();
-            usersJson(['success' => false, 'message' => 'User not found or is an administrator.'], 404);
+            usersJson(['success' => false, 'message' => 'User account not found or cannot be managed here.'], 404);
         }
-        $duplicate = $conn->prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ? LIMIT 1');
-        $duplicate->bind_param('si', $email, $targetId);
-        $duplicate->execute();
-        $duplicate->bind_result($duplicateId);
-        $emailTaken = $duplicate->fetch();
-        $duplicate->close();
-        if ($emailTaken) {
-            $conn->rollback();
-            usersJson(['success' => false, 'message' => 'This email is already used by another account.'], 409);
-        }
-        if ($passwordHash === null) {
-            $stmt = $conn->prepare('UPDATE users SET firstname = ?, middlename = ?, lastname = ?, email = ?, phone = NULLIF(?, \'\'), account_status = ? WHERE id = ? AND COALESCE(AdminOrNot, 0) = 0');
-            $stmt->bind_param('ssssssi', $first, $middle, $last, $email, $phone, $status, $targetId);
-        } else {
-            $stmt = $conn->prepare('UPDATE users SET firstname = ?, middlename = ?, lastname = ?, email = ?, phone = NULLIF(?, \'\'), account_status = ?, password = ? WHERE id = ? AND COALESCE(AdminOrNot, 0) = 0');
-            $stmt->bind_param('sssssssi', $first, $middle, $last, $email, $phone, $status, $passwordHash, $targetId);
-        }
+
+        $stmt = $conn->prepare('UPDATE users SET account_status = ? WHERE id = ? AND COALESCE(AdminOrNot, 0) = 0');
+        $stmt->bind_param('si', $status, $targetId);
         $stmt->execute();
         $stmt->close();
         $conn->commit();
-        usersJson(['success' => true, 'message' => 'User account updated.', 'user' => [
-            'id' => (int)$targetId, 'firstname' => $first, 'middlename' => $middle,
-            'lastname' => $last, 'email' => $email, 'phone' => $phone,
-            'status' => $status, 'role' => (int)$sellerFlag === 1 ? 'Seller' : 'Buyer'
-        ]]);
-    } catch (mysqli_sql_exception $e) {
-        try { $conn->rollback(); } catch (Throwable $ignored) {}
-        error_log('Admin user update: ' . $e->getMessage());
-        $message = (int)$e->getCode() === 1062 ? 'Email or phone is already in use.' : 'Could not save this user. Check the server log.';
-        usersJson(['success' => false, 'message' => $message], (int)$e->getCode() === 1062 ? 409 : 500);
+
+        usersJson([
+            'success' => true,
+            'message' => 'Account status updated.',
+            'user' => [
+                'id' => (int)$targetId,
+                'status' => $status,
+                'role' => (int)$sellerFlag === 1 ? 'Seller' : 'Buyer',
+            ],
+        ]);
     } catch (Throwable $e) {
         try { $conn->rollback(); } catch (Throwable $ignored) {}
-        error_log('Admin user update: ' . $e->getMessage());
-        usersJson(['success' => false, 'message' => 'Could not save this user.'], 500);
+        error_log('Admin user status update: ' . $e->getMessage());
+        usersJson(['success' => false, 'message' => 'Could not update this account status.'], 500);
     }
 }
 
@@ -228,13 +134,33 @@ body.users-modal-open{overflow:hidden}
 @media(max-width:760px){.content{padding:20px 14px 28px}.users-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.users-stat{padding:15px 13px;border-radius:13px}.users-stat:first-child{grid-column:1/-1}.users-stat strong{font-size:1.35rem}.users-panel{padding:13px 11px 10px}.users-toolbar{gap:8px}.users-search{flex-basis:100%}.users-filter{flex:1 1 0;min-width:0}.users-table-scroll{max-height:60vh}.users-table th:nth-child(3),.users-table td:nth-child(3),.users-table th:nth-child(4),.users-table td:nth-child(4){display:none}.users-table th:nth-child(2){width:59%}.users-table th:nth-child(5){width:31%}.users-table th:nth-child(6){width:10%}.users-table td,.users-table th{padding:11px 5px}.users-name{font-size:.78rem}.users-mobile-sub{display:block;font-size:.67rem;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#89817a}.users-pill{font-size:.65rem;padding:5px 6px}.users-dialog{padding:18px 16px;max-height:90dvh}}
 @media(max-width:390px){.users-fields{grid-template-columns:1fr}.users-table th:nth-child(2){width:54%}.users-table th:nth-child(5){width:35%}.users-table th:nth-child(6){width:11%}.users-heading h1{font-size:1.5rem}.users-arrow{min-width:24px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important}}
+
+/* LokalCraft secure Users theme */
+:root{--users-bg:#fff8ed;--users-white:#fffefc;--users-text:#342d27;--users-muted:#80756b;--users-line:#eae0d7;--users-orange:#e98b40;--users-shadow:0 8px 22px rgba(67,44,22,.045)}
+body,.page{background:var(--users-bg)}
+.content{padding:28px 26px 42px}
+.users-head h1{color:#382c22;font-size:clamp(1.6rem,3.3vw,2.1rem);font-weight:800;letter-spacing:-.04em}
+.users-summary-card,.users-panel{background:#fffefc;border-color:#eae0d7;border-radius:18px;box-shadow:var(--users-shadow)}
+.users-toolbar input,.users-toolbar select,.users-field input,.users-field select{border-color:#e5d9cf;background:#fffefc}
+.users-toolbar input:focus,.users-toolbar select:focus,.users-field select:focus{border-color:#d99a63;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.users-table th{background:#fffaf5;color:#75685e}
+.users-table td{border-bottom-color:#f0e7de}
+.users-table tbody tr:hover{background:#fffaf5}
+.users-pill.buyer{color:#7b5a40;background:#fff3e8;border-color:#efdcc9}
+.users-pill.seller,.users-pill.pending{color:#a55325;background:#fff1e4;border-color:#f0d9be}
+.users-pill.active{color:#278553;background:#effaf3;border-color:#cfe8d9}
+.users-pill.disabled{color:#c94141;background:#fff1f1;border-color:#efcaca}
+.users-dialog{background:#fffefc;border:1px solid #eae0d7;border-radius:20px;box-shadow:0 24px 72px rgba(51,34,21,.20)}
+.users-field input[readonly]{background:#f7f0e9;color:#69584b;cursor:default}
+.users-btn.primary{background:#a55325;border-color:#a55325;color:#fff8ed}
+.users-btn.primary:hover{background:#c2692e;border-color:#c2692e}
 </style>
 </head>
 <body>
 <div class="page">
 <?php include __DIR__ . '/admin_nav.php'; ?>
 <main class="content">
-<header class="users-heading"><h1>Users</h1><p>Manage buyer and seller accounts on LokalCraft.</p></header>
+<header class="users-heading"><h1>Users</h1></header>
 <?php if ($errorMessage !== ''): ?><div class="users-alert"><?php echo usersEsc($errorMessage); ?></div><?php endif; ?>
 <section class="users-stats" aria-label="Account totals">
 <div class="users-stat"><span>Total Users</span><strong id="usersTotal"><?php echo number_format($userCount); ?></strong><small>Buyers and sellers only</small></div>
@@ -272,28 +198,24 @@ body.users-modal-open{overflow:hidden}
 <div class="users-modal" id="usersModal" hidden aria-hidden="true">
 <div class="users-backdrop" data-close-modal></div>
 <div class="users-dialog" role="dialog" aria-modal="true" aria-labelledby="usersModalTitle">
-<div class="users-modal-head"><div><h2 id="usersModalTitle">Edit User Account</h2><p>Update account information and access.</p></div><button type="button" class="users-icon-close" data-close-modal aria-label="Close">×</button></div>
+<div class="users-modal-head"><div><h2 id="usersModalTitle">User Account Details</h2><p>Review account information and manage access status.</p></div><button type="button" class="users-icon-close" data-close-modal aria-label="Close">×</button></div>
 <form id="usersEditForm" autocomplete="off">
-<input type="hidden" name="action" value="update_user"><input type="hidden" name="csrf_token" value="<?php echo usersEsc($usersCsrf); ?>"><input type="hidden" name="user_id" id="usersEditId">
+<input type="hidden" name="action" value="update_user_status"><input type="hidden" name="csrf_token" value="<?php echo usersEsc($usersCsrf); ?>"><input type="hidden" name="user_id" id="usersEditId">
 <div class="users-fields"><div class="users-field"><label for="usersReadonlyId">User ID</label><input id="usersReadonlyId" readonly></div><div class="users-field"><label for="usersReadonlyRole">Role (cannot be changed)</label><input id="usersReadonlyRole" readonly></div></div>
 <div class="users-form-section"><h3>Personal information</h3><div class="users-fields">
-<div class="users-field"><label for="usersFirst">First Name</label><input id="usersFirst" name="firstname" maxlength="100" required></div>
-<div class="users-field"><label for="usersMiddle">Middle Name</label><input id="usersMiddle" name="middlename" maxlength="100" placeholder="Optional"></div>
-<div class="users-field"><label for="usersLast">Last Name</label><input id="usersLast" name="lastname" maxlength="100" required></div>
-<div class="users-field"><label for="usersPhone">Phone Number</label><input id="usersPhone" name="phone" type="tel" maxlength="20" placeholder="Optional"></div>
-<div class="users-field wide"><label for="usersEmail">Email Address</label><input id="usersEmail" name="email" type="email" maxlength="100" required></div>
-</div></div>
+<div class="users-field"><label for="usersFirst">First Name</label><input id="usersFirst" readonly></div>
+<div class="users-field"><label for="usersMiddle">Middle Name</label><input id="usersMiddle" readonly></div>
+<div class="users-field"><label for="usersLast">Last Name</label><input id="usersLast" readonly></div>
+<div class="users-field"><label for="usersPhone">Phone Number</label><input id="usersPhone" type="tel" readonly></div>
+<div class="users-field wide"><label for="usersEmail">Email Address</label><input id="usersEmail" type="email" readonly></div>
+</div><div class="users-help">Personal details are read-only in Admin. Users should update their own profile through the verified account flow.</div></div>
 <div class="users-form-section"><h3>Account and access</h3><div class="users-fields">
 <div class="users-field"><label for="usersStatus">Account Status</label><select id="usersStatus" name="account_status" required><option value="active">Active</option><option value="pending">Pending</option><option value="disabled">Disabled</option></select></div>
 <div class="users-field"><label for="usersApplication">Seller Application</label><input id="usersApplication" readonly></div>
 <div class="users-field wide"><label for="usersJoined">Date Joined</label><input id="usersJoined" readonly></div>
-</div><div class="users-status-warning" id="usersStatusNote">Setting a user to Disabled blocks their access once login and session checks are enforced.</div></div>
-<div class="users-form-section"><h3>Reset Password (Optional)</h3><div class="users-fields">
-<div class="users-field"><label for="usersNewPassword">New Password</label><input id="usersNewPassword" type="password" name="new_password" minlength="10" maxlength="128" autocomplete="new-password" placeholder="Leave blank to keep"></div>
-<div class="users-field"><label for="usersConfirmPassword">Confirm New Password</label><input id="usersConfirmPassword" type="password" name="confirm_password" minlength="10" maxlength="128" autocomplete="new-password" placeholder="Confirm new password"></div>
-</div><div class="users-help">Existing passwords cannot be viewed. Leave both fields blank to keep the current password.</div></div>
+</div><div class="users-status-warning" id="usersStatusNote">Disabling an account prevents access on pages protected by LokalCraft authentication checks.</div></div>
 <div class="users-form-message" id="usersFormError" role="alert" hidden></div>
-<div class="users-actions"><button type="button" class="users-btn" data-close-modal>Cancel</button><button class="users-btn primary" type="submit" id="usersSaveButton">Save Changes</button></div>
+<div class="users-actions"><button type="button" class="users-btn" data-close-modal>Cancel</button><button class="users-btn primary" type="submit" id="usersSaveButton">Save Account Status</button></div>
 </form>
 </div></div>
 <script>
@@ -333,8 +255,6 @@ body.users-modal-open{overflow:hidden}
         form.reset();
         document.getElementById('usersEditId').value = record.id;
         Object.entries(fields).forEach(([key, id]) => { document.getElementById(id).value = record[key] ?? ''; });
-        document.getElementById('usersNewPassword').value = '';
-        document.getElementById('usersConfirmPassword').value = '';
         error.hidden = true;
         modal.hidden = false;
         modal.setAttribute('aria-hidden', 'false');
@@ -362,9 +282,6 @@ body.users-modal-open{overflow:hidden}
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (saving || !openedRow) return;
-        if (form.elements.new_password.value !== form.elements.confirm_password.value) {
-            error.textContent = 'New passwords do not match.'; error.hidden = false; return;
-        }
         saving = true;
         save.disabled = true;
         save.textContent = 'Saving...';
@@ -378,17 +295,9 @@ body.users-modal-open{overflow:hidden}
             Object.assign(record, updated);
             openedRow.dataset.record = JSON.stringify(record);
             openedRow.dataset.status = updated.status;
-            openedRow.querySelector('[data-name]').textContent = [updated.firstname, updated.middlename, updated.lastname].filter(Boolean).join(' ');
-            openedRow.querySelector('[data-email]').textContent = updated.email;
-            openedRow.querySelector('[data-email]').title = updated.email;
-            openedRow.querySelector('[data-mobile-info]').textContent = record.role + ' · ' + updated.email;
             const pill = openedRow.querySelector('[data-status-pill]');
             pill.className = 'users-pill ' + updated.status;
             pill.textContent = updated.status.charAt(0).toUpperCase() + updated.status.slice(1);
-            openedRow.setAttribute('aria-label', 'Open account for ' + [updated.firstname, updated.middlename, updated.lastname].filter(Boolean).join(' '));
-            openedRow.querySelector('.users-arrow').setAttribute('aria-label', 'Edit ' + [updated.firstname, updated.middlename, updated.lastname].filter(Boolean).join(' '));
-            document.getElementById('usersNewPassword').value = '';
-            document.getElementById('usersConfirmPassword').value = '';
             saving = false;
             closeModal();
             filterRows();
@@ -398,7 +307,7 @@ body.users-modal-open{overflow:hidden}
         } finally {
             saving = false;
             save.disabled = false;
-            save.textContent = 'Save Changes';
+            save.textContent = 'Save Account Status';
         }
     });
     filterRows();

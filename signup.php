@@ -679,16 +679,97 @@ $otpResendSeconds = $otpModalOpen
       height: 1px;
       background: #E7CDB0;
     }
+    .account-paths {
+      margin-top: 22px;
+    }
     .switch-text {
+      margin: 0;
       text-align: center;
-      color: #3F2E1F;
+      color: #5A4635;
       font-size: 0.92rem;
-      margin-top: 18px;
+      line-height: 1.5;
     }
     .switch-text a {
-      color: #B85C28;
+      color: #A55325;
       text-decoration: none;
+      font-weight: 800;
+    }
+    .switch-text a:hover {
+      color: #C2692E;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .switch-text a:focus-visible,
+    .seller-path-link:focus-visible {
+      outline: 3px solid rgba(201, 109, 32, .22);
+      outline-offset: 3px;
+      border-radius: 8px;
+    }
+    .account-path-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 15px 0;
+      color: #9A7F69;
+      font-size: .76rem;
       font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .account-path-divider::before,
+    .account-path-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: #E7CDB0;
+    }
+    .seller-path-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 15px 16px;
+      border: 1px solid #E7CDB0;
+      border-radius: 16px;
+      background: #FFF8ED;
+    }
+    .seller-path-copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+      color: #5A4635;
+      line-height: 1.4;
+    }
+    .seller-path-copy strong {
+      color: #3F2E1F;
+      font-size: .9rem;
+      font-weight: 800;
+    }
+    .seller-path-copy span {
+      color: #806957;
+      font-size: .76rem;
+    }
+    .seller-path-link {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 39px;
+      padding: 9px 13px;
+      border: 1px solid #A55325;
+      border-radius: 11px;
+      background: #A55325;
+      color: #FFF8ED;
+      text-decoration: none;
+      font-size: .8rem;
+      font-weight: 800;
+      white-space: nowrap;
+      transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+    }
+    .seller-path-link:hover {
+      border-color: #C2692E;
+      background: #C2692E;
+      transform: translateY(-1px);
     }
     .signup-page {
       width: min(1600px, 100%);
@@ -722,6 +803,12 @@ $otpResendSeconds = $otpModalOpen
       .form-group, .password-field { min-width: 0; }
       .form-group input { min-height: 47px; padding: 12px 14px; font-size: 16px; }
       .btn-login { min-height: 48px; padding: 13px 18px; }
+      .seller-path-card {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .seller-path-link { width: 100%; }
       .policy-modal { padding: 12px; }
       .policy-card { max-height: calc(100dvh - 24px); }
       .policy-header { padding: 17px; }
@@ -998,8 +1085,8 @@ $otpResendSeconds = $otpModalOpen
     <div class="signup-card">
       <div class="login-card">
       <div class="login-header">
-        <h1 class="login-title">Create your account</h1>
-        <p class="login-subtitle">Join our community and support Filipino artisans with authentic handcrafted products.</p>
+        <h1 class="login-title">Create Your Buyer Account</h1>
+        <p class="login-subtitle">Join LokalCraft as a buyer and support Filipino artisans by discovering authentic handcrafted products.</p>
       </div>
       <?php if ($errorMessage !== '' && !$otpModalOpen): ?>
         <div style="margin-bottom:16px;padding:12px 14px;border:1px solid #efc0c0;border-radius:12px;background:#fff2f2;color:#b33;font-size:.9rem;">
@@ -1083,7 +1170,20 @@ $otpResendSeconds = $otpModalOpen
         </label>
         <button type="submit" class="btn-login" id="signupSubmitBtn">Continue to Email Verification</button>
       </form>
-      <p class="switch-text">Already have an account? <a href="login.php">Log in</a></p>
+      <div class="account-paths" aria-label="Other account options">
+        <p class="switch-text account-login-text">
+          Already have an account?
+          <a href="login.php">Log in</a>
+        </p>
+        <div class="account-path-divider" aria-hidden="true"><span>or</span></div>
+        <div class="seller-path-card">
+          <div class="seller-path-copy">
+            <strong>Are you an artisan or craft seller?</strong>
+            <span>Apply to showcase and sell your handcrafted products on LokalCraft.</span>
+          </div>
+          <a class="seller-path-link" href="become_a_seller.php">Become a Seller</a>
+        </div>
+      </div>
       </div>
     </div>
   </main>

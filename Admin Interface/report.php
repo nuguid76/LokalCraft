@@ -1,18 +1,19 @@
 <?php
 declare(strict_types=1);
-if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
 date_default_timezone_set('Asia/Manila');
-// Align MySQL TIMESTAMP dates to Philippine time.
-if (!$conn->query("SET time_zone = '+08:00'")) error_log('Unable to set report session time zone to Asia/Manila.');
+if (!$conn->query("SET time_zone = '+08:00'")) {
+    error_log('Unable to set report session time zone to Asia/Manila.');
+}
 $activePage = 'reports';
+
 function srEsc($value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function srMoney($value): string { return '₱' . number_format((float)$value, 2); }
 function srCount($value): string { return number_format((int)$value); }
 function srDate($value): string { $time = $value ? strtotime((string)$value) : false; return $time ? date('M j, Y · g:i A', $time) : '—'; }
 function srStatus($value): string {
     $raw = strtolower(trim((string)$value));
-    return match($raw) { 'confirmed' => 'Accepted', 'delivered' => 'Completed', 'canceled' => 'Cancelled', default => ucwords(str_replace('_', ' ', $raw ?: 'Unknown')) };
+    return match($raw) { 'confirmed' => 'Accepted', 'delivered' => 'Completed', 'canceled' => 'Cancelled', 'declined', 'rejected' => 'Rejected', default => ucwords(str_replace('_', ' ', $raw ?: 'Unknown')) };
 }
 function srRun(mysqli $conn, string $sql, string $types = '', array $params = []): array {
     $stmt = $conn->prepare($sql);
@@ -46,12 +47,15 @@ function srCsvSafe($value) {
 function srCsvRow($handle, array $values): void { fputcsv($handle, array_map('srCsvSafe', $values), ',', '"', ''); }
 function srPayMethod($value): string {
     $s = strtolower(trim((string)$value));
-    if ($s === '') return 'Not recorded';
+    if ($s === '') return '';
     if (str_contains($s, 'cash') || $s === 'cod') return 'Cash';
-    if (str_contains($s, 'qr')) return 'QR Ph';
-    if (str_contains($s, 'gcash') || str_contains($s, 'maya')) return 'GCash / Maya';
-    if (str_contains($s, 'paymongo')) return 'Online payment';
-    return 'Other (' . ucwords(str_replace('_', ' ', $s)) . ')';
+    if (
+        str_contains($s, 'qr') || str_contains($s, 'gcash')
+        || str_contains($s, 'maya') || str_contains($s, 'paymongo')
+        || str_contains($s, 'online') || str_contains($s, 'digital')
+        || str_contains($s, 'e-wallet') || str_contains($s, 'ewallet')
+    ) return 'QR Ph';
+    return '';
 }
 function srPercent(float $value, float $total): string { return $total > 0 ? number_format($value * 100 / $total, 1) . '%' : '0.0%'; }
 function srPaymentStatus($value): string {
@@ -88,24 +92,6 @@ function srCsvFilename(array $seller, string $ext): string {
     return $business . '_' . $last . ',' . $first . '.' . $ext;
 }
 
-$adminId = 0;
-foreach (['admin_id','user_id','logged_id','id'] as $key) {
-    $candidate = filter_var($_SESSION[$key] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
-    if ($candidate !== false) { $adminId = (int)$candidate; break; }
-}
-if ($adminId < 1) { header('Location: ../login.php'); exit; }
-try {
-    $adminRecords = srRun($conn, 'SELECT firstname, lastname, AdminOrNot, account_status FROM users WHERE id = ? LIMIT 1', 'i', [$adminId]);
-    $admin = $adminRecords[0] ?? null;
-    if (!$admin || (int)$admin['AdminOrNot'] !== 1 || in_array(strtolower((string)$admin['account_status']), ['disabled','inactive','suspended','banned'], true)) {
-        http_response_code(403); exit('Access denied.');
-    }
-    $adminName = trim((string)$admin['firstname'] . ' ' . (string)$admin['lastname']) ?: 'Admin';
-    $userName = $adminName;
-} catch (Throwable $error) {
-    error_log('LokalCraft reports admin verification: ' . $error->getMessage());
-    http_response_code(503); exit('Could not verify administrator access.');
-}
 header('Cache-Control: private, no-store, max-age=0');
 $exportFormat = (string)($_GET['export'] ?? '');
 $exporting = in_array($exportFormat, ['csv','xlsx'], true);
@@ -124,8 +110,8 @@ $daily = [];
 $monthly = [];
 $hours = array_fill(0, 24, ['amount'=>0.0, 'orders'=>0]);
 $halves = ['1–15'=>0.0,'16–end'=>0.0];
-$statusCounts = ['Pending'=>0,'Accepted'=>0,'Processing'=>0,'Completed'=>0,'Cancellation Requested'=>0,'Cancelled'=>0,'Declined'=>0,'Expired'=>0,'Disputed'=>0,'Other'=>0];
-$paymentCounts = ['Cash'=>0,'QR Ph'=>0,'GCash / Maya'=>0,'Online payment'=>0,'Not recorded'=>0];
+$statusCounts = ['Pending'=>0,'Accepted'=>0,'Processing'=>0,'Completed'=>0,'Cancelled'=>0,'Rejected'=>0];
+$paymentCounts = ['Cash'=>0,'QR Ph'=>0];
 $paymentStatusCounts = ['Paid'=>0,'Awaiting payment'=>0,'Refunded'=>0,'Payment failed'=>0,'Payment cancelled'=>0,'No payment recorded'=>0];
 $summary = ['gross_sales'=>0.0,'completed_orders'=>0,'platform_fees'=>0.0,'fees_unavailable'=>0,'average_order'=>0.0,'orders_in_period'=>0,'paid_orders'=>0,'saved'=>0,'cart'=>0,'units'=>0,'gross_profit'=>null,'net_profit'=>null];
 $peakHour = null;
@@ -162,23 +148,26 @@ try {
           WHERE o.seller_id = ? AND o.ordered_at >= ? AND o.ordered_at < ?
           ORDER BY o.ordered_at DESC, o.order_id DESC", 'iss', [$sellerId, $from, $endExclusive]);
         foreach ($orders as $o) {
+            if (!is_array($o)) continue;
             $summary['orders_in_period']++;
-            $status = srStatus($o['order_status']);
-            $normalized = array_key_exists($status, $statusCounts) ? $status : 'Other';
-            $statusCounts[$normalized]++;
-            $method = srPayMethod(($o['payment_method'] ?? '') ?: ($o['agreed_payment_option'] ?? ''));
-            $paymentCounts[$method] = ($paymentCounts[$method] ?? 0) + 1;
-            $paymentStatus = strtolower(trim((string)$o['payment_status']));
+            $status = srStatus($o['order_status'] ?? '');
+            if (isset($statusCounts[$status])) $statusCounts[$status]++;
+            $recordedMethod = trim((string)($o['payment_method'] ?? ''));
+            $agreedMethod = trim((string)($o['agreed_payment_option'] ?? ''));
+            $method = srPayMethod($recordedMethod !== '' ? $recordedMethod : $agreedMethod);
+            if ($method !== '' && isset($paymentCounts[$method])) $paymentCounts[$method]++;
+            $paymentStatus = strtolower(trim((string)($o['payment_status'] ?? '')));
             $payBucket = srPaymentStatus($paymentStatus);
+            if (!isset($paymentStatusCounts[$payBucket])) $paymentStatusCounts[$payBucket] = 0;
             $paymentStatusCounts[$payBucket]++;
             if ($payBucket === 'Paid') $summary['paid_orders']++;
             if ($status !== 'Completed') continue;
-            $amount = (float)$o['total_amount'];
+            $amount = (float)($o['total_amount'] ?? 0);
             $summary['gross_sales'] += $amount;
             $summary['completed_orders']++;
-            if (strtolower((string)$o['commission_status']) === 'earned') $summary['platform_fees'] += (float)$o['commission_amount'];
+            if (strtolower((string)($o['commission_status'] ?? '')) === 'earned') $summary['platform_fees'] += (float)($o['commission_amount'] ?? 0);
             else $summary['fees_unavailable']++;
-            $stamp = strtotime((string)$o['ordered_at']);
+            $stamp = strtotime((string)($o['ordered_at'] ?? ''));
             if (!$stamp) continue;
             $day = date('Y-m-d', $stamp);
             $month = date('Y-m', $stamp);
@@ -451,13 +440,33 @@ $excelQuery=http_build_query($exportParams+['export'=>'xlsx']);
 @media(max-width:840px){.page>.content{padding:92px 16px 38px}.sr-two{grid-template-columns:1fr}.sr-heading{margin-bottom:15px}}
 @media(max-width:600px){.page>.content{padding:88px 12px 34px}.sr-heading{flex-direction:column;gap:8px}.sr-filter-panel{padding:14px}.sr-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.sr-field.seller{grid-column:1/-1}.sr-filter-grid .sr-btn{grid-column:1/-1}.sr-section-title{align-items:flex-start}.sr-export{width:100%}.sr-export .sr-btn{flex:1}.sr-stat-grid{gap:9px}.sr-stat{padding:12px;min-height:107px}.sr-stat strong{font-size:clamp(1rem,4vw,1.3rem)}.sr-stat-icon{width:26px;height:26px;flex-basis:26px;font-size:.84rem}.sr-stat label{font-size:.69rem}.sr-stat small{font-size:.63rem}.sr-block{padding:14px}.sr-bar-line{grid-template-columns:75px minmax(0,1fr) 78px;gap:6px;font-size:.7rem}.sr-bar-line strong{font-size:.68rem}.sr-table td,.sr-table th{padding:10px 7px}.sr-bar-line strong{overflow-wrap:anywhere}}
 @media(max-width:360px){.sr-stat strong{font-size:.99rem}.sr-stat-icon{display:none}.sr-field label{font-size:.68rem}}
+
+/* LokalCraft Admin Reports and Analytics theme */
+:root{--sr-bg:#fff8ed;--sr-card:#fffefc;--sr-text:#342d27;--sr-muted:#80756b;--sr-line:#eae0d7;--sr-orange:#a55325;--sr-shadow:0 8px 22px rgba(67,44,22,.045)}
+body,.page{background:var(--sr-bg);color:var(--sr-text)}
+.page>.content{padding:28px 26px 42px}.sr-wrap-page{width:100%;max-width:1600px;margin:0 auto}
+.sr-heading{margin-bottom:22px}.sr-heading h1{color:#382c22;font-size:clamp(1.6rem,3.3vw,2.1rem);font-weight:800;letter-spacing:-.04em}.sr-heading p{color:#80756b}.sr-pill{border-color:#f0d9be;background:#fff1e4;color:#a55325;border-radius:10px}
+.sr-panel{background:#fffefc;border-color:#eae0d7;border-radius:18px;box-shadow:var(--sr-shadow)}
+.sr-filter-panel{padding:20px 22px}.sr-field label{color:#75685e}.sr-field input,.sr-field select{background:#fffefc;border-color:#e5d9cf;color:#342d27;border-radius:11px}.sr-field input:focus,.sr-field select:focus{background:#fffefc;border-color:#d99a63;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.sr-btn.primary{background:#a55325;color:#fff8ed}.sr-btn.primary:hover{background:#c2692e}.sr-btn.secondary{background:#fff1e4;color:#a55325;border-color:#f0d9be}.sr-btn.secondary:hover{background:#ffe8d4}
+.sr-section-title h2,.sr-block h3{color:#47372c;font-weight:800}.sr-section-title small,.sr-sub{color:#887a6d}
+.sr-stat{min-height:122px;padding:18px}.sr-stat label{color:#80756b;font-weight:650}.sr-stat strong{color:#382c22;font-weight:800}.sr-stat-icon{width:38px;height:38px;flex-basis:38px;border-radius:12px;background:#fff1e4;color:#a55325}.sr-stat:nth-child(2) .sr-stat-icon{background:#eef4ff;color:#4f78b8}.sr-stat:nth-child(3) .sr-stat-icon{background:#effaf3;color:#278553}.sr-stat:nth-child(4) .sr-stat-icon{background:#fff6e8;color:#b47543}
+.sr-footnote{background:#fffaf5;border-color:#eee3da;color:#806f61;border-radius:12px}.sr-data-row{border-bottom-color:#f0e7de}.sr-data-row strong{color:#47372c}.sr-bar{background:#f3e8df}.sr-bar>span{background:linear-gradient(90deg,#d98b50,#a55325)}
+.sr-table th{background:#fffaf5;color:#75685e}.sr-table td,.sr-table th{border-bottom-color:#f0e7de}.sr-table tbody tr:hover td{background:#fffaf5}.sr-table td strong{color:#47372c}
+.sr-chip{background:#f7f0e9;color:#75685e}.sr-chip.good{background:#effaf3;color:#278553}.sr-chip.warn{background:#fff1e4;color:#a55325}.sr-chip.bad{background:#fff1f1;color:#c94141}
+.sr-progress-track{background:#f3e8df}.sr-progress-track>span{background:#d98b50}.sr-mini-metrics strong{color:#47372c}
+@media(max-width:840px){.page>.content{padding:93px 17px 80px}}
+@media(max-width:600px){.page>.content{padding-left:13px;padding-right:13px}.sr-panel{border-radius:16px}.sr-filter-panel{padding:15px 14px}.sr-heading h1{font-size:1.65rem}}
+
+.sr-report-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;color:#887a6d;font-size:.74rem}.sr-pagination,.sr-page-numbers{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap}.sr-page-nav,.sr-page-number{min-width:38px;min-height:38px;padding:7px 11px;border:1px solid #eae0d7;border-radius:10px;background:#fffaf5;color:#75685e;font:inherit;font-size:.76rem;font-weight:750;cursor:pointer}.sr-page-nav:hover,.sr-page-number:hover{background:#fff1e4;border-color:#f0d9be;color:#a55325}.sr-page-number.active{background:#a55325;border-color:#a55325;color:#fff8ed}.sr-page-nav:disabled{opacity:.45;cursor:not-allowed}.sr-page-nav:focus-visible,.sr-page-number:focus-visible{outline:3px solid rgba(201,109,32,.18);outline-offset:2px}@media(max-width:600px){.sr-report-footer{justify-content:center;text-align:center}.sr-report-footer>span,.sr-pagination{width:100%}}
 </style>
 </head>
 <body>
 <div class="page">
 <?php include __DIR__ . '/admin_nav.php'; ?>
 <main class="content">
-<header class="sr-heading"><div><h1>Reports &amp; Analytics</h1><p>Individual Seller • Sales, revenue, product performance, orders and payments</p></div><span class="sr-pill">Individual seller report</span></header>
+<div class="sr-wrap-page">
+<header class="sr-heading"><div><h1>Reports &amp; Analytics</h1></div><span class="sr-pill">Seller-specific report</span></header>
 <?php if ($errorMessage !== ''): ?><div class="sr-alert" role="alert"><?= srEsc($errorMessage) ?></div><?php endif; ?>
 <form class="sr-panel sr-filter-panel" method="get" action="report.php" aria-label="Individual seller report filters">
 <div class="sr-filter-grid">
@@ -467,7 +476,7 @@ $excelQuery=http_build_query($exportParams+['export'=>'xlsx']);
 <div class="sr-field optional"><label for="reportCogs">Period COGS (optional)</label><input id="reportCogs" type="number" step="0.01" min="0" name="cogs" placeholder="Not recorded" value="<?= $cogs === null ? '' : srEsc(number_format($cogs,2,'.','')) ?>"></div>
 <div class="sr-field optional"><label for="reportExpenses">Other expenses (optional)</label><input id="reportExpenses" type="number" step="0.01" min="0" name="expenses" placeholder="Not recorded" value="<?= $expenses === null ? '' : srEsc(number_format($expenses,2,'.','')) ?>"></div>
 <button class="sr-btn primary" type="submit" <?= !$sellers ? 'disabled' : '' ?>>View report →</button>
-</div><div class="sr-filter-foot">Select one seller and a date range. Optional COGS and expenses are used only for estimated profit, not saved to your database. Maximum range: 367 days.</div>
+</div>
 </form>
 <?php if ($seller && !$errorMessage): ?>
 <div class="sr-section-title"><div><h2><?= srEsc($seller['seller_name']) ?></h2><small class="sr-report-business">Business: <?= srEsc($seller['business_name']) ?></small><small class="sr-report-period">Report period: <?= srEsc(srFriendlyDate($from)) ?> to <?= srEsc(srFriendlyDate($to)) ?></small></div><div class="sr-export"><a class="sr-btn secondary" href="report.php?<?= srEsc($exportQuery) ?>">↓ Download CSV</a><a class="sr-btn primary" href="report.php?<?= srEsc($excelQuery) ?>">↓ Download Excel</a></div></div>
@@ -481,8 +490,7 @@ $excelQuery=http_build_query($exportParams+['export'=>'xlsx']);
 <article class="sr-panel sr-stat"><div><label>Estimated Net Profit</label><strong><?= $summary['net_profit'] === null ? '—' : srMoney($summary['net_profit']) ?></strong><small><?= $summary['net_profit'] === null ? 'Enter COGS and expenses' : 'Less entered costs, expenses and recorded fees' ?></small></div><span class="sr-stat-icon">↗</span></article>
 <article class="sr-panel sr-stat"><div><label>Paid Orders</label><strong><?= srCount($summary['paid_orders']) ?></strong><small>Recorded payment record marked paid</small></div><span class="sr-stat-icon">✓</span></article>
 </div>
-<p class="sr-footnote"><strong>How these numbers work:</strong> Completed-order sales use the order placement date (`ordered_at`), since the schema has no completion timestamp. Gross/net profit needs cost-of-goods-sold and other expenses; the existing product costing records are not linked to sold product IDs. Estimated net profit subtracts only recorded <em>earned</em> commissions plus your entered costs. Missing commission records, refunds or unrecorded costs can affect accuracy.</p>
-<div class="sr-section-title"><h2>1. Sales &amp; Revenue Trends</h2><small>Completed-order sales only</small></div>
+<div class="sr-section-title"><h2>1. Sales &amp; Revenue Trends</h2></div>
 <div class="sr-two">
 <section class="sr-panel sr-block"><h3>Daily Sales Trend</h3><p class="sr-sub">Sales by order placement date within the selected period</p>
 <?php if (!$daily): ?><div class="sr-empty">No completed sales in this period.</div><?php else: $maxDay = max($daily); $dailyShow = count($daily)>15 ? array_slice($daily,-15,null,true) : $daily; foreach ($dailyShow as $day=>$amount): ?><div class="sr-bar-line"><span><?= srEsc(date('M j',strtotime($day))) ?></span><div class="sr-bar"><span style="width:<?= $maxDay > 0 ? round($amount/$maxDay*100,2) : 0 ?>%"></span></div><strong><?= srMoney($amount) ?></strong></div><?php endforeach; ?><?php if(count($daily)>15): ?><p class="sr-muted">Showing latest 15 sales dates; downloads include every recorded date.</p><?php endif; endif; ?>
@@ -499,21 +507,20 @@ $excelQuery=http_build_query($exportParams+['export'=>'xlsx']);
 <div class="sr-list"><div class="sr-data-row"><span>Completed-order gross sales</span><strong><?= srMoney($summary['gross_sales']) ?></strong></div><div class="sr-data-row"><span>Earned platform fees recorded</span><strong><?= srMoney($summary['platform_fees']) ?></strong></div><div class="sr-data-row"><span>Entered COGS</span><strong><?= $cogs === null ? 'Not entered' : srMoney($cogs) ?></strong></div><div class="sr-data-row"><span>Entered other expenses</span><strong><?= $expenses === null ? 'Not entered' : srMoney($expenses) ?></strong></div><div class="sr-data-row"><span>Estimated net profit</span><strong><?= $summary['net_profit'] === null ? 'Not calculable yet' : srMoney($summary['net_profit']) ?></strong></div><div class="sr-data-row"><span>Average completed-order value</span><strong><?= srMoney($summary['average_order']) ?></strong></div></div>
 </section>
 </div>
-<div class="sr-section-title"><h2>2. Product Performance</h2><small>Sales within selected dates · cart and saved figures are current quantities</small></div>
+<div class="sr-section-title"><h2>2. Product Performance</h2></div>
 <div class="sr-two">
 <section class="sr-panel sr-block"><h3>Top-Selling Products</h3><p class="sr-sub">Products ranked by completed units sold</p><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Product</th><th class="sr-right">Units</th><th class="sr-right">Item Sales</th></tr></thead><tbody><?php foreach($topProducts as $p): ?><tr><td class="sr-wrap"><strong><?= srEsc($p['product_name']) ?></strong><div class="sr-muted">#<?= (int)$p['product_id'] ?></div></td><td class="sr-right"><?= srCount($p['units_sold']) ?></td><td class="sr-right"><?= srMoney($p['product_revenue']) ?></td></tr><?php endforeach; ?><?php if(!$topProducts): ?><tr><td colspan="3" class="sr-empty">No completed product sales in this period.</td></tr><?php endif; ?></tbody></table></div></section>
 <section class="sr-panel sr-block"><h3>Low-Selling Products</h3><p class="sr-sub">Products with the fewest completed sales in this period</p><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Product</th><th class="sr-right">Units</th><th class="sr-right">Current Stock</th></tr></thead><tbody><?php foreach($slowProducts as $p): ?><tr><td class="sr-wrap"><strong><?= srEsc($p['product_name']) ?></strong><div class="sr-muted"><?= (int)$p['units_sold']===0?'No sales in period':srEsc($p['status']) ?></div></td><td class="sr-right"><?= srCount($p['units_sold']) ?></td><td class="sr-right"><?= srCount($p['stock']) ?></td></tr><?php endforeach; ?><?php if(!$slowProducts): ?><tr><td colspan="3" class="sr-empty">No products in this seller's catalog.</td></tr><?php endif; ?></tbody></table></div></section>
 <section class="sr-panel sr-block"><h3>Saved &amp; Cart Interest</h3><p class="sr-sub">Currently in buyer carts and saved lists (not a historical event count)</p><div class="sr-mini-metrics"><div><strong><?= srCount($summary['cart']) ?></strong><span>Units in carts now</span></div><div><strong><?= srCount($summary['saved']) ?></strong><span>Current saved-product entries</span></div></div><div class="sr-divider"></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Product</th><th class="sr-right">Cart Units</th><th class="sr-right">Saved</th></tr></thead><tbody><?php foreach ($popularProducts as $p): ?><tr><td class="sr-wrap"><strong><?= srEsc($p['product_name']) ?></strong></td><td class="sr-right"><?= srCount($p['cart_units']) ?></td><td class="sr-right"><?= srCount($p['saved_count']) ?></td></tr><?php endforeach; ?><?php if(!$popularProducts): ?><tr><td colspan="3" class="sr-empty">No product interest records available.</td></tr><?php endif; ?></tbody></table></div></section>
-<section class="sr-panel sr-block"><h3>Product Report Notes</h3><p class="sr-sub">How to interpret product sales and interest</p><div class="sr-list"><div class="sr-data-row"><span>Products in seller catalog</span><strong><?= srCount(count($products)) ?></strong></div><div class="sr-data-row"><span>Completed-order item units</span><strong><?= srCount($summary['units']) ?></strong></div><div class="sr-data-row"><span>Top product basis</span><strong>Units sold</strong></div><div class="sr-data-row"><span>Low-selling basis</span><strong>Selected period only</strong></div><div class="sr-data-row"><span>Saved / cart time basis</span><strong>Current snapshot</strong></div><div class="sr-data-row"><span>Full product export</span><strong>Included in CSV and Excel</strong></div></div><p class="sr-footnote">Item-level revenue uses recorded agreed unit prices where available. It may not exactly equal order gross totals due to adjustments and order-level pricing.</p></section>
+<section class="sr-panel sr-block"><h3>Product Report Notes</h3><p class="sr-sub">How to interpret product sales and interest</p><div class="sr-list"><div class="sr-data-row"><span>Products in seller catalog</span><strong><?= srCount(count($products)) ?></strong></div><div class="sr-data-row"><span>Completed-order item units</span><strong><?= srCount($summary['units']) ?></strong></div><div class="sr-data-row"><span>Top product basis</span><strong>Units sold</strong></div><div class="sr-data-row"><span>Low-selling basis</span><strong>Selected period only</strong></div><div class="sr-data-row"><span>Saved / cart time basis</span><strong>Current snapshot</strong></div><div class="sr-data-row"><span>Full product export</span><strong>Included in CSV and Excel</strong></div></div></section>
 </div>
-<div class="sr-section-title"><h2>3. Inventory &amp; Stock Reports</h2><small>Current inventory snapshot · Low stock at 1–5 available units</small></div>
+<div class="sr-section-title"><h2>3. Inventory &amp; Stock Reports</h2></div>
 <div class="sr-stat-grid">
 <article class="sr-panel sr-stat"><div><label>Products in Catalog</label><strong><?= srCount($inventorySummary['total']) ?></strong><small>Including archived or removed products</small></div><span class="sr-stat-icon">▤</span></article>
 <article class="sr-panel sr-stat"><div><label>Low Stock Alerts</label><strong><?= srCount($inventorySummary['low']) ?></strong><small>1 to 5 units available to sell</small></div><span class="sr-stat-icon">!</span></article>
 <article class="sr-panel sr-stat"><div><label>Out of Stock</label><strong><?= srCount($inventorySummary['out']) ?></strong><small>0 units available to sell</small></div><span class="sr-stat-icon">×</span></article>
 <article class="sr-panel sr-stat"><div><label>Products In Stock</label><strong><?= srCount($inventorySummary['in_stock']) ?></strong><small>More than 5 units available to sell</small></div><span class="sr-stat-icon">✓</span></article>
 </div>
-<p class="sr-footnote"><strong>Inventory:</strong> Available units = current stock minus reserved units (minimum 0). Stock alerts exclude archived products. The listing date comes from the product record, but the existing database does not have reliable historical restock or stockout dates. No additional SQL or database changes are required.</p>
 <section class="sr-panel sr-block sr-stock-block">
 <div class="sr-section-title sr-inner-title"><h3>Current Inventory and Low-Stock Alerts</h3><small><?= srCount($inventorySummary['available_units']) ?> available units · <?= srCount($inventorySummary['reserved_units']) ?> reserved units</small></div>
 <div class="sr-table-wrap"><table class="sr-table sr-stock-table sr-current-stock"><thead><tr><th>Product</th><th>Date Listed</th><th class="sr-right">Total Stock</th><th class="sr-right">Reserved</th><th class="sr-right">Available</th><th>Stock Alert</th></tr></thead><tbody>
@@ -524,13 +531,14 @@ $excelQuery=http_build_query($exportParams+['export'=>'xlsx']);
 <?php if(!$products): ?><tr><td colspan="6" class="sr-empty">No products are listed for this seller.</td></tr><?php endif; ?>
 </tbody></table></div>
 </section>
-<div class="sr-section-title"><h2>4. Orders &amp; Transactions</h2><small>All orders placed in the selected period</small></div>
+<div class="sr-section-title"><h2>4. Orders &amp; Transactions</h2></div>
 <div class="sr-two">
 <section class="sr-panel sr-block"><h3>Order Status Breakdown</h3><p class="sr-sub">Order stage, independent from payment status</p><?php foreach($statusCounts as $status=>$num): ?><div class="sr-progress"><div class="sr-label-row"><span><?= srEsc($status) ?></span><strong><?= srCount($num) ?> · <?= srPercent((float)$num,(float)$summary['orders_in_period']) ?></strong></div><div class="sr-progress-track"><span style="width:<?= $summary['orders_in_period'] ? round($num/$summary['orders_in_period']*100,2) : 0 ?>%"></span></div></div><?php endforeach; ?></section>
-<section class="sr-panel sr-block"><h3>Payment Methods &amp; Status</h3><p class="sr-sub">Recorded method or selected payment option. A chosen method does not confirm payment</p><?php foreach ($paymentCounts as $method=>$num): ?><div class="sr-progress"><div class="sr-label-row"><span><?= srEsc($method) ?></span><strong><?= srCount($num) ?> · <?= srPercent((float)$num,(float)$summary['orders_in_period']) ?></strong></div><div class="sr-progress-track"><span style="width:<?= $summary['orders_in_period'] ? round($num/$summary['orders_in_period']*100,2) : 0 ?>%"></span></div></div><?php endforeach; ?><div class="sr-divider"></div><?php foreach ($paymentStatusCounts as $status=>$num): ?><div class="sr-data-row"><span><?= srEsc($status) ?></span><strong><?= srCount($num) ?></strong></div><?php endforeach; ?><p class="sr-footnote">A selected payment option does not confirm payment. “Paid” is a payment status, not an order status. A pending order can already have a paid payment; unpaid completed orders are also possible in the data.</p></section>
+<section class="sr-panel sr-block"><h3>Payment Methods &amp; Status</h3><p class="sr-sub">Cash versus QR Ph. QR Ph combines the platform’s recorded electronic and online payment labels</p><?php foreach ($paymentCounts as $method=>$num): ?><div class="sr-progress"><div class="sr-label-row"><span><?= srEsc($method) ?></span><strong><?= srCount($num) ?> · <?= srPercent((float)$num,(float)$summary['orders_in_period']) ?></strong></div><div class="sr-progress-track"><span style="width:<?= $summary['orders_in_period'] ? round($num/$summary['orders_in_period']*100,2) : 0 ?>%"></span></div></div><?php endforeach; ?><div class="sr-divider"></div><?php foreach ($paymentStatusCounts as $status=>$num): ?><div class="sr-data-row"><span><?= srEsc($status) ?></span><strong><?= srCount($num) ?></strong></div><?php endforeach; ?><p class="sr-footnote">The selected method does not confirm collection. “Paid” is a payment status, while Cash and QR Ph describe the chosen payment channel.</p></section>
 </div>
-<section class="sr-panel sr-block" style="margin-top:14px"><div class="sr-section-title" style="margin:0 0 10px"><h3 style="margin:0">Recent Order / Payment Records</h3><small>Latest 30 shown · Full period included in downloads</small></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Order</th><th>Buyer</th><th>Status</th><th>Payment</th><th>Method</th><th class="sr-right">Amount</th><th>Date</th></tr></thead><tbody><?php foreach(array_slice($orders,0,30) as $o): ?><?php $status=srStatus($o['order_status']); $pstatus=strtolower((string)$o['payment_status']); ?><tr><td><strong>#<?= (int)$o['order_id'] ?></strong></td><td class="sr-wrap"><?= srEsc($o['buyer_name']) ?></td><td><span class="sr-chip <?= $status==='Completed'?'good':($status==='Cancelled'?'bad':'warn') ?>"><?= srEsc($status) ?></span></td><td><span class="sr-chip <?= srPaymentStatus($o['payment_status'])==='Paid'?'good':'warn' ?>"><?= srEsc(srPaymentStatus($o['payment_status'])) ?></span></td><td><?= srEsc(srPayMethod(($o['payment_method'] ?? '') ?: ($o['agreed_payment_option'] ?? ''))) ?></td><td class="sr-right"><strong><?= srMoney($o['total_amount']) ?></strong></td><td class="sr-muted"><?= srEsc(srFriendlyDate($o['ordered_at'],true)) ?></td></tr><?php endforeach; ?><?php if(!$orders): ?><tr><td colspan="7" class="sr-empty">No orders were placed in this period.</td></tr><?php endif; ?></tbody></table></div></section>
+<section class="sr-panel sr-block" style="margin-top:14px"><div class="sr-section-title" style="margin:0 0 10px"><h3 style="margin:0">Recent Order / Payment Records</h3><small>10 records per page · Full period included in downloads</small></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Order</th><th>Buyer</th><th>Status</th><th>Payment</th><th>Method</th><th class="sr-right">Amount</th><th>Date</th></tr></thead><tbody><?php foreach($orders as $o): ?><?php $status=srStatus($o['order_status']); $pstatus=strtolower((string)$o['payment_status']); ?><tr data-report-record><td><strong>#<?= (int)$o['order_id'] ?></strong></td><td class="sr-wrap"><?= srEsc($o['buyer_name']) ?></td><td><span class="sr-chip <?= $status==='Completed'?'good':($status==='Cancelled'?'bad':'warn') ?>"><?= srEsc($status) ?></span></td><td><span class="sr-chip <?= srPaymentStatus($o['payment_status'])==='Paid'?'good':'warn' ?>"><?= srEsc(srPaymentStatus($o['payment_status'])) ?></span></td><td><?= srEsc(srPayMethod(($o['payment_method'] ?? '') ?: ($o['agreed_payment_option'] ?? '')) ?: '—') ?></td><td class="sr-right"><strong><?= srMoney($o['total_amount']) ?></strong></td><td class="sr-muted"><?= srEsc(srFriendlyDate($o['ordered_at'],true)) ?></td></tr><?php endforeach; ?><?php if(!$orders): ?><tr><td colspan="7" class="sr-empty">No orders were placed in this period.</td></tr><?php endif; ?></tbody></table></div><div class="sr-report-footer" id="recentRecordsFooter" <?= !$orders ? 'hidden' : '' ?>><span id="recentRecordsSummary" aria-live="polite"></span><nav class="sr-pagination" id="recentRecordsPagination" aria-label="Recent order and payment record pages"><button type="button" class="sr-page-nav" id="recentRecordsPrev">Previous</button><div class="sr-page-numbers" id="recentRecordsPages"></div><button type="button" class="sr-page-nav" id="recentRecordsNext">Next</button></nav></div></section>
 <div class="sr-bottom">Individual seller only · From <?= srEsc(srFriendlyDate($from)) ?> to <?= srEsc(srFriendlyDate($to)) ?></div>
 <?php elseif (!$sellers && !$errorMessage): ?><section class="sr-panel sr-block"><div class="sr-empty">No sellers are registered in this system yet.</div></section><?php endif; ?>
+</div>
 </main></div>
-</body></html>
+<script>(()=>{'use strict';const rows=[...document.querySelectorAll('[data-report-record]')],footer=document.getElementById('recentRecordsFooter'),summary=document.getElementById('recentRecordsSummary'),pages=document.getElementById('recentRecordsPages'),previous=document.getElementById('recentRecordsPrev'),next=document.getElementById('recentRecordsNext');if(!footer||!summary||!pages||!previous||!next||rows.length===0)return;const RECORDS_PER_PAGE=10,totalPages=Math.ceil(rows.length/RECORDS_PER_PAGE);let currentPage=1;function renderPage(){const start=(currentPage-1)*RECORDS_PER_PAGE,end=Math.min(start+RECORDS_PER_PAGE,rows.length);rows.forEach((row,index)=>{row.hidden=index<start||index>=end});summary.textContent='Showing '+(start+1)+'–'+end+' of '+rows.length+' records';previous.disabled=currentPage===1;next.disabled=currentPage===totalPages;pages.replaceChildren();for(let page=1;page<=totalPages;page++){const button=document.createElement('button');button.type='button';button.className='sr-page-number'+(page===currentPage?' active':'');button.textContent=String(page);button.setAttribute('aria-label','Go to records page '+page);if(page===currentPage)button.setAttribute('aria-current','page');button.addEventListener('click',()=>{currentPage=page;renderPage()});pages.append(button)}footer.hidden=totalPages<=1}previous.addEventListener('click',()=>{if(currentPage>1){currentPage--;renderPage()}});next.addEventListener('click',()=>{if(currentPage<totalPages){currentPage++;renderPage()}});renderPage()})();</script></body></html>

@@ -508,7 +508,88 @@ if (isset($conn) && $conn instanceof mysqli) {
       .hero-right { --photo-shift: 0px !important; }
     }
 
-    </style>
+    
+    /* Floating LokalCraft email support contact */
+    .contact-email-float {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      z-index: 1100;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px;
+      height: 52px;
+      border: 1px solid rgba(165, 83, 37, .22);
+      border-radius: 50%;
+      background: rgba(255, 254, 252, .58);
+      color: #8F4C26;
+      text-decoration: none;
+      box-shadow: 0 8px 22px rgba(67, 44, 22, .10);
+      -webkit-backdrop-filter: blur(12px) saturate(125%);
+      backdrop-filter: blur(12px) saturate(125%);
+      transition: transform .18s ease, background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+    .contact-email-float svg {
+      width: 23px;
+      height: 23px;
+      flex: 0 0 auto;
+    }
+    .contact-email-float:hover {
+      border-color: rgba(165, 83, 37, .34);
+      background: rgba(255, 248, 237, .82);
+      color: #A55325;
+      transform: translateY(-2px);
+      box-shadow: 0 11px 26px rgba(67, 44, 22, .14);
+    }
+    .contact-email-float:focus-visible {
+      outline: 3px solid rgba(165, 83, 37, .20);
+      outline-offset: 4px;
+    }
+    .contact-email-tooltip {
+      position: absolute;
+      right: calc(100% + 11px);
+      top: 50%;
+      padding: 8px 10px;
+      border: 1px solid rgba(165, 83, 37, .16);
+      border-radius: 9px;
+      background: rgba(255, 254, 252, .78);
+      color: #5A3F28;
+      box-shadow: 0 8px 20px rgba(67, 44, 22, .10);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+      font-size: .76rem;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(6px, -50%);
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .contact-email-float:hover .contact-email-tooltip,
+    .contact-email-float:focus-visible .contact-email-tooltip {
+      opacity: 1;
+      transform: translate(0, -50%);
+    }
+    @media (max-width: 560px) {
+      .contact-email-float {
+        right: 16px;
+        bottom: 16px;
+        width: 48px;
+        height: 48px;
+      }
+      .contact-email-float svg {
+        width: 21px;
+        height: 21px;
+      }
+      .contact-email-tooltip { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .contact-email-float,
+      .contact-email-tooltip { transition: none; }
+    }
+  </style>
 </head>
 <body>
 <?php
@@ -731,6 +812,21 @@ require __DIR__ . '/public_nav.php';
       </div>
     </section>
 
+
+    <a
+      class="contact-email-float"
+      href="mailto:lokalcraftstore@gmail.com?subject=LokalCraft%20Support%20Concern&amp;body=Hello%20LokalCraft%20Support%2C%0A%0AI%20need%20assistance%20with%3A%0A%0AAccount%20email%3A%0AConcern%3A%0ARelated%20order%20number%2C%20if%20applicable%3A%0A%0APlease%20do%20not%20include%20your%20password%2C%20OTP%2C%20payment%20credentials%2C%20or%20password-reset%20link.%0A%0AThank%20you."
+      data-gmail-compose="https://mail.google.com/mail/?view=cm&amp;fs=1&amp;to=lokalcraftstore%40gmail.com&amp;su=LokalCraft%20Support%20Concern&amp;body=Hello%20LokalCraft%20Support%2C%0A%0AI%20need%20assistance%20with%3A%0A%0AAccount%20email%3A%0AConcern%3A%0ARelated%20order%20number%2C%20if%20applicable%3A%0A%0APlease%20do%20not%20include%20your%20password%2C%20OTP%2C%20payment%20credentials%2C%20or%20password-reset%20link.%0A%0AThank%20you."
+      aria-label="Email LokalCraft Support"
+      title="Contact LokalCraft"
+    >
+      <span class="contact-email-tooltip" aria-hidden="true">Contact LokalCraft</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+        <path d="m4 7 8 6 8-6"></path>
+      </svg>
+    </a>
+
     <footer class="footer-note"><span class="footer-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 22V6M12 19C8 18 6 15 6 12c4 0 6 2 6 5M12 15c4-1 6-4 6-7-4 0-6 2-6 5M12 10C9 9 7 6 7 3c3 0 5 2 5 5M12 6c1-2 2-3 4-4 0 3-1 5-4 6"/></svg></span> LokalCraft — Preserving Filipino heritage, one craft at a time. Empowering local artisans through digital innovation.</footer>
 </main>
 
@@ -852,5 +948,30 @@ require __DIR__ . '/public_nav.php';
   }
 })();
 </script>
+
+<script>
+(() => {
+  'use strict';
+  const contactLink = document.querySelector('.contact-email-float[data-gmail-compose]');
+  if (!contactLink) return;
+
+  contactLink.addEventListener('click', event => {
+    const gmailComposeUrl = contactLink.dataset.gmailCompose;
+    if (!gmailComposeUrl) return;
+
+    event.preventDefault();
+    const gmailWindow = window.open(
+      gmailComposeUrl,
+      '_blank',
+      'noopener,noreferrer'
+    );
+
+    if (!gmailWindow) {
+      window.location.href = contactLink.href;
+    }
+  });
+})();
+</script>
+
 </body>
 </html>

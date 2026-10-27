@@ -1,12 +1,5 @@
 <?php
-/**
- * LokalCraft Admin navigation
- * Include inside <div class="page"> on each admin page.
- * The including page is responsible for authenticating the admin.
- */
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
+require_once __DIR__ . '/admin_auth.php';
 
 $activePage = $activePage ?? 'dashboard';
 $adminName = trim((string)($adminName ?? $userName ?? $_SESSION['admin_name'] ?? 'Admin User'));
@@ -67,10 +60,19 @@ function adminNavEsc($str): string
             aria-label="Open admin navigation" aria-controls="adminSidebar" aria-expanded="false">
         <?php echo adminNavIcon('menu'); ?>
     </button>
-    <div class="admin-mobile-brand">
-        <span class="admin-brand-mark">L</span>
-        <span class="admin-brand-text">LokalCraft<small>Admin Portal</small></span>
-    </div>
+    <a class="admin-mobile-brand" href="dashboard.php" aria-label="LokalCraft Admin dashboard">
+        <svg class="admin-brand-wordmark admin-brand-wordmark-mobile" xmlns="http://www.w3.org/2000/svg" viewBox="23 6 234 76" aria-hidden="true" focusable="false">
+                <defs>
+                    <linearGradient id="adminMobileBrandGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#C96D20"/>
+                        <stop offset="52%" stop-color="#EA8A3A"/>
+                        <stop offset="100%" stop-color="#F2B36F"/>
+                    </linearGradient>
+                </defs>
+                <path fill="url(#adminMobileBrandGradient)" fill-rule="evenodd" d="M187.50,40.50 187.00,41.50 187.00,46.25 187.25,46.50 188.25,46.50 191.00,44.75 192.75,44.50 194.00,43.75 195.75,43.75 197.25,44.50 198.25,45.50 198.50,46.25 197.75,47.00 193.25,47.25 191.75,48.00 190.00,48.00 186.75,50.00 185.25,52.50 185.25,56.25 186.25,58.50 187.50,59.75 189.50,60.75 195.00,60.75 197.75,59.25 198.50,59.50 198.50,60.50 199.00,60.75 206.75,60.75 207.25,60.50 207.25,47.50 206.75,44.50 205.50,42.00 203.25,40.00 202.50,40.00 200.50,39.00 192.25,39.00Z M198.25,51.25 198.50,53.00 198.00,54.25 196.00,56.00 194.75,55.75 193.50,54.25 193.75,52.50 195.50,51.50 197.50,51.00Z M169.25,39.00 168.75,39.50 168.75,52.25 169.00,52.50 168.75,60.25 169.25,60.75 178.00,60.75 178.50,60.25 178.50,49.25 178.75,48.50 180.00,46.75 182.00,45.75 183.00,45.75 185.00,46.75 185.75,46.50 186.00,39.50 185.50,39.00 182.00,39.00 179.00,41.00 178.00,39.00Z M149.50,32.00 146.75,34.00 145.00,36.00 143.25,39.00 142.25,42.25 142.25,50.00 144.00,54.25 145.00,55.75 147.75,58.25 150.50,59.75 151.50,59.75 153.50,60.75 163.25,60.75 167.00,59.50 167.00,53.00 167.25,52.75 167.00,52.25 165.25,52.00 161.75,53.00 159.00,53.00 156.00,52.00 154.25,50.75 152.75,48.75 152.25,46.25 152.75,42.00 156.00,38.75 159.00,37.75 161.75,37.75 165.25,38.75 167.00,38.50 167.25,38.00 167.00,37.50 167.00,32.25 167.25,32.00 167.00,31.25 166.25,30.50 164.50,30.00 154.75,30.00Z M36.50,30.25 36.25,30.75 36.50,31.00 36.50,60.50 37.00,60.75 56.50,60.75 57.00,60.25 56.75,55.50 57.50,54.75 60.00,58.00 61.75,59.25 63.50,59.75 64.50,60.50 73.75,60.75 75.75,59.75 76.50,59.75 78.50,58.50 81.25,55.25 82.50,51.75 82.50,47.50 81.50,44.75 80.00,42.75 78.00,41.00 73.50,39.00 65.75,39.00 63.75,40.00 62.75,40.00 59.75,42.00 57.25,45.75 56.75,48.25 56.75,51.50 57.25,53.50 56.75,54.00 47.00,54.00 46.25,53.25 46.25,31.00 46.50,30.75 45.75,30.00 37.00,30.00Z M69.00,45.75 71.00,46.00 72.50,47.50 72.75,48.25 72.50,52.00 71.50,53.25 70.00,54.00 68.50,53.75 67.00,52.50 66.50,51.50 66.50,48.00 67.75,46.50Z M215.00,29.75 213.00,31.75 212.25,33.00 211.50,35.50 211.50,38.25 210.75,39.00 208.25,39.00 207.75,39.50 208.00,44.50 208.25,44.75 210.75,44.75 211.50,45.50 211.50,60.50 212.00,60.75 220.75,60.75 221.25,60.00 221.00,59.75 221.00,45.50 222.00,44.75 227.75,44.75 228.50,45.50 228.75,55.25 229.25,57.00 231.75,59.75 233.75,60.75 241.25,60.75 242.00,60.50 242.75,59.50 242.75,54.50 242.25,54.00 240.00,54.00 238.50,52.75 238.25,52.25 238.25,45.50 239.00,44.75 242.25,44.75 242.75,44.25 242.75,39.50 242.25,39.00 239.00,39.00 238.25,38.25 238.25,32.25 236.50,32.00 234.50,33.00 232.75,33.00 230.75,34.00 229.00,34.25 228.50,34.75 228.50,38.25 227.75,39.00 222.00,39.00 221.00,38.25 221.25,36.50 222.75,35.00 224.75,34.75 225.50,35.25 226.50,35.25 226.75,34.50 226.75,28.75 226.50,28.25 226.00,28.00 218.75,28.00Z M131.50,28.00 131.00,28.75 131.25,29.25 131.25,60.50 131.50,60.75 140.25,60.75 140.75,60.25 140.75,49.25 140.50,49.00 140.75,28.50 140.25,28.00Z M83.75,28.50 83.75,46.50 84.00,46.75 83.75,60.25 84.25,60.75 93.00,60.75 93.50,60.25 93.50,53.25 94.00,52.75 94.75,53.25 97.50,60.00 98.25,60.75 108.00,60.75 108.50,60.25 108.00,59.50 108.25,59.00 111.25,60.75 116.75,60.75 119.50,59.25 120.25,59.75 120.75,60.75 128.75,60.75 129.25,60.00 129.00,59.50 129.00,46.50 127.75,42.50 125.50,40.25 122.25,39.00 114.00,39.00 111.75,40.00 109.75,40.25 109.00,41.25 109.00,46.25 109.50,46.75 113.00,44.75 113.75,44.75 116.00,43.75 117.75,43.75 119.25,44.50 120.25,45.50 120.25,46.50 119.50,47.00 115.00,47.25 113.00,48.00 111.75,48.00 109.50,49.25 107.50,51.50 107.00,53.25 107.25,55.50 107.00,56.25 106.50,56.50 105.75,55.75 104.50,52.75 102.75,50.00 102.50,48.50 103.50,47.25 105.75,43.00 106.50,42.25 107.00,40.75 108.00,39.75 107.75,39.00 97.75,39.00 96.25,41.50 96.25,42.25 95.25,43.75 94.75,45.50 94.00,46.00 93.50,45.50 93.50,28.50 93.00,28.00 84.25,28.00Z M120.25,51.50 120.00,54.00 118.25,55.75 117.00,56.00 115.50,54.50 115.75,52.25 116.25,51.75 118.25,51.50 119.25,51.00Z"/>
+            </svg>
+        <span class="admin-brand-portal">Admin Portal</span>
+    </a>
     <div class="admin-mobile-profile admin-profile-holder" data-admin-profile-holder>
         <button class="admin-mobile-avatar admin-profile-trigger" type="button"
                 data-admin-profile-trigger aria-expanded="false" aria-haspopup="true"
@@ -91,10 +93,19 @@ function adminNavEsc($str): string
 
 <aside class="admin-sidebar" id="adminSidebar" aria-label="Admin navigation">
     <div class="admin-sidebar-top">
-        <div class="admin-brand">
-            <span class="admin-brand-mark">L</span>
-            <span class="admin-brand-text">LokalCraft<small>Admin Portal</small></span>
-        </div>
+        <a class="admin-brand" href="dashboard.php" aria-label="LokalCraft Admin dashboard">
+            <svg class="admin-brand-wordmark admin-brand-wordmark-desktop" xmlns="http://www.w3.org/2000/svg" viewBox="23 6 234 76" aria-hidden="true" focusable="false">
+                <defs>
+                    <linearGradient id="adminDesktopBrandGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#C96D20"/>
+                        <stop offset="52%" stop-color="#EA8A3A"/>
+                        <stop offset="100%" stop-color="#F2B36F"/>
+                    </linearGradient>
+                </defs>
+                <path fill="url(#adminDesktopBrandGradient)" fill-rule="evenodd" d="M187.50,40.50 187.00,41.50 187.00,46.25 187.25,46.50 188.25,46.50 191.00,44.75 192.75,44.50 194.00,43.75 195.75,43.75 197.25,44.50 198.25,45.50 198.50,46.25 197.75,47.00 193.25,47.25 191.75,48.00 190.00,48.00 186.75,50.00 185.25,52.50 185.25,56.25 186.25,58.50 187.50,59.75 189.50,60.75 195.00,60.75 197.75,59.25 198.50,59.50 198.50,60.50 199.00,60.75 206.75,60.75 207.25,60.50 207.25,47.50 206.75,44.50 205.50,42.00 203.25,40.00 202.50,40.00 200.50,39.00 192.25,39.00Z M198.25,51.25 198.50,53.00 198.00,54.25 196.00,56.00 194.75,55.75 193.50,54.25 193.75,52.50 195.50,51.50 197.50,51.00Z M169.25,39.00 168.75,39.50 168.75,52.25 169.00,52.50 168.75,60.25 169.25,60.75 178.00,60.75 178.50,60.25 178.50,49.25 178.75,48.50 180.00,46.75 182.00,45.75 183.00,45.75 185.00,46.75 185.75,46.50 186.00,39.50 185.50,39.00 182.00,39.00 179.00,41.00 178.00,39.00Z M149.50,32.00 146.75,34.00 145.00,36.00 143.25,39.00 142.25,42.25 142.25,50.00 144.00,54.25 145.00,55.75 147.75,58.25 150.50,59.75 151.50,59.75 153.50,60.75 163.25,60.75 167.00,59.50 167.00,53.00 167.25,52.75 167.00,52.25 165.25,52.00 161.75,53.00 159.00,53.00 156.00,52.00 154.25,50.75 152.75,48.75 152.25,46.25 152.75,42.00 156.00,38.75 159.00,37.75 161.75,37.75 165.25,38.75 167.00,38.50 167.25,38.00 167.00,37.50 167.00,32.25 167.25,32.00 167.00,31.25 166.25,30.50 164.50,30.00 154.75,30.00Z M36.50,30.25 36.25,30.75 36.50,31.00 36.50,60.50 37.00,60.75 56.50,60.75 57.00,60.25 56.75,55.50 57.50,54.75 60.00,58.00 61.75,59.25 63.50,59.75 64.50,60.50 73.75,60.75 75.75,59.75 76.50,59.75 78.50,58.50 81.25,55.25 82.50,51.75 82.50,47.50 81.50,44.75 80.00,42.75 78.00,41.00 73.50,39.00 65.75,39.00 63.75,40.00 62.75,40.00 59.75,42.00 57.25,45.75 56.75,48.25 56.75,51.50 57.25,53.50 56.75,54.00 47.00,54.00 46.25,53.25 46.25,31.00 46.50,30.75 45.75,30.00 37.00,30.00Z M69.00,45.75 71.00,46.00 72.50,47.50 72.75,48.25 72.50,52.00 71.50,53.25 70.00,54.00 68.50,53.75 67.00,52.50 66.50,51.50 66.50,48.00 67.75,46.50Z M215.00,29.75 213.00,31.75 212.25,33.00 211.50,35.50 211.50,38.25 210.75,39.00 208.25,39.00 207.75,39.50 208.00,44.50 208.25,44.75 210.75,44.75 211.50,45.50 211.50,60.50 212.00,60.75 220.75,60.75 221.25,60.00 221.00,59.75 221.00,45.50 222.00,44.75 227.75,44.75 228.50,45.50 228.75,55.25 229.25,57.00 231.75,59.75 233.75,60.75 241.25,60.75 242.00,60.50 242.75,59.50 242.75,54.50 242.25,54.00 240.00,54.00 238.50,52.75 238.25,52.25 238.25,45.50 239.00,44.75 242.25,44.75 242.75,44.25 242.75,39.50 242.25,39.00 239.00,39.00 238.25,38.25 238.25,32.25 236.50,32.00 234.50,33.00 232.75,33.00 230.75,34.00 229.00,34.25 228.50,34.75 228.50,38.25 227.75,39.00 222.00,39.00 221.00,38.25 221.25,36.50 222.75,35.00 224.75,34.75 225.50,35.25 226.50,35.25 226.75,34.50 226.75,28.75 226.50,28.25 226.00,28.00 218.75,28.00Z M131.50,28.00 131.00,28.75 131.25,29.25 131.25,60.50 131.50,60.75 140.25,60.75 140.75,60.25 140.75,49.25 140.50,49.00 140.75,28.50 140.25,28.00Z M83.75,28.50 83.75,46.50 84.00,46.75 83.75,60.25 84.25,60.75 93.00,60.75 93.50,60.25 93.50,53.25 94.00,52.75 94.75,53.25 97.50,60.00 98.25,60.75 108.00,60.75 108.50,60.25 108.00,59.50 108.25,59.00 111.25,60.75 116.75,60.75 119.50,59.25 120.25,59.75 120.75,60.75 128.75,60.75 129.25,60.00 129.00,59.50 129.00,46.50 127.75,42.50 125.50,40.25 122.25,39.00 114.00,39.00 111.75,40.00 109.75,40.25 109.00,41.25 109.00,46.25 109.50,46.75 113.00,44.75 113.75,44.75 116.00,43.75 117.75,43.75 119.25,44.50 120.25,45.50 120.25,46.50 119.50,47.00 115.00,47.25 113.00,48.00 111.75,48.00 109.50,49.25 107.50,51.50 107.00,53.25 107.25,55.50 107.00,56.25 106.50,56.50 105.75,55.75 104.50,52.75 102.75,50.00 102.50,48.50 103.50,47.25 105.75,43.00 106.50,42.25 107.00,40.75 108.00,39.75 107.75,39.00 97.75,39.00 96.25,41.50 96.25,42.25 95.25,43.75 94.75,45.50 94.00,46.00 93.50,45.50 93.50,28.50 93.00,28.00 84.25,28.00Z M120.25,51.50 120.00,54.00 118.25,55.75 117.00,56.00 115.50,54.50 115.75,52.25 116.25,51.75 118.25,51.50 119.25,51.00Z"/>
+            </svg>
+            <span class="admin-brand-portal">Admin Portal</span>
+        </a>
         <button class="admin-sidebar-close" id="adminSidebarClose" type="button" aria-label="Close admin navigation">
             <?php echo adminNavIcon('close'); ?>
         </button>
@@ -137,14 +148,22 @@ function adminNavEsc($str): string
 :root {
     --admin-sidebar-width: 250px;
     --admin-mobile-header-height: 64px;
-    --admin-nav-border: #e6e1da;
-    --admin-nav-bg: #fbf9f7;
-    --admin-nav-orange: #ea8a3a;
-    --admin-nav-text: #383838;
+    --admin-nav-border: #ead8c8;
+    --admin-nav-bg: #fff8ed;
+    --admin-nav-orange: #c96d20;
+    --admin-nav-text: #4a3426;
 }
 .admin-sidebar, .admin-sidebar *, .admin-mobile-header, .admin-mobile-header * { box-sizing: border-box; }
 .admin-sidebar button, .admin-mobile-header button { font: inherit; }
-.admin-sidebar svg, .admin-mobile-header svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.admin-icon svg,
+.admin-menu-toggle svg,
+.admin-sidebar-close svg,
+.admin-profile-chevron svg,
+.admin-profile-logout svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+}
 .admin-mobile-header { display: none; }
 .admin-sidebar-overlay { display: none; }
 
@@ -300,6 +319,197 @@ function adminNavEsc($str): string
 @media (prefers-reduced-motion: reduce) {
     .admin-sidebar, .admin-sidebar-overlay, .admin-nav-item { transition: none !important; }
 }
+
+/* LokalCraft Admin theme refinement. Functional navigation behavior remains unchanged. */
+.admin-sidebar {
+    border-right-color: var(--admin-nav-border);
+    background: var(--admin-nav-bg);
+    box-shadow: 8px 0 30px rgba(73, 47, 27, .055);
+}
+.admin-sidebar-top {
+    align-items: flex-start;
+}
+.admin-brand,
+.admin-mobile-brand {
+    color: inherit;
+    text-decoration: none;
+}
+.admin-brand {
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 3px 2px 17px;
+    border-bottom: 1px solid rgba(201, 109, 32, .12);
+    transition: filter .2s ease;
+}
+.admin-brand:hover,
+.admin-mobile-brand:hover {
+    filter: brightness(1.035);
+}
+.admin-brand:focus-visible,
+.admin-mobile-brand:focus-visible {
+    outline: 2px solid #c96d20;
+    outline-offset: 4px;
+    border-radius: 9px;
+}
+.admin-brand-wordmark {
+    display: block;
+    flex: 0 0 auto;
+    width: auto;
+    max-width: none;
+    height: auto;
+    overflow: visible;
+    filter: drop-shadow(0 5px 11px rgba(201, 109, 32, .09));
+}
+.admin-sidebar .admin-brand-wordmark-desktop {
+    width: min(214px, 100%);
+    height: auto;
+}
+.admin-mobile-header .admin-brand-wordmark-mobile {
+    width: 136px;
+    height: auto;
+}
+.admin-brand-portal {
+    display: block;
+    margin-top: -8px;
+    color: #8a6d58;
+    font-size: .61rem;
+    font-weight: 800;
+    letter-spacing: .1em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+.admin-mobile-brand .admin-brand-portal {
+    margin-top: -5px;
+    font-size: .5rem;
+    letter-spacing: .08em;
+}
+.admin-nav {
+    gap: 6px;
+}
+.admin-nav-item {
+    border: 1px solid transparent;
+    border-radius: 13px;
+    color: #684f40;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+}
+.admin-nav-item:hover,
+.admin-nav-item:focus-visible {
+    border-color: #efdbc7;
+    background: #f9e9d8;
+    color: #4a3426;
+    transform: translateX(1px);
+}
+.admin-nav-item.active {
+    border-color: #ebc7a4;
+    background: #f5dfc8;
+    color: #4a3426;
+    box-shadow: none;
+    font-weight: 800;
+}
+.admin-icon {
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: rgba(201, 109, 32, .07);
+    color: #9b6b4d;
+}
+.admin-nav-item:hover .admin-icon,
+.admin-nav-item:focus-visible .admin-icon,
+.admin-nav-item.active .admin-icon {
+    border-color: #efd2b5;
+    background: #fff8ed;
+    color: #c96d20;
+}
+.admin-sidebar-footer {
+    border-top-color: var(--admin-nav-border);
+}
+.admin-profile-summary {
+    border-color: transparent;
+    border-radius: 13px;
+    color: #4a3426;
+}
+.admin-profile-summary:hover,
+.admin-profile-summary[aria-expanded="true"] {
+    border-color: #efdbc7;
+    background: #f9e9d8;
+}
+.admin-avatar,
+.admin-mobile-avatar {
+    border-color: #e3b484;
+    background: linear-gradient(135deg, #c96d20 0%, #ea8a3a 54%, #f2b36f 100%);
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(201, 109, 32, .14);
+}
+.admin-profile-name {
+    color: #4a3426;
+}
+.admin-profile-role,
+.admin-profile-menu-caption {
+    color: #8a6d58;
+}
+.admin-profile-menu {
+    border-color: #ead8c8;
+    background: #fffdf9;
+    box-shadow: 0 16px 34px rgba(70, 44, 25, .13);
+}
+.admin-profile-logout {
+    color: #b75038;
+}
+.admin-profile-logout:hover,
+.admin-profile-logout:focus-visible {
+    background: #fff0e8;
+}
+.admin-sidebar-close,
+.admin-menu-toggle {
+    color: #684f40;
+}
+.admin-sidebar-close:hover,
+.admin-menu-toggle:hover {
+    border-color: #efdbc7;
+    background: #f9e9d8;
+    color: #c96d20;
+}
+@media (max-width: 840px) {
+    .admin-mobile-header {
+        background: #fff8ed;
+        border-bottom-color: var(--admin-nav-border);
+        box-shadow: 0 3px 14px rgba(73, 47, 27, .055);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    .admin-mobile-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        min-width: 0;
+        line-height: 0;
+    }
+    .admin-sidebar {
+        background: #fff8ed;
+        border-right: 1px solid var(--admin-nav-border);
+    }
+    .admin-sidebar-close {
+        border-color: var(--admin-nav-border);
+        background: #fffdf9;
+    }
+    .admin-sidebar-overlay {
+        background: rgba(49, 32, 20, .34);
+    }
+}
+@media (max-width: 370px) {
+    .admin-mobile-header .admin-brand-wordmark-mobile { width: 118px; height: auto; }
+    .admin-mobile-brand .admin-brand-portal { font-size: .46rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .admin-brand,
+    .admin-mobile-brand,
+    .admin-nav-item { transition: none !important; }
+}
+
 </style>
 <script>
 (() => {

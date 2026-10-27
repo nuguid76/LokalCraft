@@ -1,9 +1,7 @@
 <?php
 declare(strict_types=1);
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
+
 $activePage = 'product_listing';
 function pmEscape($value): string
 {
@@ -59,39 +57,6 @@ function pmModerationEntry(string $message): ?array
         return ['product_id' => (int)$match[1], 'reason' => trim($match[2])];
     }
     return null;
-}
-$adminId = 0;
-foreach (['user_id', 'admin_id', 'logged_id', 'id'] as $key) {
-    $value = $_SESSION[$key] ?? null;
-    if (filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])) {
-        $adminId = (int)$value;
-        break;
-    }
-}
-if ($adminId <= 0) {
-    header('Location: ../login.php');
-    exit;
-}
-try {
-    $adminStmt = $conn->prepare('SELECT firstname, lastname, AdminOrNot, account_status FROM users WHERE id = ? LIMIT 1');
-    if (!$adminStmt) {
-        throw new RuntimeException('Unable to verify administrator.');
-    }
-    $adminStmt->bind_param('i', $adminId);
-    $adminStmt->execute();
-    $adminStmt->bind_result($firstName, $lastName, $isAdmin, $adminStatus);
-    $found = $adminStmt->fetch();
-    $adminStmt->close();
-    if (!$found || (int)$isAdmin !== 1 || strtolower(trim((string)$adminStatus)) !== 'active') {
-        http_response_code(403);
-        exit('Access denied.');
-    }
-    $userName = trim((string)$firstName . ' ' . (string)$lastName) ?: 'Admin';
-    $adminName = $userName;
-} catch (Throwable $error) {
-    error_log('LokalCraft product monitoring auth: ' . $error->getMessage());
-    http_response_code(503);
-    exit('Product monitoring is temporarily unavailable.');
 }
 if (empty($_SESSION['product_monitoring_csrf'])) {
     $_SESSION['product_monitoring_csrf'] = bin2hex(random_bytes(32));
@@ -376,13 +341,76 @@ body.pm-modal-open{overflow:hidden}
 @media(max-width:840px){.content{padding:86px 16px 35px}.pm-toolbar{align-items:stretch}.pm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.pm-stats{gap:9px;margin-bottom:15px}.pm-stat{min-height:94px;padding:12px}.pm-stat-icon{width:29px;height:29px;flex-basis:29px;font-size:.92rem}.pm-stat-label{font-size:.72rem}.pm-stat-value{font-size:1.4rem}.pm-toolbar{gap:9px;margin-bottom:13px}.pm-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;width:100%;flex:1 1 100%;padding:3px}.pm-tab{width:100%;min-height:36px;padding:5px 2px;gap:3px;font-size:clamp(.65rem,2.4vw,.72rem);line-height:1.14;white-space:normal}.pm-tab-count{display:none}.pm-tools{width:100%;flex:1 1 100%;justify-content:space-between;gap:6px}.pm-search{max-width:none;flex:1 1 100%;font-size:.79rem}.pm-visible{display:none}.pm-grid{gap:10px}.product-copy{padding:10px}.product-photo{aspect-ratio:1.13}.pm-detail-grid{gap:7px}.pm-field{padding:8px}.pm-overlay{padding:9px}.pm-dialog{max-height:calc(100dvh - 18px)}}
 @media(max-width:350px){.pm-stat{padding:10px}.pm-stat-icon{width:24px;height:24px;flex-basis:24px;font-size:.81rem}.pm-stat-label{font-size:.67rem}.pm-detail-grid{grid-template-columns:1fr}.pm-grid{grid-template-columns:1fr}.pm-tab{font-size:.65rem;padding:5px 1px}}
+
+/* LokalCraft Dashboard-aligned Product Listing theme */
+:root{
+  --pm-bg:#fff8ed;
+  --pm-surface:#fffefc;
+  --pm-text:#342d27;
+  --pm-muted:#80756b;
+  --pm-line:#eae0d7;
+  --pm-orange:#a55325;
+  --pm-soft:#fff1e4;
+  --pm-green:#278553;
+  --pm-red:#c94141;
+  --pm-shadow:0 8px 22px rgba(67,44,22,.045);
+}
+body,.page{background:var(--pm-bg);color:var(--pm-text)}
+.content{padding:28px 26px 42px}
+.pm-wrap-page{width:100%;max-width:1600px;margin:0 auto}
+.pm-header{margin-bottom:22px}
+.pm-header h1{margin:0 0 5px;color:#382c22;font-size:clamp(1.6rem,3.3vw,2.1rem);font-weight:800;letter-spacing:-.04em}
+.pm-header p{color:#80756b}
+.pm-note{background:#fffefc;border-color:#eae0d7;border-radius:12px}
+.pm-note.success{background:#effaf3;border-color:#cfe8d9;color:#278553}
+.pm-note.error{background:#fff1f1;border-color:#efcaca;color:#c94141}
+.pm-stat,.pm-controls,.product-card{background:#fffefc;border-color:#eae0d7;border-radius:18px;box-shadow:var(--pm-shadow)}
+.pm-stat{padding:16px 18px}
+.pm-stat-label{color:#80756b;font-weight:650}
+.pm-stat-value{color:#382c22;font-weight:800}
+.pm-stat-icon{background:#fff1e4;color:#a55325;border-radius:12px}
+.pm-stat.available .pm-stat-icon{background:#effaf3;color:#278553}
+.pm-stat.out .pm-stat-icon{background:#fff6e8;color:#b47543}
+.pm-stat.removed .pm-stat-icon{background:#fff1f1;color:#c94141}
+.pm-controls{padding:18px 20px}
+.pm-tab{background:#fffaf5;border-color:#eae0d7;color:#75685e;border-radius:10px}
+.pm-tab:hover{background:#fff1e4;border-color:#f0d9be;color:#a55325}
+.pm-tab.active{background:#a55325;border-color:#a55325;color:#fff8ed;box-shadow:0 5px 13px rgba(165,83,37,.16)}
+.pm-tab.active .pm-tab-count{background:rgba(255,255,255,.22)}
+.pm-search{background:#fffefc;border-color:#e5d9cf;color:#342d27;border-radius:11px}
+.pm-search:focus{background:#fffefc;border-color:#d99a63;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.pm-visible{color:#80756b}
+.product-card:hover{border-color:#e3b78f;box-shadow:0 12px 28px rgba(67,44,22,.09)}
+.product-photo,.pm-detail-image,.pm-image-missing{background:#f7f0e9}
+.product-name,.pm-dialog h2,.pm-field strong{color:#47372c}
+.product-seller,.product-category,.product-meta,.pm-field span,.pm-help{color:#80756b}
+.product-price{color:#a55325}
+.pm-badge.live,.pm-badge.available{background:#effaf3;color:#278553;border-color:#cfe8d9}
+.pm-badge.out_of_stock{background:#fff6e8;color:#b47543;border-color:#f0dfc4}
+.pm-badge.removed{background:#fff1f1;color:#c94141;border-color:#efcaca}
+.pm-overlay{background:rgba(52,38,28,.48)}
+.pm-dialog{background:#fffefc;border-color:#eae0d7;border-radius:20px;box-shadow:0 24px 72px rgba(51,34,21,.20)}
+.pm-dialog-head,.pm-dialog-foot{background:#fffaf5;border-color:#eee3da}
+.pm-x,.pm-button.secondary{background:#fffefc;border-color:#e5d9cf;color:#75685e}
+.pm-x:hover,.pm-button.secondary:hover{background:#fff1e4;color:#a55325}
+.pm-field,.pm-reason{background:#fffaf5;border-color:#eee3da}
+.pm-button.primary{background:#a55325;border-color:#a55325;color:#fff8ed}
+.pm-button.primary:hover{background:#c2692e;border-color:#c2692e}
+.pm-button.danger{background:#c94141;border-color:#c94141;color:#fff}
+.pm-button.danger:hover{background:#ad3535;border-color:#ad3535}
+.pm-reason textarea{background:#fffefc;border-color:#e5d9cf;color:#342d27}
+.pm-reason textarea:focus{border-color:#d99a63;box-shadow:0 0 0 3px rgba(201,109,32,.12)}
+.pm-empty{color:#80756b}
+@media(max-width:840px){.content{padding:93px 17px 80px}}
+@media(max-width:600px){.content{padding-left:13px;padding-right:13px}.pm-stat,.pm-controls,.product-card{border-radius:16px}.pm-controls{padding:15px 13px}}
 </style>
 </head>
 <body>
 <div class="page">
 <?php include __DIR__ . '/admin_nav.php'; ?>
 <main class="content">
-<header class="pm-header"><h1>Product Listing</h1><p>Monitor published products. Remove listings that violate marketplace guidelines.</p></header>
+<div class="pm-wrap-page">
+<header class="pm-header"><h1>Product Listing</h1></header>
 <?php if ($flash): ?><div class="pm-note <?= pmEscape($flash['type'] ?? '') ?>" role="status"><?= pmEscape($flash['message'] ?? '') ?></div><?php endif; ?>
 <?php if ($errorMessage): ?><div class="pm-note error" role="alert"><?= pmEscape($errorMessage) ?></div><?php endif; ?>
 <section class="pm-stats" aria-label="Product summary">
@@ -404,6 +432,7 @@ body.pm-modal-open{overflow:hidden}
 <?php foreach ($products as $product): ?><?php pmProductCard($product); ?><?php endforeach; ?>
 </section>
 <div class="pm-empty" id="pmEmpty" <?= $products ? 'hidden' : '' ?>>No products match your filter.</div>
+</div>
 </main>
 </div>
 <div class="pm-overlay" id="pmDetails" aria-hidden="true"><section class="pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pmDetailsTitle">

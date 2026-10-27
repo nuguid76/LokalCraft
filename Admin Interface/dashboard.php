@@ -1,6 +1,5 @@
 <?php
-session_start();
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/admin_auth.php';
 
 $activePage = 'dashboard';
 
@@ -212,61 +211,7 @@ function loadDashboard(mysqli $conn): array
     ];
 }
 
-$adminId = 0;
 
-foreach (['user_id', 'admin_id', 'logged_id', 'id'] as $sessionKey) {
-    $value = $_SESSION[$sessionKey] ?? null;
-
-    if (filter_var($value, FILTER_VALIDATE_INT) && (int)$value > 0) {
-        $adminId = (int)$value;
-        break;
-    }
-}
-
-if ($adminId <= 0) {
-    header('Location: ../login.php');
-    exit;
-}
-
-try {
-    $adminStmt = $conn->prepare("
-        SELECT firstname, lastname, adminOrNot, account_status
-        FROM users
-        WHERE id = ?
-        LIMIT 1
-    ");
-
-    if (!$adminStmt) {
-        throw new RuntimeException('Admin access check unavailable.');
-    }
-
-    $adminStmt->bind_param('i', $adminId);
-    $adminStmt->execute();
-
-    $admin = $adminStmt->get_result()->fetch_assoc();
-    $adminStmt->close();
-
-    if (
-        !$admin ||
-        (int)$admin['adminOrNot'] !== 1 ||
-        strtolower((string)$admin['account_status']) === 'disabled'
-    ) {
-        http_response_code(403);
-        exit('Access denied.');
-    }
-
-} catch (Throwable $e) {
-    error_log('LokalCraft dashboard authentication error: ' . $e->getMessage());
-
-    http_response_code(503);
-    exit('Dashboard temporarily unavailable.');
-}
-
-$userName = trim(
-    (string)$admin['firstname'] . ' ' . (string)$admin['lastname']
-) ?: 'Admin';
-
-header('Cache-Control: private, no-store, max-age=0');
 
 $data = [
     'stats' => [
@@ -318,7 +263,7 @@ if (isset($_GET['dashboard_data'])) {
 
     <style>
         :root {
-            --dash-bg: #faf9f7;
+            --dash-bg: #FFF8ED;
             --dash-card: #fff;
             --dash-text: #3d3935;
             --dash-muted: #89837e;
@@ -333,13 +278,6 @@ if (isset($_GET['dashboard_data'])) {
         .content { flex: 1; min-width: 0; max-width: 100%; padding: 30px 30px 50px; }
         .dashboard-header { margin-bottom: 20px; }
         .dashboard-header h1 { margin: 0 0 5px; color: #3c3834; font-size: clamp(1.45rem, 2.2vw, 1.9rem); font-weight: 750; letter-spacing: -.5px; line-height: 1.2; }
-        .dashboard-header p { margin: 0; color: var(--dash-muted); font-size: .84rem; line-height: 1.5; }
-        .dashboard-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 19px; }
-        .sync-label { color: var(--dash-muted); font-size: .74rem; line-height: 1.5; }
-        .refresh-button { display: inline-flex; align-items: center; justify-content: center; min-height: 35px; border: 1px solid #eadfd4; border-radius: 9px; background: #fff; color: #986c48; padding: 7px 12px; font: inherit; font-size: .75rem; font-weight: 650; cursor: pointer; transition: background .16s ease, border-color .16s ease; }
-        .refresh-button:hover { background: #fff4e9; border-color: #ebd0b4; }
-        .refresh-button:disabled { opacity: .55; cursor: wait; }
-        .refresh-button:focus-visible { outline: 3px solid #e9ad74; outline-offset: 2px; }
         .error-box { padding: 12px 14px; margin-bottom: 18px; border: 1px solid #f2d2ce; border-radius: 11px; background: #fff5f4; color: #a34e47; font-size: .8rem; line-height: 1.5; }
         .error-box[hidden] { display: none; }
         .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
@@ -384,8 +322,6 @@ if (isset($_GET['dashboard_data'])) {
         }
         @media (max-width: 560px) {
             .content { padding-left: 13px; padding-right: 13px; }
-            .dashboard-toolbar { align-items: flex-start; }
-            .sync-label { flex: 1 1 175px; font-size: .69rem; }
             .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
             .stat-card { padding: 12px; border-radius: 12px; min-height: 133px; flex-direction: column-reverse; align-items: flex-start; justify-content: flex-end; gap: 8px; }
             .stat-card > div:first-child { width: 100%; flex: 1; }
@@ -406,6 +342,170 @@ if (isset($_GET['dashboard_data'])) {
             .stat-card { padding: 10px; }
             .stat-card .value { font-size: 1rem; }
         }
+
+        /* LokalCraft Buyer-inspired dashboard theme */
+        :root {
+            --dash-bg: #fff8ed;
+            --dash-card: #fffefc;
+            --dash-text: #342d27;
+            --dash-muted: #80756b;
+            --dash-line: #eae0d7;
+            --dash-orange: #e98b40;
+            --dash-orange-soft: #fff1e4;
+            --dash-accent-dark: #a55325;
+            --dash-accent-hover: #c2692e;
+            --dash-shadow: 0 8px 22px rgba(67, 44, 22, .045);
+        }
+        body,
+        .page {
+            background: var(--dash-bg);
+        }
+        .content {
+            padding: 28px 26px 42px;
+        }
+        .dashboard-wrap {
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .dashboard-header {
+            margin-bottom: 22px;
+        }
+        .dashboard-header h1 {
+            margin: 0;
+            color: #382c22;
+            font-size: clamp(1.6rem, 3.3vw, 2.1rem);
+            font-weight: 800;
+            letter-spacing: -.04em;
+            line-height: 1.18;
+        }
+        .error-box {
+            margin-bottom: 18px;
+            padding: 13px 15px;
+            border: 1px solid #efcaca;
+            border-radius: 14px;
+            background: #fff1f1;
+            color: #c94141;
+            box-shadow: 0 6px 18px rgba(91, 45, 35, .035);
+        }
+        .stats {
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card,
+        .panel {
+            border: 1px solid var(--dash-line);
+            border-radius: 18px;
+            background: var(--dash-card);
+            box-shadow: var(--dash-shadow);
+        }
+        .stat-card {
+            min-height: 136px;
+            padding: 20px;
+        }
+        .stat-card .label {
+            color: #80756b;
+            font-weight: 650;
+        }
+        .stat-card .value {
+            color: #382c22;
+            font-weight: 800;
+            letter-spacing: -.035em;
+        }
+        .stat-note,
+        .panel-note,
+        .item-sub,
+        .event-time,
+        .empty-state,
+        .dashboard-footnote {
+            color: #887a6d;
+        }
+        .stat-icon {
+            width: 42px;
+            height: 42px;
+            flex-basis: 42px;
+            border-radius: 13px;
+            background: #fff1e4;
+            color: #a55325;
+        }
+        .stat-card.blue .stat-icon {
+            background: #fff1e4;
+            color: #a55325;
+        }
+        .stat-card.green .stat-icon {
+            background: #effaf3;
+            color: #278553;
+        }
+        .stat-card.yellow .stat-icon {
+            background: #fff6e8;
+            color: #b47543;
+        }
+        .stat-card.purple .stat-icon {
+            background: linear-gradient(135deg, #a55325, #c2692e);
+            color: #fff8ed;
+        }
+        .bottom-grid {
+            gap: 18px;
+        }
+        .panel {
+            padding: 20px 22px 12px;
+        }
+        .panel-head {
+            padding-bottom: 14px;
+            border-bottom-color: #eee3da;
+        }
+        .panel-title {
+            color: #47372c;
+            font-size: .98rem;
+            font-weight: 800;
+        }
+        .list-item,
+        .activity-item {
+            border-bottom-color: #f0e7de;
+            transition: background-color .16s ease;
+        }
+        .list-item:hover,
+        .activity-item:hover {
+            background: #fffaf5;
+        }
+        .item-name,
+        .event-title {
+            color: #47372c;
+            font-weight: 750;
+        }
+        .status-pill {
+            border: 1px solid #f0d9be;
+            background: #fff1e4;
+            color: #a55325;
+            font-weight: 750;
+        }
+        .view-link {
+            color: #a55325;
+            font-weight: 750;
+        }
+        .view-link:hover,
+        .view-link:focus-visible {
+            color: #c2692e;
+            background: #fff1e4;
+        }
+        .dashboard-footnote {
+            margin-top: 18px;
+            padding: 0 2px;
+            line-height: 1.6;
+        }
+        @media (max-width: 950px) {
+            .content { padding: 24px 22px 44px; }
+        }
+        @media (max-width: 840px) {
+            .content { padding: 22px 17px 80px; }
+            .dashboard-header h1 { font-size: 1.65rem; }
+        }
+        @media (max-width: 560px) {
+            .content { padding-left: 13px; padding-right: 13px; }
+            .stats { gap: 10px; }
+            .stat-card { border-radius: 16px; }
+            .panel { border-radius: 16px; }
+        }
     </style>
 </head>
 
@@ -416,28 +516,10 @@ if (isset($_GET['dashboard_data'])) {
     <?php include 'admin_nav.php'; ?>
 
     <main class="content">
+        <div class="dashboard-wrap">
 
         <div class="dashboard-header">
             <h1>Admin Dashboard</h1>
-            <p>Overview of LokalCraft platform</p>
-        </div>
-
-        <div class="dashboard-toolbar">
-
-            <span class="sync-label" id="lastUpdated">
-                Last updated:
-                <?php echo dashboardEsc($data['updated_at']); ?>
-                · Automatically refreshes every 30 seconds
-            </span>
-
-            <button
-                type="button"
-                class="refresh-button"
-                id="refreshDashboard"
-            >
-                ↻ Refresh data
-            </button>
-
         </div>
 
         <div
@@ -658,16 +740,18 @@ if (isset($_GET['dashboard_data'])) {
             not a full audit log.
         </p>
 
+        </div>
     </main>
 
 </div>
 
 <script>
 (() => {
-    const refreshButton = document.getElementById('refreshDashboard');
     const errorBox = document.getElementById('dashboardError');
 
     let inFlight = false;
+    let dashboardPollTimer = null;
+    const DASHBOARD_POLL_INTERVAL = 5000;
 
     const numberFormat = new Intl.NumberFormat('en-PH');
 
@@ -752,13 +836,12 @@ if (isset($_GET['dashboard_data'])) {
         });
     }
 
-    async function refreshDashboard() {
+    async function syncDashboardData() {
         if (inFlight || document.hidden) {
             return;
         }
 
         inFlight = true;
-        refreshButton.disabled = true;
 
         try {
             const url = new URL(window.location.href);
@@ -767,7 +850,11 @@ if (isset($_GET['dashboard_data'])) {
 
             const response = await fetch(url.toString(), {
                 credentials: 'same-origin',
-                cache: 'no-store'
+                cache: 'no-store',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             });
 
             if (response.status === 401 || response.status === 403) {
@@ -803,11 +890,6 @@ if (isset($_GET['dashboard_data'])) {
             updateApprovals(data.approvals);
             updateActivity(data.activity);
 
-            document.getElementById('lastUpdated').textContent =
-                'Last updated: ' +
-                data.updated_at +
-                ' · Automatically refreshes every 30 seconds';
-
             errorBox.hidden = true;
 
         } catch (error) {
@@ -818,13 +900,25 @@ if (isset($_GET['dashboard_data'])) {
 
         } finally {
             inFlight = false;
-            refreshButton.disabled = false;
         }
     }
 
-    refreshButton.addEventListener('click', refreshDashboard);
+    function startDashboardPolling() {
+        if (dashboardPollTimer !== null) {
+            window.clearInterval(dashboardPollTimer);
+        }
+        dashboardPollTimer = window.setInterval(
+            syncDashboardData,
+            DASHBOARD_POLL_INTERVAL
+        );
+    }
 
-    window.setInterval(refreshDashboard, 30000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) syncDashboardData();
+    });
+    window.addEventListener('focus', syncDashboardData);
+
+    startDashboardPolling();
 })();
 </script>
 

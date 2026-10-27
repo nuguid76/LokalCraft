@@ -1383,6 +1383,20 @@ body .page > main.content.orders-content {
     <main class="content orders-content">
         <?php $searchPlaceholder = 'Search orders...'; ?>
         <div class="orders-search-shell" id="ordersSearchShell"><?php require __DIR__ . '/seller_search.php'; ?></div>
+        <style>
+        /* Match the shared avatar initials to Seller Dashboard.
+           orders_seller.php applies button { font: inherit }, which otherwise
+           enlarges the RN initials compared with modules using browser button text sizing. */
+        #ordersSearchShell .seller-avatar-button {
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 13.3333px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: 0;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        </style>
         <div class="orders-wrap">
             <header class="orders-hero"><h1>Orders</h1></header>
 
