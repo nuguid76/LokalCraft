@@ -412,7 +412,7 @@ if ($sellerApplicationStatus === 'pending') {
       max-width: none !important;
       min-height: 100vh !important;
       margin-left: 240px !important;
-      padding: 74px 26px 34px !important;
+      padding: 80px 26px 34px !important;
       overflow: visible !important;
     }
 
@@ -927,17 +927,10 @@ body.profile-modal-open .page>.content.buyer-profile-content { overflow-y:hidden
 /* My Profile palette — same #FFF8ED cream as For You; shared Buyer files untouched. */
 .page { background: #fff8ed !important; }
 .page > .content.buyer-profile-content { background: #fff8ed !important; }
-/* This higher-specificity rule overrides the later included buyer_search.php styles. */
+/* Profile-specific shared header palette. */
 .page > .content.buyer-profile-content .buyer-header-tools {
-  background: rgba(255, 248, 237, .98) !important;
+  background: #FFF8ED !important;
   border-bottom-color: #eadfd2 !important;
-}
-.page > .content.buyer-profile-content .buyer-header-tools .filter-box {
-  background: #fffaf5 !important;
-  border-color: #e8d9c9 !important;
-}
-.page > .content.buyer-profile-content .buyer-header-tools .filter-box:focus-within {
-  background: #fffefb !important;
 }
 </style>
 </head>
@@ -945,7 +938,10 @@ body.profile-modal-open .page>.content.buyer-profile-content { overflow-y:hidden
 <div class="page">
   <?php include __DIR__ . '/buyer_nav.php'; ?>
   <main class="content buyer-profile-content">
-    <?php include __DIR__ . '/buyer_search.php'; ?>
+    <?php
+    $showBuyerSearch = false;
+    include __DIR__ . '/buyer_search.php';
+    ?>
     <div class="profile-wrap">
       <header class="profile-hero">
         <div class="profile-hero-copy">

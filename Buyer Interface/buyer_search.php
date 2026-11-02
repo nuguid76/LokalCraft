@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/buyer_auth.php';
+$showBuyerSearch = $showBuyerSearch ?? true;
 $searchPlaceholder = $searchPlaceholder ?? 'Search products...';
 $headerUserName = trim((string)($buyerNavFullName ?? ''));
 if ($headerUserName === '') $headerUserName = trim((string)($userName ?? 'Buyer'));
@@ -57,6 +58,12 @@ if (empty($_SESSION['buyer_role_switch_csrf'])) {
     border: 0;
     box-shadow: none;
     background: transparent;
+  }
+  .buyer-header-tools.buyer-header-no-search {
+    justify-content: flex-end;
+  }
+  .buyer-header-tools.buyer-header-no-search .buyer-menu-toggle {
+    margin-right: auto;
   }
   .buyer-header-actions {
     display: flex;
@@ -735,7 +742,7 @@ if (empty($_SESSION['buyer_role_switch_csrf'])) {
 
 </style>
 
-<div class="buyer-header-tools <?php echo ($activePage ?? '') === 'marketplace' ? 'marketplace-header' : ''; ?>">
+<div class="buyer-header-tools <?php echo ($activePage ?? '') === 'marketplace' ? 'marketplace-header' : ''; ?><?php echo !$showBuyerSearch ? ' buyer-header-no-search' : ''; ?>">
   <button
     class="buyer-menu-toggle"
     id="buyerSidebarToggle"
@@ -746,6 +753,7 @@ if (empty($_SESSION['buyer_role_switch_csrf'])) {
   >
     <span class="buyer-menu-lines" aria-hidden="true"><span></span><span></span><span></span></span>
   </button>
+  <?php if ($showBuyerSearch): ?>
   <div class="buyer-search-layout">
     <div class="filters" id="buyerFilters">
       <div class="filter-box search">
@@ -765,6 +773,7 @@ if (empty($_SESSION['buyer_role_switch_csrf'])) {
       </div>
     </div>
   </div>
+  <?php endif; ?>
   <div class="buyer-header-actions">
     <div class="buyer-notifications" id="buyerNotifications">
       <button class="buyer-notification" id="buyerNotificationsToggle" type="button"

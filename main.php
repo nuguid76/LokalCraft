@@ -679,14 +679,14 @@ require __DIR__ . '/public_nav.php';
               <div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></div>
               <h2>Mission</h2>
             </div>
-            <p>Our mission is to provide a simple and easy-to-use platform for small handicraft businesses in Taguig. We help local artisans manage their businesses, set fair product prices, and connect with customers looking for quality handmade products.</p>
+            <p>To provide a simple and accessible e-commerce platform that helps handcrafted microenterprises in Taguig City manage their product listings, stock quantities, orders, and pricing. LokalCraft aims to connect approved local sellers with buyers while providing tools that support better pricing decisions and business management.</p>
           </article>
           <article class="content-card reveal" data-reveal="up">
             <div class="card-heading">
               <div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.8 8.8c0 4.3-8.8 10.5-8.8 10.5S3.2 13.1 3.2 8.8A4.8 4.8 0 0 1 12 6.2a4.8 4.8 0 0 1 8.8 2.6Z"/></svg></div>
               <h2>Vision</h2>
             </div>
-            <p>Our vision is to help artisans in Taguig grow their businesses and earn a steady income from their crafts. We want LokalCraft to be a trusted place where Filipino traditions and modern technology bring artisans and buyers together.</p>
+            <p>To become a trusted online platform for Taguig City's handcraft community, where local artisans can showcase their products, reach more buyers, and manage their businesses with the support of modern technology. LokalCraft envisions helping preserve and promote Filipino craftsmanship by making handcrafted products more accessible to buyers.</p>
           </article>
         </div>
       </section>

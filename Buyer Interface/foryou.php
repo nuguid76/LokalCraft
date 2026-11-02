@@ -476,6 +476,29 @@ foreach ($products as $marketProduct) {
 }
 asort($marketCategoryOptions, SORT_NATURAL | SORT_FLAG_CASE);
 asort($marketBarangayOptions, SORT_NATURAL | SORT_FLAG_CASE);
+// Marketplace search suggestions are derived only from currently available products.
+$marketplaceSearchSuggestions = [];
+$addMarketplaceSuggestion = static function (string $value, string $type) use (&$marketplaceSearchSuggestions): void {
+    $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
+    if ($value === '') return;
+    $key = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    if (!isset($marketplaceSearchSuggestions[$key])) {
+        $marketplaceSearchSuggestions[$key] = ['label' => $value, 'type' => $type];
+    }
+};
+foreach ($products as $marketProduct) {
+    $addMarketplaceSuggestion((string)($marketProduct['product_name'] ?? ''), 'Product');
+    $categoryValue = trim((string)($marketProduct['craft_category'] ?? ''));
+    if ($categoryValue !== '') $addMarketplaceSuggestion(formatCategory($categoryValue), 'Category');
+    $businessValue = trim((string)($marketProduct['businessname'] ?? ''));
+    if ($businessValue !== '') {
+        $addMarketplaceSuggestion($businessValue, 'Shop');
+    } else {
+        $sellerValue = trim((string)($marketProduct['firstname'] ?? '') . ' ' . (string)($marketProduct['lastname'] ?? ''));
+        $addMarketplaceSuggestion($sellerValue, 'Seller');
+    }
+}
+$marketplaceSearchSuggestions = array_slice(array_values($marketplaceSearchSuggestions), 0, 250);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1968,6 +1991,20 @@ body.modal-open .lc-market-filter{z-index:auto;pointer-events:none}
 .lc-description-more:focus-visible{outline:2px solid #b76c32;outline-offset:3px;border-radius:2px}
 .lc-description-more[hidden]{display:none!important}
 .lc-store-fact .lc-description-more{margin:7px 0 0}
+.buyer-search-layout{position:relative}
+.lc-search-assist{position:absolute;top:calc(100% + 9px);left:0;width:min(560px,100%);z-index:140;padding:10px;border:1px solid #ead9c9;border-radius:16px;background:#fffdf9;box-shadow:0 18px 42px rgba(67,44,22,.16)}
+.lc-search-assist[hidden]{display:none!important}
+.lc-search-assist-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 7px 7px;color:#6d5846;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.lc-search-clear{border:0;background:transparent;color:#b8662c;font:inherit;font-size:.72rem;font-weight:800;cursor:pointer}
+.lc-search-list{display:grid;gap:3px;margin:0;padding:0;list-style:none}.lc-search-list>li{display:flex;align-items:center;gap:3px}.lc-search-list>li>.lc-search-option{flex:1;min-width:0}
+.lc-search-option{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:8px 9px;border:0;border-radius:11px;background:transparent;color:#45372d;text-align:left;cursor:pointer}
+.lc-search-option:hover,.lc-search-option.is-active{background:#fff0e2}
+.lc-search-option:focus-visible,.lc-search-clear:focus-visible{outline:3px solid rgba(234,138,58,.35);outline-offset:1px}
+.lc-search-option-icon{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:9px;background:#fff0e2;color:#b8662c}.lc-search-option-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lc-search-option-copy{min-width:0;display:grid;gap:1px}.lc-search-option-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.83rem;font-weight:750}.lc-search-option-type{color:#8b7767;font-size:.68rem}
+.lc-search-remove{margin-left:auto;flex:none;width:30px;height:30px;border:0;border-radius:9px;background:transparent;color:#8c7969;font-size:1rem;cursor:pointer}
+.lc-search-empty{padding:12px 9px;color:#887565;font-size:.79rem}
+@media(max-width:600px){.buyer-search-layout.is-expanded .lc-search-assist{position:fixed;top:64px;left:12px;right:12px;width:auto;max-height:min(62vh,430px);overflow:auto}.lc-search-assist{border-radius:14px}}
   </style>
 </head>
 <body>
@@ -2862,6 +2899,173 @@ window.addEventListener('pageshow',event=>{if(event.persisted)render();});
   if (initialBarangay && Array.from(barangay.options).some(opt => opt.value === initialBarangay)) selectedBarangay = initialBarangay;
   syncDropdowns();
   filterCards();
+})();
+
+// Marketplace search assistant: recent searches + actual product/shop/category suggestions.
+(() => {
+  const input = document.getElementById('productSearch');
+  const layout = document.querySelector('.buyer-search-layout');
+  if (!input || !layout) return;
+
+  const suggestions = <?php echo json_encode($marketplaceSearchSuggestions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+  const currentSearch = <?php echo json_encode($search, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+  const storageKey = 'lokalcraft_marketplace_recent_searches';
+  const maxRecent = 4;
+  const panel = document.createElement('div');
+  panel.className = 'lc-search-assist';
+  panel.id = 'lcSearchAssist';
+  panel.hidden = true;
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Marketplace search suggestions');
+  layout.append(panel);
+  input.setAttribute('aria-controls', panel.id);
+  input.setAttribute('aria-autocomplete', 'list');
+  input.value = currentSearch;
+
+  let activeIndex = -1;
+  let optionButtons = [];
+  const clean = value => String(value || '').trim().replace(/\s+/g, ' ').slice(0, 100);
+  const lower = value => clean(value).toLocaleLowerCase();
+  function readRecent() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      return Array.isArray(parsed) ? parsed.map(clean).filter(Boolean).slice(0, maxRecent) : [];
+    } catch (_) { return []; }
+  }
+  function writeRecent(items) {
+    try { localStorage.setItem(storageKey, JSON.stringify(items.slice(0, maxRecent))); } catch (_) {}
+  }
+  function remember(value) {
+    const query = clean(value);
+    if (!query) return;
+    writeRecent([query, ...readRecent().filter(item => lower(item) !== lower(query))]);
+  }
+  function submitSearch(value) {
+    const query = clean(value);
+    if (!query) return;
+    remember(query);
+    const url = new URL(window.location.href);
+    url.searchParams.set('search', query);
+    url.searchParams.delete('q');
+    window.location.assign(url.toString());
+  }
+  function removeRecent(value) {
+    writeRecent(readRecent().filter(item => lower(item) !== lower(value)));
+    render();
+  }
+  function makeOption(label, type, recent = false) {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'lc-search-option';
+    button.dataset.value = label;
+    button.setAttribute('role', 'option');
+    const icon = recent
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>';
+    button.innerHTML = '<span class="lc-search-option-icon" aria-hidden="true">' + icon + '</span>';
+    const copy = document.createElement('span');
+    copy.className = 'lc-search-option-copy';
+    const title = document.createElement('span');
+    title.className = 'lc-search-option-label';
+    title.textContent = label;
+    const meta = document.createElement('span');
+    meta.className = 'lc-search-option-type';
+    meta.textContent = type;
+    copy.append(title, meta);
+    button.append(copy);
+    button.addEventListener('pointerdown', event => event.preventDefault());
+    button.addEventListener('click', () => submitSearch(label));
+    li.append(button);
+    if (recent) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'lc-search-remove';
+      remove.setAttribute('aria-label', 'Remove ' + label + ' from recent searches');
+      remove.textContent = '\u00d7';
+      remove.addEventListener('pointerdown', event => event.preventDefault());
+      remove.addEventListener('click', event => { event.stopPropagation(); removeRecent(label); });
+      li.append(remove);
+    }
+    return li;
+  }
+  function section(title, items, recent = false) {
+    if (!items.length) return;
+    const head = document.createElement('div');
+    head.className = 'lc-search-assist-head';
+    const label = document.createElement('span');
+    label.textContent = title;
+    head.append(label);
+    if (recent) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'lc-search-clear';
+      clear.textContent = 'Clear all';
+      clear.addEventListener('pointerdown', event => event.preventDefault());
+      clear.addEventListener('click', () => { writeRecent([]); render(); });
+      head.append(clear);
+    }
+    const list = document.createElement('ul');
+    list.className = 'lc-search-list';
+    list.setAttribute('role', 'listbox');
+    items.forEach(item => list.append(makeOption(item.label, item.type, recent)));
+    panel.append(head, list);
+  }
+  function render() {
+    panel.replaceChildren();
+    activeIndex = -1;
+    const query = lower(input.value);
+    const recent = readRecent()
+      .filter(item => !query || lower(item).includes(query))
+      .slice(0, query ? 4 : maxRecent)
+      .map(label => ({label, type: 'Recent search'}));
+    const seen = new Set(recent.map(item => lower(item.label)));
+    const matched = suggestions
+      .filter(item => item && clean(item.label) && (!query || lower(item.label).includes(query)))
+      .filter(item => { const key = lower(item.label); if (seen.has(key)) return false; seen.add(key); return true; })
+      .slice(0, query ? 5 : 4);
+    if (!query) section('Recent searches', recent, true);
+    section(query ? 'Suggested searches' : 'Explore', matched, false);
+    if (!panel.children.length) {
+      const empty = document.createElement('div');
+      empty.className = 'lc-search-empty';
+      empty.textContent = query ? 'Press Enter to search for “' + clean(input.value) + '”.' : 'Start typing to search the marketplace.';
+      panel.append(empty);
+    }
+    optionButtons = Array.from(panel.querySelectorAll('.lc-search-option'));
+    panel.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function closePanel() {
+    panel.hidden = true;
+    activeIndex = -1;
+    optionButtons = [];
+    input.setAttribute('aria-expanded', 'false');
+  }
+  // Keep the assistant synchronized with buyer_search.php's mobile expand/collapse state.
+  const compactSearch = window.matchMedia('(max-width: 600px)');
+  const searchLayoutObserver = new MutationObserver(() => {
+    if (compactSearch.matches && !layout.classList.contains('is-expanded')) {
+      closePanel();
+    }
+  });
+  searchLayoutObserver.observe(layout, {attributes: true, attributeFilter: ['class']});
+  function moveActive(step) {
+    if (!optionButtons.length) return;
+    activeIndex = (activeIndex + step + optionButtons.length) % optionButtons.length;
+    optionButtons.forEach((button, index) => button.classList.toggle('is-active', index === activeIndex));
+    optionButtons[activeIndex].scrollIntoView({block: 'nearest'});
+  }
+  input.addEventListener('focus', render);
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); if (panel.hidden) render(); moveActive(1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); if (panel.hidden) render(); moveActive(-1); }
+    else if (event.key === 'Enter') { event.preventDefault(); submitSearch(activeIndex >= 0 ? optionButtons[activeIndex].dataset.value : input.value); }
+    else if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopImmediatePropagation(); closePanel(); }
+  }, true);
+  document.addEventListener('pointerdown', event => { if (!layout.contains(event.target)) closePanel(); });
+  if (currentSearch) remember(currentSearch);
 })();
 
   </script>
