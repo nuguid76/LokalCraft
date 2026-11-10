@@ -529,6 +529,8 @@ foreach ($savedProducts as $item) {
       line-height: 1.45;
       margin-bottom: 10px;
       min-height: 2.9em;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -708,6 +710,8 @@ foreach ($savedProducts as $item) {
       color: #59616c;
       font-size: 0.74rem;
       line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .product-details-stock {
       margin-bottom: 17px;
@@ -1866,7 +1870,7 @@ function renderProduct(product){
   $('productDetailsPrice').textContent=product.cost||money(product.cost_value);
   $('productDetailsLocation').textContent=productLocation(product)||'Location unavailable';
   $('productDetailsCategory').textContent=product.craft_category||'Handmade';
-  $('productDetailsDescription').textContent=product.description||'No description provided.';
+  $('productDetailsDescription').textContent=(String(product.description||'').replace(/\r\n?/g,'\n').trim()||'No description provided.');
   $('productDetailsStock').textContent=product.availability_state==='out_of_stock'?'Out of Stock':(product.is_available===false?'Unavailable':'Available: '+Math.max(0,Number(product.stock)||0));
   $('sellerDetailsName').textContent=product.seller_business||product.seller_name||product.seller_person||'Local Seller';
   const chatLink=$('sellerDetailsChat'),sellerId=Number(product.seller_id);chatLink.href=Number.isSafeInteger(sellerId)&&sellerId>0?'messages.php?seller_id='+encodeURIComponent(String(sellerId)):'messages.php';
@@ -2040,6 +2044,11 @@ function applySavedSearch(){
   const empty=$('buyerNoResults');if(empty)empty.hidden=visible!==0;
 }
 $('productSearch')?.addEventListener('input',applySavedSearch);
+$('buyerSearchToggle')?.addEventListener('click',()=>{
+  window.setTimeout(()=>{
+    if(String($('productSearch')?.value||'').trim()==='')applySavedSearch();
+  },0);
+});
 function syncSaveButton(productId,saved){
   savedStates.set(Number(productId),Boolean(saved));
   document.querySelectorAll('[data-save-product="'+productId+'"]').forEach(btn=>{btn.classList.toggle('is-saved',saved);btn.textContent=saved?'♥':'♡';btn.title=saved?'Saved':'Save product';btn.setAttribute('aria-label',saved?'Remove from saved':'Save product');btn.setAttribute('aria-pressed',saved?'true':'false');});

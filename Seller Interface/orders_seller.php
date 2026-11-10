@@ -1048,6 +1048,7 @@ body .page>main.content.orders-content{position:relative!important;left:auto!imp
 .open-arrow{text-align:right;color:#b5a89c!important}.open-arrow .ui-icon{width:18px;height:18px}
 .empty-list{padding:50px 20px;text-align:center;color:#857a70}.empty-list .ui-icon{width:34px;height:34px;color:#df995b;margin-bottom:8px}.empty-list h2{font-size:1rem;color:#413a34;margin:8px 0}
 .empty-list[hidden]{display:none!important}
+.empty-list p{margin:7px auto 15px;max-width:520px;font-size:.78rem;line-height:1.5}.empty-list #clearOrderSearch{margin-inline:auto}
 /* Dialog content scrolls while the actions stay in place. */
 dialog{box-sizing:border-box}
 .order-details-dialog{width:min(790px,calc(100vw - 24px));max-width:790px;max-height:90dvh;margin:auto;padding:0;border:0;border-radius:20px;background:#fff;box-shadow:0 25px 70px rgba(30,20,10,.22);overflow:hidden}
@@ -1448,7 +1449,23 @@ body .page > main.content.orders-content {
                         $orderNotes=trim((string)($order['notes'] ?? ''));
                         $items=$orderItems[$orderId]??[];
                         ?>
-                        <tr class="order-row" id="order-<?= $orderId ?>" data-order-id="<?= $orderId ?>" data-filter-group="<?= e($statusGroup) ?>" data-search="<?= e('#'.$orderId.' '.$buyerName.' '.$summary.' '.$uiLabel.' '.$uiStatus) ?>" tabindex="0" aria-label="View Order #<?= $orderId ?>">
+                        <tr class="order-row" id="order-<?= $orderId ?>" data-order-id="<?= $orderId ?>" data-filter-group="<?= e($statusGroup) ?>" data-search="<?= e(implode(' ', [
+                                '#'.$orderId,
+                                'order '.$orderId,
+                                $buyerName,
+                                $summary,
+                                $uiLabel,
+                                $uiStatus,
+                                $statusGroup,
+                                $paymentLabel,
+                                $paymentStatusLabel,
+                                $deliveryLabel,
+                                $arrangementLocation,
+                                $arrangementNotes,
+                                $orderNotes,
+                                sellerOrderDate($order['ordered_at'], true),
+                                number_format((float)$order['total_amount'], 2, '.', '')
+                            ])) ?>" tabindex="0" aria-label="View Order #<?= $orderId ?>">
                             <td class="table-order"><span class="order-cell"><span class="row-icon"><?= sellerOrderIcon('package') ?></span><span class="row-id">#<?= $orderId ?></span></span></td>
                             <td class="table-buyer"><span class="order-cell"><span class="row-icon user"><?= sellerOrderIcon('user') ?></span><span class="buyer-name"><?= e($buyerName) ?></span></span></td>
                             <td class="table-items"><span class="items-preview"><?= e($summary) ?></span></td>
@@ -1542,7 +1559,12 @@ body .page > main.content.orders-content {
                         </tr>
                     <?php endforeach; ?>
                     </tbody></table>
-                    <div class="empty-list" id="filterEmpty" hidden><?= sellerOrderIcon('search') ?><h2>No matching orders</h2></div>
+                    <div class="empty-list" id="filterEmpty" hidden>
+                        <?= sellerOrderIcon('search') ?>
+                        <h2>No matching orders</h2>
+                        <p>Try an order number, buyer, product, status, payment, delivery, date, or amount.</p>
+                        <button class="order-action" id="clearOrderSearch" type="button">Clear Search</button>
+                    </div>
                 <?php endif; ?>
             </section>
         </div>
@@ -1617,17 +1639,36 @@ body .page > main.content.orders-content {
     // Reuse the shared header input only on this Seller Orders page.
     const search=document.querySelector('#ordersSearchShell #productSearch');
     search?.setAttribute('aria-label','Search orders');
+    search?.setAttribute('autocomplete','off');
     const empty=document.getElementById('filterEmpty');
+    const clearOrderSearch=document.getElementById('clearOrderSearch');
     let filter='all';
+    function normalizeOrderSearch(value){
+        return String(value||'')
+            .toLocaleLowerCase()
+            .replace(/[_-]+/g,' ')
+            .replace(/[^\p{L}\p{N}#₱.\s]/gu,' ')
+            .replace(/\s+/g,' ')
+            .trim();
+    }
     function updateList(){
-        const query=(search?.value||'').trim().toLocaleLowerCase();
+        const query=normalizeOrderSearch(search?.value);
+        const compactQuery=query.replace(/\s+/g,'');
         let shown=0;
         rows.forEach(row=>{
-            const visible=(filter==='all'||row.dataset.filterGroup===filter) && (!query||(row.dataset.search||'').toLocaleLowerCase().includes(query));
+            const searchable=normalizeOrderSearch(row.dataset.search||'');
+            const statusMatch=filter==='all'||row.dataset.filterGroup===filter;
+            const textMatch=!query
+                || searchable.includes(query)
+                || searchable.replace(/\s+/g,'').includes(compactQuery);
+            const visible=statusMatch&&textMatch;
             row.hidden=!visible;
             if(visible) shown++;
         });
         if(empty) empty.hidden=shown!==0;
+        search?.setAttribute('aria-label',query
+            ? `Search orders, ${shown} result${shown===1?'':'s'}`
+            : 'Search orders');
     }
     filterButtons.forEach(button=>button.addEventListener('click',()=>{
         filter=button.dataset.filter||'all';
@@ -1635,6 +1676,13 @@ body .page > main.content.orders-content {
         updateList();
     }));
     search?.addEventListener('input',updateList);
+    search?.addEventListener('search',updateList);
+    clearOrderSearch?.addEventListener('click',()=>{
+        if(!search)return;
+        search.value='';
+        updateList();
+        try{search.focus({preventScroll:true})}catch(_){search.focus()}
+    });
     updateList();
     const details=document.getElementById('orderDetailsDialog');
     const detailsTitle=document.getElementById('orderDetailsTitle');

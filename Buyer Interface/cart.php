@@ -5845,6 +5845,11 @@ for(const row of document.querySelectorAll('.cart-item')){
       }
     }
     cartSearchInput?.addEventListener('input', applyCartSearch);
+    document.getElementById('buyerSearchToggle')?.addEventListener('click', () => {
+      window.setTimeout(() => {
+        if (String(cartSearchInput?.value || '').trim() === '') applyCartSearch();
+      }, 0);
+    });
     selectAllCart?.addEventListener('change', () => {
       const checked = selectAllCart.checked;
       getCartItems().forEach((item) => {

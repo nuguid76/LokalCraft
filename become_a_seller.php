@@ -334,11 +334,25 @@ function sellerNormalizePhone(string $value): string
     if (str_starts_with($digits, '9')) return '0' . $digits;
     return $digits;
 }
+function sellerEmailDomainAllowed(string $domain): bool
+{
+    $domain = strtolower(trim($domain));
+    return in_array($domain, ['gmail.com', 'yahoo.com', 'outlook.com'], true);
+}
+function sellerEmailErrorMessage(string $email, string $default = 'Enter a valid email address.'): string
+{
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $domain = strtolower((string)substr(strrchr($email, '@') ?: '', 1));
+        if (!sellerEmailDomainAllowed($domain)) return 'Use a Gmail, Yahoo, or Outlook email address.';
+    }
+    return $default;
+}
 function sellerEmailIsValid(string $email): bool
 {
     if ($email === '' || strlen($email) > 100 || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
     $domain = strtolower((string)substr(strrchr($email, '@') ?: '', 1));
     if ($domain === 'g.mail.com' || $domain === 'gmail.con' || $domain === 'yahoo.con') return false;
+    if (!sellerEmailDomainAllowed($domain)) return false;
     // Verify mail DNS only if the server's DNS resolver is working.
     // OTP confirmation remains the definitive check that the address is reachable.
     if (function_exists('checkdnsrr') && checkdnsrr('gmail.com', 'MX')) {
@@ -425,7 +439,7 @@ if (
     if ($action === 'seller_check_email') {
         $checkEmail = strtolower(trim((string)($_POST['email'] ?? '')));
         if (!sellerEmailIsValid($checkEmail)) {
-            echo json_encode(['success'=>false, 'field'=>'email', 'message'=>'Enter a valid email address.']);
+            echo json_encode(['success'=>false, 'field'=>'email', 'message'=>sellerEmailErrorMessage($checkEmail)]);
             exit;
         }
         try {
@@ -483,7 +497,7 @@ if (
         echo json_encode([
             'success' => false,
             'field' => 'email',
-            'message' => 'Please enter a valid email address.',
+            'message' => sellerEmailErrorMessage($checkEmail, 'Please enter a valid email address.'),
         ]);
         exit;
     }
@@ -627,7 +641,7 @@ if (
     } elseif (
         !sellerEmailIsValid($email)
     ) {
-        $error = 'Please enter a valid email address.';
+        $error = sellerEmailErrorMessage($email, 'Please enter a valid email address.');
     } elseif (!preg_match('/^09\d{9}$/', $phone)) {
         $error = 'Phone number must be 11 digits and start with 09.';
     } elseif (!sellerPasswordIsValid($password)) {
@@ -2153,7 +2167,7 @@ if ($application_submitted) {
         </div>
         <div class="form-group form-row full">
           <label for="email">Email Address *</label>
-          <input type="email" id="email" name="email" maxlength="100" placeholder="artisan@lokalcraft.com" required value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>" autocomplete="email">
+          <input type="email" id="email" name="email" maxlength="100" placeholder="artisan@gmail.com" required value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>" autocomplete="email">
           <div class="email-check-message" id="emailCheckMessage" aria-live="polite"></div>
         </div>
         <div class="form-group form-row full">
@@ -3299,7 +3313,7 @@ if ($application_submitted) {
         setFieldError('email', 'Email address is required.');
         invalidFields.push('email');
       } else if (!emailFormatValid(email)) {
-        setFieldError('email', 'Enter a valid email address.');
+        setFieldError('email', emailErrorText(email));
         invalidFields.push('email');
       } else {
         clearFieldError('email');
@@ -3825,14 +3839,24 @@ if ($application_submitted) {
   const emailMessage = document.getElementById('emailCheckMessage');
   let emailCheckTimer = null;
   let emailCheckSerial = 0;
+  function emailDomainAllowed(domain) {
+    domain = String(domain || '').toLowerCase();
+    return ['gmail.com','yahoo.com','outlook.com'].includes(domain);
+  }
+  function emailErrorText(value) {
+    const email = String(value || '').trim().toLowerCase();
+    const formatOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (formatOk && !emailDomainAllowed(email.split('@').pop())) return 'Use a Gmail, Yahoo, or Outlook email address.';
+    return 'Enter a valid email address.';
+  }
   function emailFormatValid(email) {
-    return emailInput.validity.valid && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !['g.mail.com','gmail.con','yahoo.con'].includes((email.split('@')[1] || '').toLowerCase());
+    return emailInput.validity.valid && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !['g.mail.com','gmail.con','yahoo.con'].includes((email.split('@')[1] || '').toLowerCase()) && emailDomainAllowed(email.split('@')[1] || '');
   }
   async function checkSellerEmail() {
     const email = emailInput.value.trim().toLowerCase();
     const serial = ++emailCheckSerial;
     if (!email) { emailMessage.textContent=''; emailMessage.className='email-check-message'; return false; }
-    if (!emailFormatValid(email)) { setFieldError('email','Enter a valid email address.'); return false; }
+    if (!emailFormatValid(email)) { setFieldError('email',emailErrorText(email)); return false; }
     if (emailVerified && email === verifiedEmail.toLowerCase()) {
       emailMessage.textContent='✓ Email verified'; emailMessage.className='email-check-message success'; return true;
     }

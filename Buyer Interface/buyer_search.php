@@ -921,11 +921,8 @@ if (empty($_SESSION['buyer_role_switch_csrf'])) {
     if (!buyerSearchLayout?.classList.contains('is-expanded')) return;
     buyerSearchLayout.classList.remove('is-expanded');
     productSearch?.blur();
-    // A hidden search must not leave product cards filtered without any visible query.
-    if (productSearch && productSearch.value !== '') {
-      productSearch.value = '';
-      applyBuyerSearch();
-    }
+    // Collapsing the mobile search is only a UI action. Keep the query and
+    // filtered results so the user can scroll and reopen the same search.
     buyerSearchToggle?.setAttribute('aria-label', 'Open search');
     buyerSearchToggle?.setAttribute('aria-expanded', 'false');
   }

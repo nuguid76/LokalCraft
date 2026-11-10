@@ -1311,7 +1311,10 @@ body, .page, .page > .content.buyer-seller-application-content {
 <div class="page">
 <?php include __DIR__ . '/buyer_nav.php'; ?>
 <main class="content buyer-seller-application-content">
-<?php include __DIR__ . '/buyer_search.php'; ?>
+<?php
+$showBuyerSearch = false;
+include __DIR__ . '/buyer_search.php';
+?>
 <div class="app-wrap">
 <header class="app-top">
   <div class="app-top-copy"><span class="app-eyebrow">YOUR ACCOUNT</span><h1>Seller Application</h1></div>

@@ -5789,6 +5789,86 @@ html,body,.page{background:#FFF8ED;color:#342d27}
   body.lc-store-searching .messages-shell.chat-open .chat-panel{display:none}
 }
 @media(prefers-reduced-motion:reduce){.buyer-header-tools .lc-messages-mobile-label{transition:none}}
+
+
+/* Selected attachment row */
+.attachment-preview[role="button"]{cursor:pointer}
+.attachment-preview[role="button"]:focus-visible{outline:3px solid rgba(232,137,65,.32);outline-offset:2px}
+.attachment-preview-hint{margin-left:auto;font-size:.76rem;font-weight:800;color:#a65f29}
+.attachment-remove{margin-left:8px}
+
+/* One attachment viewer only. Native dialog uses the browser top layer. */
+#messageAttachmentViewer{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:18px;border:0;background:rgba(28,23,19,.82);color:inherit;overflow:hidden}
+#messageAttachmentViewer:not([open]){display:none}
+#messageAttachmentViewer[open]{display:flex;align-items:center;justify-content:center}
+#messageAttachmentViewer::backdrop{background:rgba(28,23,19,.82);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.message-attachment-backdrop{position:absolute;inset:0}
+.message-attachment-panel{position:relative;z-index:1;display:flex;flex-direction:column;width:min(1200px,100%);height:calc(100% - 4px);min-width:0;min-height:0;border:1px solid #6a5a4d;border-radius:20px;background:#211e1b;box-shadow:0 26px 90px rgba(0,0,0,.38);overflow:hidden}
+.message-attachment-stage{flex:1 1 auto;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;padding:22px 22px 8px;overflow:hidden;background:#211e1b}
+.message-attachment-stage img{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center;border-radius:0;background:transparent}
+.message-attachment-stage iframe{display:block;width:100%;height:100%;min-height:0;border:0;border-radius:8px;background:#fff}
+.message-attachment-fallback{max-width:520px;padding:22px;border-radius:12px;background:#fff;color:#59483d;text-align:center;line-height:1.55}
+/* The viewer has three mutually exclusive media surfaces. Author CSS must not override hidden. */
+#messageAttachmentImage[hidden],#messageAttachmentPdf[hidden],#messageAttachmentFallback[hidden]{display:none!important}
+#messageAttachmentImage:not([hidden]){display:block!important}
+#messageAttachmentPdf:not([hidden]){display:block!important}
+#messageAttachmentFallback:not([hidden]){display:block!important}
+.message-attachment-footer{flex:0 0 auto;min-height:54px;padding:14px 25px;display:flex;align-items:center;justify-content:space-between;gap:14px;background:#211e1b;color:#f2e6d9;font-size:.82rem}
+.message-attachment-footer strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f2e6d9}
+.message-attachment-footer span{flex:none;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c7b9aa;font-size:.72rem}
+.message-attachment-close{position:absolute;z-index:12;top:14px;right:14px;width:40px;height:40px;padding:0;display:grid;place-items:center;border:1px solid #eddcc9;border-radius:50%;background:rgba(255,253,249,.97);color:#835c3d;box-shadow:0 5px 18px rgba(59,35,15,.11);cursor:pointer}
+.message-attachment-close svg{width:19px;height:19px;pointer-events:none}
+.attachment.message-attachment-button{display:block;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:zoom-in;font:inherit}
+.attachment.message-attachment-button:focus-visible{outline:3px solid rgba(232,137,65,.55);outline-offset:3px}
+body.message-attachment-open{overflow:hidden}
+@media(max-width:760px){#messageAttachmentViewer{padding:0}.message-attachment-panel{width:100%;height:100%;border:0;border-radius:0}.message-attachment-stage{padding:max(57px,calc(env(safe-area-inset-top) + 55px)) 9px 8px}.message-attachment-footer{min-height:56px;padding:13px 17px calc(14px + env(safe-area-inset-bottom))}.message-attachment-close{top:calc(12px + env(safe-area-inset-top));right:13px}}
+
+/* Attachment-only chat bubbles shrink to the displayed image instead of using the normal text-bubble width. */
+.message-row .message-content.has-image-attachment{
+  flex:0 1 auto;
+  width:auto;
+  max-width:min(72%,430px);
+}
+.message-row .message-content.has-image-attachment .bubble{
+  display:inline-flex;
+  width:auto;
+  max-width:100%;
+  flex-direction:column;
+  align-items:stretch;
+  padding:7px;
+}
+.message-row .message-content.has-image-attachment.has-message-text .bubble{
+  width:min(430px,100%);
+  padding:9px 10px 8px;
+}
+.message-row .message-content.has-image-attachment .attachment.message-attachment-button{
+  display:block;
+  width:auto;
+  max-width:100%;
+  margin:0;
+  padding:0;
+}
+.message-row .message-content.has-image-attachment .attachment.message-attachment-button img{
+  display:block;
+  width:auto;
+  height:auto;
+  max-width:100%;
+  max-height:360px;
+  object-fit:contain;
+  object-position:center;
+}
+.message-row .message-content.has-image-attachment .message-time{
+  min-width:72px;
+  padding:0 3px 1px;
+}
+@media(max-width:760px){
+  .message-row .message-content.has-image-attachment{
+    max-width:86%;
+  }
+  .message-row .message-content.has-image-attachment .attachment.message-attachment-button img{
+    max-height:52svh;
+  }
+}
 </style>
 </head>
 <body>
@@ -5824,6 +5904,7 @@ html,body,.page{background:#FFF8ED;color:#342d27}
                     type="button"
                     class="conversation-item <?php echo $active ? 'active' : ''; ?>"
                     data-seller-id="<?php echo (int)$conversation['partner_id']; ?>"
+                    data-store-name="<?php echo h($conversation['name'] ?? $conversation['person_name'] ?? ''); ?>"
                   >
                     <span class="avatar"><?php echo h($conversation['initials']); ?></span>
                     <span class="conversation-main">
@@ -5986,11 +6067,29 @@ html,body,.page{background:#FFF8ED;color:#342d27}
                 <button type="button" class="quick-reply" data-message="What delivery options can we arrange?">Ask delivery</button>
               </div>
               <div class="chat-input-wrap">
-                <div class="attachment-preview" id="attachmentPreview">
+                <div class="attachment-preview" id="attachmentPreview" role="button" tabindex="0" aria-label="Preview selected attachment" title="Preview attachment before sending">
                   <span class="attachment-preview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20.5 11.5-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.3 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></span>
                   <span class="attachment-preview-name" id="attachmentPreviewName"></span>
+                  <span class="attachment-preview-hint" aria-hidden="true">Preview</span>
                   <button class="attachment-remove" id="attachmentRemove" type="button" aria-label="Remove attachment">×</button>
                 </div>
+                <dialog id="messageAttachmentViewer" aria-labelledby="messageAttachmentTitle">
+                  <div class="message-attachment-backdrop" id="messageAttachmentBackdrop"></div>
+                  <section class="message-attachment-panel">
+                    <button type="button" class="message-attachment-close" id="messageAttachmentClose" aria-label="Close attachment viewer">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                    <div class="message-attachment-stage">
+                      <img id="messageAttachmentImage" alt="Attachment preview" hidden>
+                      <iframe id="messageAttachmentPdf" title="PDF attachment preview" hidden></iframe>
+                      <div class="message-attachment-fallback" id="messageAttachmentFallback" hidden></div>
+                    </div>
+                    <footer class="message-attachment-footer">
+                      <strong id="messageAttachmentTitle">Attachment preview</strong>
+                      <span id="messageAttachmentMeta"></span>
+                    </footer>
+                  </section>
+                </dialog>
                 <form class="chat-input" id="messageForm" enctype="multipart/form-data">
                   <label class="attach-label" aria-label="Attach file" title="Attach file">
                     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20.5 11.5-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.3 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
@@ -6331,10 +6430,16 @@ html,body,.page{background:#FFF8ED;color:#342d27}
       if (empty) empty.hidden = !query || found > 0;
     }
     storeSearchInput?.addEventListener('input', filterStoresInConversations);
-    document.getElementById('buyerSearchToggle')?.addEventListener('click', () => queueMicrotask(filterStoresInConversations));
-    document.addEventListener('pointerdown', () => queueMicrotask(filterStoresInConversations));
+    storeSearchInput?.addEventListener('search', filterStoresInConversations);
+    document.getElementById('buyerSearchToggle')?.addEventListener('click', () => {
+      window.setTimeout(() => {
+        if (String(storeSearchInput?.value || '').trim() === '') {
+          filterStoresInConversations();
+        }
+      }, 0);
+    });
     storeSearchInput?.addEventListener('keydown', event => {
-      if (event.key === 'Escape') queueMicrotask(filterStoresInConversations);
+      if (event.key === 'Escape') window.setTimeout(filterStoresInConversations, 0);
     });
     const chatBody = document.getElementById('chatBody');
     const linkedOrderFilter = document.getElementById('linkedOrderFilter');
@@ -6398,6 +6503,17 @@ html,body,.page{background:#FFF8ED;color:#342d27}
     const attachmentPreview = document.getElementById('attachmentPreview');
     const attachmentPreviewName = document.getElementById('attachmentPreviewName');
     const attachmentRemove = document.getElementById('attachmentRemove');
+    const messageAttachmentViewer = document.getElementById('messageAttachmentViewer');
+    const messageAttachmentBackdrop = document.getElementById('messageAttachmentBackdrop');
+    const messageAttachmentClose = document.getElementById('messageAttachmentClose');
+    const messageAttachmentTitle = document.getElementById('messageAttachmentTitle');
+    const messageAttachmentMeta = document.getElementById('messageAttachmentMeta');
+    const messageAttachmentImage = document.getElementById('messageAttachmentImage');
+    const messageAttachmentPdf = document.getElementById('messageAttachmentPdf');
+    const messageAttachmentFallback = document.getElementById('messageAttachmentFallback');
+    let messageAttachmentObjectUrl = '';
+    let messageAttachmentObjectUrlIsLocal = false;
+    let messageAttachmentReturnFocus = null;
     const chatBack = document.getElementById('chatBack');
     const reviewArrangementButton = document.getElementById('reviewArrangementButton');
     const buyerPayNowButton = document.getElementById('buyerPayNowButton');
@@ -6468,7 +6584,7 @@ html,body,.page{background:#FFF8ED;color:#342d27}
         if (top.dialog.open) top.dialog.close();
       }
     });
-    for (const dialog of [buyerArrangementDialog, buyerQrDialog]) {
+    for (const dialog of [buyerArrangementDialog, buyerQrDialog, messageAttachmentViewer]) {
       if (!dialog) continue;
       dialog.addEventListener('cancel', (event) => {
         const top = buyerChatDialogFrames[buyerChatDialogFrames.length - 1];
@@ -6567,27 +6683,36 @@ html,body,.page{background:#FFF8ED;color:#342d27}
         if (!['http:', 'https:'].includes(safeUrl.protocol)
             || safeUrl.origin !== window.location.origin) return;
       } catch (_) { return; }
-      const link = document.createElement('a');
-      link.className = 'attachment';
-      link.href = safeUrl.href;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      const filename = safeUrl.pathname.split('/').pop() || 'Attached file';
-      const extension = filename.split('.').pop()?.toLowerCase() || '';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+      const storedName = safeUrl.pathname.split('/').pop() || 'attachment';
+      const extension = storedName.split('.').pop()?.toLowerCase() || '';
+      const label = ['jpg','jpeg','png','gif','webp'].includes(extension)
+        ? 'Attached image'
+        : extension === 'pdf' ? 'PDF attachment' : 'Attached file';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'attachment message-attachment-button';
+      button.setAttribute('aria-label', 'View ' + label.toLowerCase());
+      if (['jpg','jpeg','png','gif','webp'].includes(extension)) {
         const image = document.createElement('img');
         image.src = safeUrl.href;
-        image.alt = 'Attached image';
+        image.alt = label;
         image.loading = 'lazy';
-        image.addEventListener('load', () => scrollToBottom(true), { once: true });
-        link.appendChild(image);
+        image.addEventListener('load', () => scrollToBottom(true), {once:true});
+        button.appendChild(image);
       } else {
         const file = createElement('div', 'attachment-file');
         file.appendChild(attachmentIcon());
-        file.appendChild(createElement('span', 'attachment-file-name', filename));
-        link.appendChild(file);
+        file.appendChild(createElement('span', 'attachment-file-name', label));
+        button.appendChild(file);
       }
-      parent.appendChild(link);
+      button.addEventListener('click', () => openMessageAttachmentViewer({
+        url: safeUrl.href,
+        extension,
+        title: label,
+        meta: extension ? extension.toUpperCase() : 'FILE',
+        localObjectUrl: false
+      }));
+      parent.appendChild(button);
     }
     // Linkify only HTTP(S) URLs. All other message text remains text nodes (never HTML).
     function renderChatText(messageText) {
@@ -6813,6 +6938,13 @@ html,body,.page{background:#FFF8ED;color:#342d27}
       row.dataset.messageId = String(message.message_id);
       if (Number(message.order_id) > 0) row.dataset.orderId = String(message.order_id);
       const content = createElement('div', 'message-content');
+      const attachmentExtension = String(message.attachment || '')
+        .split('?')[0]
+        .split('.').pop()?.toLowerCase() || '';
+      const hasImageAttachment = ['jpg','jpeg','png','gif','webp'].includes(attachmentExtension);
+      const hasMessageText = Boolean(String(message.message_text || '').trim());
+      content.classList.toggle('has-image-attachment', hasImageAttachment);
+      content.classList.toggle('has-message-text', hasImageAttachment && hasMessageText);
       const bubble = createElement('div', 'bubble');
       renderAttachment(bubble, message.attachment);
       const orderEvent = orderChatEvent(message);
@@ -8293,7 +8425,95 @@ html,body,.page{background:#FFF8ED;color:#342d27}
       messageInput.style.height =
         Math.min(messageInput.scrollHeight, 110) + 'px';
     }
+    function resetMessageAttachmentViewerMedia() {
+      if (messageAttachmentImage) {
+        messageAttachmentImage.hidden = true;
+        messageAttachmentImage.removeAttribute('src');
+        messageAttachmentImage.alt = 'Attachment preview';
+      }
+      if (messageAttachmentPdf) {
+        messageAttachmentPdf.hidden = true;
+        messageAttachmentPdf.removeAttribute('src');
+      }
+      if (messageAttachmentFallback) {
+        messageAttachmentFallback.hidden = true;
+        messageAttachmentFallback.replaceChildren();
+      }
+    }
+    function showMessageAttachmentSurface(surface) {
+      if (messageAttachmentImage) messageAttachmentImage.hidden = surface !== 'image';
+      if (messageAttachmentPdf) messageAttachmentPdf.hidden = surface !== 'pdf';
+      if (messageAttachmentFallback) messageAttachmentFallback.hidden = surface !== 'file';
+    }
+    function cleanupMessageAttachmentViewer() {
+      document.body.classList.remove('message-attachment-open');
+      resetMessageAttachmentViewerMedia();
+      if (messageAttachmentObjectUrl && messageAttachmentObjectUrlIsLocal) {
+        URL.revokeObjectURL(messageAttachmentObjectUrl);
+      }
+      messageAttachmentObjectUrl = '';
+      messageAttachmentObjectUrlIsLocal = false;
+      messageAttachmentReturnFocus?.focus?.({preventScroll:true});
+      messageAttachmentReturnFocus = null;
+    }
+    function closeMessageAttachmentViewer() {
+      if (!messageAttachmentViewer?.open) return;
+      const top = buyerChatDialogFrames[buyerChatDialogFrames.length - 1];
+      const state = buyerChatDialogState(window.history.state);
+      if (top?.dialog === messageAttachmentViewer && state?.ticket === top.ticket) {
+        window.history.back();
+        return;
+      }
+      messageAttachmentViewer.close();
+    }
+    function openMessageAttachmentViewer({url, extension, title, meta, localObjectUrl}) {
+      if (!messageAttachmentViewer || !url) return;
+      if (messageAttachmentViewer.open) closeMessageAttachmentViewer();
+      resetMessageAttachmentViewerMedia();
+      messageAttachmentReturnFocus = document.activeElement;
+      messageAttachmentObjectUrl = String(url);
+      messageAttachmentObjectUrlIsLocal = Boolean(localObjectUrl);
+      const ext = String(extension || '').toLowerCase();
+      if (messageAttachmentTitle) messageAttachmentTitle.textContent = title || 'Attachment preview';
+      if (messageAttachmentMeta) messageAttachmentMeta.textContent = meta || '';
+      if (['jpg','jpeg','png','gif','webp'].includes(ext) && messageAttachmentImage) {
+        showMessageAttachmentSurface('image');
+        messageAttachmentImage.alt = title || 'Attached image';
+        messageAttachmentImage.src = messageAttachmentObjectUrl;
+      } else if (ext === 'pdf' && messageAttachmentPdf) {
+        showMessageAttachmentSurface('pdf');
+        messageAttachmentPdf.src = messageAttachmentObjectUrl;
+      } else if (messageAttachmentFallback) {
+        showMessageAttachmentSurface('file');
+        const note = document.createElement('p');
+        note.textContent = 'This file cannot be previewed directly in the browser.';
+        const download = document.createElement('a');
+        download.href = messageAttachmentObjectUrl;
+        download.download = title || 'attachment';
+        download.textContent = 'Download file';
+        download.style.cssText = 'display:inline-flex;margin-top:12px;padding:9px 13px;border-radius:9px;background:#a55325;color:#fff;text-decoration:none;font-weight:800';
+        messageAttachmentFallback.append(note, download);
+      }
+      openBuyerChatDialog(messageAttachmentViewer, 'attachment');
+      document.body.classList.add('message-attachment-open');
+      messageAttachmentClose?.focus({preventScroll:true});
+    }
+    function openPendingAttachmentPreview() {
+      const file = attachmentInput?.files?.[0];
+      if (!file) return;
+      const localUrl = URL.createObjectURL(file);
+      const lowerName = String(file.name || '').toLowerCase();
+      const extension = lowerName.split('.').pop() || '';
+      openMessageAttachmentViewer({
+        url: localUrl,
+        extension,
+        title: file.name || 'Attachment preview',
+        meta: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+        localObjectUrl: true
+      });
+    }
     function clearAttachment() {
+      closeMessageAttachmentViewer();
       if (attachmentInput) {
         attachmentInput.value = '';
       }
@@ -8582,8 +8802,27 @@ html,body,.page{background:#FFF8ED;color:#342d27}
         updateSendButton();
       });
     }
+    attachmentPreview?.addEventListener('click', event => {
+      if (event.target.closest('#attachmentRemove')) return;
+      openPendingAttachmentPreview();
+    });
+    attachmentPreview?.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openPendingAttachmentPreview();
+    });
+    messageAttachmentClose?.addEventListener('click', closeMessageAttachmentViewer);
+    messageAttachmentBackdrop?.addEventListener('click', closeMessageAttachmentViewer);
+    messageAttachmentViewer?.addEventListener('cancel', event => {
+      event.preventDefault();
+      closeMessageAttachmentViewer();
+    });
+    messageAttachmentViewer?.addEventListener('close', cleanupMessageAttachmentViewer);
     if (attachmentRemove) {
-      attachmentRemove.addEventListener('click', clearAttachment);
+      attachmentRemove.addEventListener('click', event => {
+        event.stopPropagation();
+        clearAttachment();
+      });
     }
     if (messageForm) {
       messageForm.addEventListener('submit', async (event) => {
@@ -8599,6 +8838,7 @@ html,body,.page{background:#FFF8ED;color:#342d27}
           return;
         }
         sendButton.disabled = true;
+        closeMessageAttachmentViewer();
         clearChatError();
         updateTypingState(false);
         const formData = new FormData();
@@ -8840,6 +9080,7 @@ function push(type,payload={}){
 }
 function backOne(){if(depth>0){window.history.back();}}
 window.addEventListener('popstate',event=>{
+  // Smart Back: remove only the topmost Store > Product > Full Photo layer.
   const st=event.state?.lcMessagesStore;
   const newDepth=st?.navId===navId?Number(st.depth):0;
   depth=Math.max(0,Math.min(frames.length,Number.isFinite(newDepth)?newDepth:0));

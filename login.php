@@ -1778,6 +1778,16 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
   </section>
 </div>
 <script>
+  // Safari-safe focus helper. Older Safari versions may reject focus options.
+  function safeLoginFocus(element, preventScroll) {
+    if (!element || typeof element.focus !== 'function') return;
+    try {
+      element.focus(preventScroll === false ? undefined : { preventScroll: true });
+    } catch (_) {
+      try { element.focus(); } catch (_) {}
+    }
+  }
+
   // Match the visible viewport, including when a phone's keyboard is open.
   // Keep existing OTP, forgot/reset actions and validations unchanged.
   function updateLoginDialogViewport() {
@@ -1801,7 +1811,11 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
     window.setTimeout(function () {
       updateLoginDialogViewport();
       // Scroll inside the dialog if the keyboard obscures a focused field.
-      field.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      try {
+        field.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      } catch (_) {
+        try { field.scrollIntoView(false); } catch (_) {}
+      }
     }, 180);
   });
   // Informational notices leave automatically; login errors stay until dismissed.
@@ -1832,7 +1846,7 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
       passwordToggle.setAttribute('aria-pressed', showing ? 'false' : 'true');
       eyeOpen.style.display = showing ? '' : 'none';
       eyeClosed.style.display = showing ? 'none' : '';
-      passwordInput.focus({ preventScroll: true });
+      safeLoginFocus(passwordInput);
     });
   }
   const loginForm = document.querySelector('.login-form');
@@ -1869,8 +1883,15 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
       if (signInButton.disabled) countdownTimer = window.setInterval(updateLockoutCountdown, 1000);
     }
     loginForm.addEventListener('submit', function (event) {
-      if (signInButton.disabled || !loginForm.checkValidity()) {
+      if (signInButton.disabled) {
         event.preventDefault();
+        return;
+      }
+      if (!loginForm.checkValidity()) {
+        event.preventDefault();
+        if (typeof loginForm.reportValidity === 'function') loginForm.reportValidity();
+        const firstInvalid = loginForm.querySelector(':invalid');
+        safeLoginFocus(firstInvalid, false);
         return;
       }
       signInButton.disabled = true;
@@ -1982,11 +2003,11 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
     });
     updateLoginPopupScroll();
     if (focusField && name === 'email') {
-      window.setTimeout(() => forgotEmailInput?.focus({ preventScroll: true }), 80);
+      window.setTimeout(() => safeLoginFocus(forgotEmailInput), 80);
     } else if (focusField && name === 'otp') {
-      window.setTimeout(() => forgotOtpDigits[0]?.focus({ preventScroll: true }), 80);
+      window.setTimeout(() => safeLoginFocus(forgotOtpDigits[0]), 80);
     } else if (focusField && name === 'reset') {
-      window.setTimeout(() => document.getElementById('forgotNewPassword')?.focus({ preventScroll: true }), 80);
+      window.setTimeout(() => safeLoginFocus(document.getElementById('forgotNewPassword')), 80);
     }
   };
   const addLoginPopupHistory = (name, initial = false) => {
@@ -2054,13 +2075,18 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
     addLoginPopupHistory(initiallyOpenPopup, true);
     updateLoginPopupScroll();
     if (initiallyOpenPopup === 'email') {
-      window.setTimeout(() => forgotEmailInput?.focus({ preventScroll: true }), 80);
+      window.setTimeout(() => safeLoginFocus(forgotEmailInput), 80);
     } else if (initiallyOpenPopup === 'otp') {
-      window.setTimeout(() => forgotOtpDigits[0]?.focus({ preventScroll: true }), 80);
+      window.setTimeout(() => safeLoginFocus(forgotOtpDigits[0]), 80);
     }
   }
-  forgotPasswordForm?.addEventListener('submit', function () {
-    if (!forgotPasswordForm.checkValidity()) return;
+  forgotPasswordForm?.addEventListener('submit', function (event) {
+    if (!forgotPasswordForm.checkValidity()) {
+      event.preventDefault();
+      if (typeof forgotPasswordForm.reportValidity === 'function') forgotPasswordForm.reportValidity();
+      safeLoginFocus(forgotPasswordForm.querySelector(':invalid'), false);
+      return;
+    }
     if (forgotSendButton) {
       forgotSendButton.disabled = true;
       forgotSendButton.textContent = 'Sending Code...';
@@ -2085,7 +2111,7 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
         eyeOpen.style.display = showPassword ? 'none' : '';
         eyeClosed.style.display = showPassword ? '' : 'none';
       }
-      target.focus({ preventScroll: true });
+      safeLoginFocus(target);
     });
   });
   const forgotNewPasswordFeedback = document.getElementById('forgotNewPasswordFeedback');
@@ -2104,9 +2130,14 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
     forgotNewPassword.classList.toggle('password-valid',valid && Boolean(value));
     forgotNewPassword.classList.toggle('password-invalid',showErrors && !valid);
     forgotNewPassword.setAttribute('aria-invalid',String(showErrors && !valid));
-    if (showErrors && !valid && forgotNewPasswordFeedback) {
-      forgotNewPasswordFeedback.textContent = 'Use 8+ characters, uppercase, lowercase, and a number.';
-      forgotNewPasswordFeedback.className = 'password-inline-feedback error';
+    if (forgotNewPasswordFeedback) {
+      if (showErrors && !valid) {
+        forgotNewPasswordFeedback.textContent = 'Use 8+ characters, uppercase, lowercase, and a number.';
+        forgotNewPasswordFeedback.className = 'password-inline-feedback error';
+      } else if (valid) {
+        forgotNewPasswordFeedback.textContent = '';
+        forgotNewPasswordFeedback.className = 'password-inline-feedback';
+      }
     }
     return valid;
   };
@@ -2136,8 +2167,10 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
     const matched = validatePasswordMatch(true);
     if (!forgotResetForm.checkValidity() || !valid || !matched) {
       event.preventDefault();
-      if (!valid) forgotNewPassword?.focus();
-      else if (!matched) forgotConfirmPassword?.focus();
+      if (typeof forgotResetForm.reportValidity === 'function') forgotResetForm.reportValidity();
+      if (!valid) safeLoginFocus(forgotNewPassword, false);
+      else if (!matched) safeLoginFocus(forgotConfirmPassword, false);
+      else safeLoginFocus(forgotResetForm.querySelector(':invalid'), false);
       return;
     }
     if (forgotResetButton) {
@@ -2147,7 +2180,7 @@ $loginLockoutRemaining = max(0, $loginLockoutUntil - time());
     }
   });
   if (popupIsOpen(forgotResetModal)) {
-    window.setTimeout(() => forgotNewPassword?.focus({ preventScroll: true }), 80);
+    window.setTimeout(() => safeLoginFocus(forgotNewPassword), 80);
   }
   window.addEventListener('pageshow', event => {
     updateForgotOtpResend();

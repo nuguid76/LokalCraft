@@ -694,9 +694,9 @@ require __DIR__ . '/public_nav.php';
         <article class="platform-card reveal" data-reveal="up">
           <h2>About the Platform</h2>
           <div class="platform-copy">
-            <p>LokalCraft is an online marketplace designed to connect handcrafted product sellers and buyers in Taguig City. It aims to support small handcraft microenterprises by providing a platform where sellers can showcase their products, manage orders, and reach potential customers.</p>
-            <p>Setting the right price for handmade products can be challenging, especially when sellers need to consider materials, labor, packaging, and other expenses. LokalCraft provides a <strong>"Costing and Pricing Calculator"</strong> strong to help sellers calculate product costs, set target profit margins, and consider platform fees when determining their selling prices. It also provides a market price reference based on similar products listed within the platform.</p>
-            <p>Through LokalCraft, sellers can manage product listings and stock quantities, handle orders, and communicate with buyers to discuss order details, including pricing and meet-up or delivery arrangements. Buyers can browse products, connect with sellers, and review their order details before confirming their purchases.</p>
+            <p>LokalCraft is an online marketplace designed to connect approved handcrafted product sellers with buyers in Taguig City. It aims to support local handcraft microenterprises by providing a platform where sellers can showcase their products, manage stock quantities and orders, and connect with potential customers.</p>
+            <p>Setting the right price for handmade products can be challenging, especially when sellers need to consider materials, labor, packaging, and other expenses. To help with this, LokalCraft provides a <strong>Costing and Pricing Calculator</strong> that allows sellers to calculate their product costs, enter their desired markup, and view a suggested selling price, estimated profit, and 5% platform fee. It also provides an <strong>Internal Price Reference</strong> that displays comparable products listed within LokalCraft, including their individual prices and average price, to help sellers review their pricing decisions.</p>
+            <p>Through LokalCraft, approved sellers can manage product listings and stock quantities, handle order requests, maintain their internal wallet records, and communicate with buyers about order details, customization, payment, and delivery or meet-up arrangements. Buyers can browse, search, and save handcrafted products, manage their cart, submit order requests, communicate with sellers, and review and confirm the final order details before the seller proceeds with the order.</p>
           </div>
         </article>
       </section>
@@ -705,7 +705,7 @@ require __DIR__ . '/public_nav.php';
         <div class="help-grid">
           <article class="help-card reveal" data-reveal="up">
             <div class="help-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8 7h8M8 11h1m3 0h1m3 0h.01M8 15h1m3 0h1m3 0h.01M8 19h1m3 0h1m3 0h.01"/></svg></div>
-            <h3>Pricing and Costing Calculator</h3>
+            <h3>Costing and Pricing Calculator</h3>
             <p>Helps artisans calculate product costs, set target profit margins, consider platform fees, and compare their prices with similar products listed on LokalCraft.</p>
           </article>
           <article class="help-card reveal" data-reveal="up">

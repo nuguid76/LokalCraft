@@ -495,6 +495,7 @@ body .app > main.wallet-main > .wallet-content {
     min-height: 70px;
     border-top: 1px solid #eee7e1;
 }
+.transaction-row[hidden] { display: none !important; }
 .transaction-row:first-child { border-top: 0; }
 .transaction-row:hover, .transaction-row:focus-visible { background: #fff7ef; }
 .transaction-row:focus-visible { outline: 3px solid #f0ae72; outline-offset: -3px; border-radius: 8px; }
@@ -534,6 +535,11 @@ body .app > main.wallet-main > .wallet-content {
     font-size: .7rem;
     text-align: center;
 }
+.wallet-search-empty[hidden] { display: none !important; }
+.wallet-search-empty h3 { margin: 0 0 6px; color: #4b3e35; font-size: .9rem; }
+.wallet-search-empty p { margin: 0 0 14px; color: #8f857c; font-size: .7rem; }
+.wallet-clear-search { padding: 8px 13px; border: 1px solid #c96d20; border-radius: 9px; background: var(--wallet-cta); color: #fff; font: inherit; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.wallet-clear-search:hover { background: var(--wallet-cta-hover); }
 /* Single responsive transaction-details popup, no additional PHP endpoints. */
 .wallet-detail-dialog {
     position: fixed;
@@ -629,11 +635,11 @@ body.wallet-detail-open { overflow: hidden; }
     <section class="content wallet-content">
       <div class="page-heading">
         <div>
-          <h1>Wallet</h1>
+          <h1>Seller Wallet</h1>
         </div>
         <details class="wallet-info">
           <summary aria-label="About your wallet" title="About your wallet">i</summary>
-          <div class="wallet-info-copy">This is an internal LokalCraft wallet record. It does not represent an automatic bank or e-wallet withdrawal.</div>
+          <div class="wallet-info-copy">This page records your LokalCraft wallet activity. It is not a bank or e-wallet account, and withdrawals are not available in the current system.</div>
         </details>
       </div>
       <?php if ($errorMessage !== ''): ?>
@@ -644,7 +650,7 @@ body.wallet-detail-open { overflow: hidden; }
       <section class="stats" aria-label="Wallet summary">
         <article class="stat-card">
           <div class="stat-copy">
-            <div class="stat-label">Current Balance</div>
+            <div class="stat-label">Available Wallet Balance</div>
             <div class="stat-value">
               <?php echo sellerWalletMoney($walletBalance); ?>
             </div>
@@ -653,25 +659,25 @@ body.wallet-detail-open { overflow: hidden; }
         </article>
         <article class="stat-card">
           <div class="stat-copy">
-            <div class="stat-label">Net QR Earnings</div>
+            <div class="stat-label">Lifetime QR Ph Earnings</div>
             <div class="stat-value">
               <?php echo sellerWalletMoney($totalEarnings); ?>
-            </div><div class="stat-hint">95% seller share from active QR Ph payments</div>
+            </div><div class="stat-hint">Seller share credited from successful QR Ph payments</div>
           </div>
           <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 17 6-6 4 4 6-7"/><path d="M15 8h5v5"/></svg></div>
         </article>
         <article class="stat-card">
           <div class="stat-copy">
-            <div class="stat-label">QR Ph Sales</div>
+            <div class="stat-label">Successful QR Ph Sales</div>
             <div class="stat-value">
               <?php echo number_format($qrSales); ?>
-            </div><div class="stat-hint">Successful, non-refunded QR Ph sales</div>
+            </div><div class="stat-hint">Completed QR Ph payments that were not refunded</div>
           </div>
           <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 12h10m-10 4h6"/></svg></div>
         </article>
         <article class="stat-card">
           <div class="stat-copy">
-            <div class="stat-label">Transactions</div>
+            <div class="stat-label">Wallet Transactions</div>
             <div class="stat-value">
               <?php echo number_format($transactionCount); ?>
             </div>
@@ -682,7 +688,7 @@ body.wallet-detail-open { overflow: hidden; }
       <section class="panel" aria-labelledby="sellerWalletHistoryTitle">
         <div class="panel-head">
           <h2 class="panel-title" id="sellerWalletHistoryTitle">
-            Recent Transactions
+            Wallet Transaction History
           </h2>
           <span class="count-badge">
             <?php echo number_format($transactionCount); ?> total
@@ -691,7 +697,7 @@ body.wallet-detail-open { overflow: hidden; }
         <div class="transaction-list">
           <?php if (!$transactions): ?>
             <div class="empty-list">
-              No wallet transactions yet.
+              No wallet transactions are available yet.
             </div>
           <?php else: ?>
             <?php foreach ($transactions as $transaction): ?>
@@ -702,6 +708,23 @@ body.wallet-detail-open { overflow: hidden; }
               ?>
               <button class="transaction-row" type="button"
                 data-wallet-transaction="<?php echo (int)$transaction['wallet_transaction_id']; ?>"
+                data-wallet-search="<?php echo sellerWalletEsc(implode(' ', [
+                    'transaction '.(int)$transaction['wallet_transaction_id'],
+                    $orderId > 0 ? '#'.$orderId.' order '.$orderId : '',
+                    (string)($transaction['buyer_name'] ?? ''),
+                    (string)($transaction['order_items_summary'] ?? ''),
+                    sellerWalletTransactionLabel($transaction),
+                    sellerWalletLabel((string)$transaction['transaction_category']),
+                    (string)($transaction['direction'] ?? ''),
+                    (string)($transaction['collection_method'] ?? ''),
+                    (string)($transaction['commission_status'] ?? ''),
+                    (string)($transaction['order_status'] ?? ''),
+                    (string)($transaction['description'] ?? ''),
+                    (string)($transaction['created_at'] ?? ''),
+                    number_format((float)$transaction['amount'], 2, '.', ''),
+                    (string)($transaction['recorded_paymongo_payment_id'] ?? ''),
+                    (string)($transaction['commission_paymongo_payment_id'] ?? '')
+                ])); ?>"
                 aria-label="View details for <?php echo $orderId > 0 ? 'Order #' . $orderId : sellerWalletEsc(sellerWalletTransactionLabel($transaction)); ?>">
                 <div>
                   <div class="transaction-title">
@@ -766,6 +789,11 @@ body.wallet-detail-open { overflow: hidden; }
               </button>
             <?php endforeach; ?>
           <?php endif; ?>
+          <div class="empty-list wallet-search-empty" id="walletSearchEmpty" hidden>
+            <h3>No matching wallet transactions</h3>
+            <p>Search by order number, buyer, product, transaction type, date, amount, or payment reference.</p>
+            <button class="wallet-clear-search" id="walletClearSearch" type="button">Clear Search</button>
+          </div>
         </div>
       </section>
     </section>
@@ -826,6 +854,49 @@ body.wallet-detail-open { overflow: hidden; }
   const entries = JSON.parse(dataNode?.textContent || '{}');
   const dialog = document.getElementById('walletTransactionDialog');
   if (!dialog) return;
+  const walletSearch = document.getElementById('productSearch');
+  const walletRows = Array.from(document.querySelectorAll('[data-wallet-transaction]'));
+  const walletSearchEmpty = document.getElementById('walletSearchEmpty');
+  const walletClearSearch = document.getElementById('walletClearSearch');
+  function normalizeWalletSearch(value) {
+    return String(value || '')
+      .toLocaleLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/[^\p{L}\p{N}#₱.\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  function applyWalletSearch() {
+    const query = normalizeWalletSearch(walletSearch?.value);
+    const compactQuery = query.replace(/\s+/g, '');
+    let visible = 0;
+    walletRows.forEach(row => {
+      const searchable = normalizeWalletSearch(row.dataset.walletSearch || '');
+      const matches = !query
+        || searchable.includes(query)
+        || searchable.replace(/\s+/g, '').includes(compactQuery);
+      row.hidden = !matches;
+      if (matches) visible++;
+    });
+    if (walletSearchEmpty) walletSearchEmpty.hidden = !query || visible !== 0;
+    walletSearch?.setAttribute('aria-label', query
+      ? `Search wallet transactions, ${visible} result${visible === 1 ? '' : 's'}`
+      : 'Search wallet transactions');
+  }
+  if (walletSearch) {
+    walletSearch.dataset.searchOwner = 'wallet';
+    walletSearch.placeholder = 'Search wallet transactions...';
+    walletSearch.autocomplete = 'off';
+    walletSearch.addEventListener('input', applyWalletSearch);
+    walletSearch.addEventListener('search', applyWalletSearch);
+  }
+  walletClearSearch?.addEventListener('click', () => {
+    if (!walletSearch) return;
+    walletSearch.value = '';
+    applyWalletSearch();
+    try { walletSearch.focus({preventScroll:true}); } catch (_) { walletSearch.focus(); }
+  });
+  applyWalletSearch();
   let lastTrigger = null;
   const get = (id) => document.getElementById(id);
   const asText = (value) => value == null ? '' : String(value);

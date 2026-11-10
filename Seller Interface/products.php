@@ -1108,6 +1108,7 @@ body .page > main.content.products-main {
 .empty-state { padding:68px 20px; border:1px dashed #d4cbc3; border-radius:14px; background:rgba(255,255,255,.72); text-align:center; }
 .empty-state h2 { margin:0 0 7px; font-size:1.15rem; }
 .empty-state p { margin:0 0 18px; color:var(--muted); font-size:.8rem; }
+.seller-search-empty[hidden] { display:none !important; }
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -1967,6 +1968,78 @@ body .page > main.content.products-main {
         line-height: 1.3;
     }
 }
+
+/* Mobile Add/Edit Product modal: same floating-card treatment as Product Details. */
+@media (max-width:760px) {
+    #product-modal.modal-overlay {
+        align-items: flex-start;
+        justify-content: center;
+        padding:
+            max(18px, calc(env(safe-area-inset-top) + 10px))
+            10px
+            max(14px, calc(env(safe-area-inset-bottom) + 8px));
+        overflow: hidden;
+    }
+    #product-modal .product-form-modal {
+        width: 100%;
+        height: auto;
+        max-height: calc(100vh - 36px);
+        max-height: calc(100svh - 36px);
+        max-height: calc(100dvh - 36px);
+        margin: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        border: 1px solid #eadfd6;
+        border-radius: 16px;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        scroll-padding-top: 76px;
+        scroll-padding-bottom: 92px;
+    }
+    #product-modal .modal-header {
+        top: 0;
+        padding-top: 15px;
+    }
+    #product-modal .modal-footer {
+        bottom: 0;
+        padding-bottom: max(15px, calc(10px + env(safe-area-inset-bottom)));
+    }
+}
+
+
+/* Mobile Product Details modal: floating card with visible top breathing room. */
+@media (max-width:760px) {
+    #view-product-modal.modal-overlay {
+        align-items: flex-start;
+        justify-content: center;
+        padding:
+            max(18px, calc(env(safe-area-inset-top) + 10px))
+            10px
+            max(14px, calc(env(safe-area-inset-bottom) + 8px));
+        overflow: hidden;
+    }
+    #view-product-modal .product-view-modal {
+        width: 100%;
+        height: auto;
+        max-height: calc(100vh - 36px);
+        max-height: calc(100svh - 36px);
+        max-height: calc(100dvh - 36px);
+        margin: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        border: 1px solid #eadfd6;
+        border-radius: 16px;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        scroll-padding-top: 72px;
+        scroll-padding-bottom: 24px;
+    }
+    #view-product-modal .modal-header {
+        top: 0;
+        padding-top: 15px;
+    }
+}
+
 @media (max-width:580px) {
     .product-grid {
         grid-template-columns: repeat(2,minmax(0,1fr)) !important;
@@ -2069,6 +2142,14 @@ body .page > main.content.products-main {
                 role="button"
                 aria-label="View <?= htmlspecialchars($product['product_name'], ENT_QUOTES) ?>"
                 data-product-id="<?= (int)$product['product_id'] ?>"
+                data-name="<?= htmlspecialchars($product['product_name'], ENT_QUOTES) ?>"
+                data-search-index="<?= htmlspecialchars(trim(implode(' ', [
+                    (string)$product['product_name'],
+                    (string)$product['craft_category'],
+                    $description,
+                    (string)$productStatusLabel,
+                    (string)$product['status']
+                ])), ENT_QUOTES, 'UTF-8') ?>"
                 data-product-name="<?= htmlspecialchars($product['product_name'], ENT_QUOTES) ?>"
                 data-category="<?= htmlspecialchars($product['craft_category'], ENT_QUOTES) ?>"
                 data-category-label="<?= htmlspecialchars(formatCategory($product['craft_category']), ENT_QUOTES) ?>"
@@ -2117,6 +2198,11 @@ body .page > main.content.products-main {
                 </div>
               </article>
             <?php endforeach; ?>
+          </div>
+          <div class="empty-state seller-search-empty" id="sellerProductSearchEmpty" hidden>
+            <h2>No Matching Products</h2>
+            <p>Try another product name, category, description, or status.</p>
+            <button class="add-btn" id="clear-product-search" type="button">Clear Search</button>
           </div>
         <?php endif; ?>
       </div>
@@ -2321,7 +2407,15 @@ body .page > main.content.products-main {
 </div>
 </div>
 <script>
+    document.getElementById('clear-product-search')?.addEventListener('click', () => {
+      const search = document.getElementById('productSearch');
+      if (!search) return;
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      search.focus({preventScroll:true});
+    });
     const modal = document.getElementById('product-modal');
+    const productFormModal = modal?.querySelector('.product-form-modal');
     const modalTitle = document.getElementById('modal-title');
     const productForm = document.getElementById('product-form');
     const formAction = document.getElementById('form-action');
@@ -2362,6 +2456,7 @@ body .page > main.content.products-main {
     const listingPreviewName = document.getElementById('listing-preview-name');
     const listingPreviewPrice = document.getElementById('listing-preview-price');
     const viewModal = document.getElementById('view-product-modal');
+    const productViewModalCard = viewModal?.querySelector('.product-view-modal');
     const closeViewProduct = document.getElementById('close-view-product');
     const viewProductImage = document.getElementById('view-product-image');
     const viewProductPlaceholder = document.getElementById('view-product-placeholder');
@@ -2397,6 +2492,7 @@ body .page > main.content.products-main {
     const quickCustomCount = document.getElementById('quick-custom-count');
     const maxQuickCustomizations = 5;
     let activeProductCard = null;
+    let savedCalculationSnapshot = null;
     function formatPeso(value) {
       return new Intl.NumberFormat('en-PH', {
         style: 'currency',
@@ -2541,6 +2637,11 @@ body .page > main.content.products-main {
       }
       viewModal.classList.add('show');
       viewModal.setAttribute('aria-hidden', 'false');
+      if (productViewModalCard) productViewModalCard.scrollTop = 0;
+      if (viewModal) viewModal.scrollTop = 0;
+      window.requestAnimationFrame(() => {
+        if (productViewModalCard) productViewModalCard.scrollTop = 0;
+      });
       setPageScrollLock();
     }
     function closeProductView() {
@@ -2803,6 +2904,23 @@ body .page > main.content.products-main {
         savedCostingDefault.textContent = 'Create product without saved calculation';
       }
     }
+    function resetProductModalPosition() {
+      if (productFormModal) productFormModal.scrollTop = 0;
+      if (modal) modal.scrollTop = 0;
+    }
+    function keepProductModalFieldVisible(event) {
+      if (!window.matchMedia('(max-width:760px)').matches) return;
+      const field = event.target;
+      if (!(field instanceof HTMLElement) || !productFormModal?.contains(field)) return;
+      window.setTimeout(() => {
+        try {
+          field.scrollIntoView({block:'center', inline:'nearest', behavior:'auto'});
+        } catch (_) {
+          field.scrollIntoView(false);
+        }
+      }, 180);
+    }
+    productFormModal?.addEventListener('focusin', keepProductModalFieldVisible);
     function openCreateModal() {
       ++imageSelectionRequestId;
       ++imageSafetyRequestId;
@@ -2814,6 +2932,7 @@ body .page > main.content.products-main {
       formProductId.value = '';
       productForm.reset();
       resetQuickCustomizations();
+      savedCalculationSnapshot = null;
       editingReservedStock = 0;
       productStock.min = '0';
       productStatus.value = 'Available';
@@ -2830,6 +2949,8 @@ body .page > main.content.products-main {
       setImageSafetyState('idle', 'Choose an image to run the safety check.');
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
+      resetProductModalPosition();
+      window.requestAnimationFrame(resetProductModalPosition);
       setPageScrollLock();
     }
     function openEditModal(source) {
@@ -2858,6 +2979,7 @@ body .page > main.content.products-main {
         : source.dataset.photo
           ? 'Leave blank to keep the current image. Large photos are optimized to 5 MB.'
           : 'Image required. Large photos are optimized to 5 MB.';
+      savedCalculationSnapshot = null;
       configureSavedCalculation('edit');
       if (source.dataset.photo) {
         previewImage.src = '../' + source.dataset.photo;
@@ -2881,6 +3003,8 @@ body .page > main.content.products-main {
       closeProductView();
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
+      resetProductModalPosition();
+      window.requestAnimationFrame(resetProductModalPosition);
       setPageScrollLock();
     }
     function closeModal() {
@@ -2943,7 +3067,31 @@ body .page > main.content.products-main {
     savedCosting?.addEventListener('change', () => {
       const option = savedCosting.options[savedCosting.selectedIndex];
       if (!option || !option.value) {
+        // Return to the details shown before a saved calculation was applied.
+        if (savedCalculationSnapshot) {
+          productName.value = savedCalculationSnapshot.name;
+          craftCategory.value = savedCalculationSnapshot.category;
+          productCost.value = savedCalculationSnapshot.cost;
+          savedCalculationSnapshot = null;
+        } else if (formAction.value === 'update_product' && activeProductCard) {
+          const card = activeProductCard;
+          productName.value = card.dataset.productName || '';
+          craftCategory.value = card.dataset.category || '';
+          productCost.value = card.dataset.cost || '';
+        } else {
+          productName.value = '';
+          craftCategory.value = '';
+          productCost.value = '';
+        }
+        updateListingPreview();
         return;
+      }
+      if (!savedCalculationSnapshot) {
+        savedCalculationSnapshot = {
+          name: productName.value,
+          category: craftCategory.value,
+          cost: productCost.value
+        };
       }
       productName.value = option.dataset.name || '';
       craftCategory.value = option.dataset.category || '';

@@ -133,6 +133,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marketplace_action'])
                 $delete->close();
                 jsonResponse(true, 'Removed from Saved.', ['saved' => false]);
             }
+            // A seller cannot save their own listing. Checked after the removal above so
+            // any older self-saved row can still be unsaved by its owner.
+            if ((int)$product['seller_id'] === $buyerId) {
+                jsonResponse(false, 'You cannot save your own product.');
+            }
             $insert = $conn->prepare('INSERT INTO saved_products (buyer_id, product_id, saved_at) VALUES (?, ?, NOW())');
             if (!$insert) {
                 throw new RuntimeException('Unable to save product.');
@@ -1483,7 +1488,7 @@ body{background:#fff8ed;color:var(--lc-ink)}
 .seller-avatar{width:44px;height:44px;border:2px solid #fff;border-radius:13px;background:linear-gradient(135deg,#f7ba7c,#e88a3e);box-shadow:0 4px 12px rgba(177,98,34,.14);color:#fff}
 .seller-avatar svg{width:22px;height:22px}.seller-details-name{font-size:.84rem}.seller-details-location{font-size:.73rem;line-height:1.5;color:#877262}
 .seller-details-actions{flex:0 0 auto;min-width:0;display:flex;gap:8px;flex-wrap:wrap}.seller-action-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:41px;padding:9px 11px;border:1px solid #e8d8c8;background:#fff9f2;color:#985a29;border-radius:11px;font-weight:750;font-size:.77rem}
-.seller-action-btn svg{width:16px;height:16px;flex:none}.seller-action-btn:hover{background:#ffeddc;border-color:#eac19b}.lc-view-store{color:#fff;background:#e98b40;border-color:#e98b40}.lc-view-store:hover{background:#d5792f;color:#fff}
+.seller-action-btn svg{width:16px;height:16px;flex:none}.seller-action-btn:hover{background:#ffeddc;border-color:#eac19b}.seller-action-btn.is-disabled,.seller-action-btn[aria-disabled="true"]{opacity:.52;cursor:not-allowed;pointer-events:none;background:#f6f1ec;color:#95877a;border-color:#e7ded6}.lc-view-store{color:#fff;background:#e98b40;border-color:#e98b40}.lc-view-store:hover{background:#d5792f;color:#fff}
 .product-reviews-summary,.product-reviews-title{color:#5b4b3e}.lc-see-more{border-radius:12px}
 /* Store mirrors the cream profile banner, with a full-width details expander. */
 .lc-store-modal{padding:20px}.lc-store-panel{position:relative;width:min(1040px,100%);height:min(860px,calc(var(--lc-vh,100dvh) - 40px));max-height:calc(var(--lc-vh,100dvh) - 40px);overflow:hidden}
@@ -2436,7 +2441,21 @@ function renderProduct(product){
   descriptionMore.textContent='See more';
   $('productDetailsStock').textContent=Number(product.stock)>0?'Available: '+Math.max(0,Number(product.stock)||0):'Out of Stock';
   $('sellerDetailsName').textContent=product.seller_business||product.seller_name||product.seller_person||'Local Seller';
-  const chatLink=$('sellerDetailsChat'),sellerId=Number(product.seller_id);chatLink.href=Number.isSafeInteger(sellerId)&&sellerId>0?'messages.php?seller_id='+encodeURIComponent(String(sellerId)):'messages.php';
+  const chatLink=$('sellerDetailsChat'),sellerId=Number(product.seller_id);
+  const ownListing=Number.isSafeInteger(sellerId)&&sellerId>0&&sellerId===Number(<?= (int)$buyerId ?>);
+  if(ownListing){
+    chatLink.removeAttribute('href');
+    chatLink.classList.add('is-disabled');
+    chatLink.setAttribute('aria-disabled','true');
+    chatLink.setAttribute('tabindex','-1');
+    chatLink.title='You cannot message your own seller account.';
+  }else{
+    chatLink.href=Number.isSafeInteger(sellerId)&&sellerId>0?'messages.php?seller_id='+encodeURIComponent(String(sellerId)):'messages.php';
+    chatLink.classList.remove('is-disabled');
+    chatLink.removeAttribute('aria-disabled');
+    chatLink.removeAttribute('tabindex');
+    chatLink.removeAttribute('title');
+  }
   $('sellerDetailsLocation').textContent=productLocation(product)||'Taguig City';
   const count=Number(product.review_count)||0,avg=Number(product.avg_rating)||0;
   $('productDetailsRating').replaceChildren(document.createTextNode(stars(avg)+'  '+(count?avg.toFixed(1)+' · '+count+' reviews':'No reviews yet')));
@@ -2600,7 +2619,18 @@ function syncSaveButton(productId,saved){
   if(Number(selectedProduct?.product_id)===Number(productId)){selectedProduct.is_saved=saved;detailSave.classList.toggle('is-saved',saved);detailSave.setAttribute('aria-pressed',saved?'true':'false');detailSave.setAttribute('aria-label',saved?'Remove from saved':'Save product');detailSave.title=saved?'Saved':'Save product';}
 }
 const busySaveIds=new Set();
+// Sellers cannot save their own listings. Mirrors the add_to_cart guard.
+// Comma-wrapped list so a match is exact even when one id is a prefix of another.
+const ownProductIds=(()=>{const set=new Set();
+  document.querySelectorAll('[data-product]').forEach(card=>{
+    try{const item=JSON.parse(card.dataset.product);
+      if(Number(item.seller_id)>0&&Number(item.seller_id)===Number(<?= (int)$buyerId ?>))set.add(Number(item.product_id));
+    }catch(_){}
+  });
+  return set;})();
+function isOwnProduct(productId){return ownProductIds.has(Number(productId));}
 async function toggleSaved(productId){if(busySaveIds.has(productId))return;busySaveIds.add(productId);detailSave.disabled=true;
+  if(isOwnProduct(productId)){busySaveIds.delete(productId);detailSave.disabled=false;showToast('You cannot save your own product.','error');return;}
   try{const form=new FormData();form.append('marketplace_action','toggle_saved');form.append('product_id',String(productId));const data=await postAction(form);syncSaveButton(productId,Boolean(data.saved));showToast(data.saved?'Saved to your list.':'Removed from Saved.','success');}
   catch(e){showToast(e.message,'error');}finally{busySaveIds.delete(productId);detailSave.disabled=false;}
 }
@@ -2881,6 +2911,14 @@ window.addEventListener('pageshow',event=>{if(event.persisted)render();});
   // buyer_search.php handles searching as well; this listener reapplies selected filters.
   // Registering here after the header script prevents search from clearing active filters.
   search?.addEventListener('input', filterCards);
+  search?.addEventListener('input', () => {
+    if (normalize(search.value) !== '') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('search') && !url.searchParams.has('q')) return;
+    url.searchParams.delete('search');
+    url.searchParams.delete('q');
+    window.location.replace(url.toString());
+  });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !panel.hidden) {
       event.preventDefault();

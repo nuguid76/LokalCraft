@@ -113,6 +113,96 @@ function costingImageUrl(?string $path): string
     $path = trim((string)$path);
     return $path === '' ? '' : '../' . ltrim($path, '/');
 }
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_costing') {
+    try {
+        $postedToken = $_POST['csrf_token'] ?? null;
+        if (!is_string($postedToken) || !hash_equals((string)($_SESSION['saved_costing_csrf'] ?? ''), $postedToken)) {
+            jsonResponse(false, 'Your session token expired. Please refresh the page and try again.');
+        }
+
+        $costingId = (int)($_POST['costing_id'] ?? 0);
+        if ($costingId <= 0) {
+            jsonResponse(false, 'Invalid saved calculation.');
+        }
+
+        $ownershipStmt = $conn->prepare(
+            'SELECT costing_id, product_title, product_image
+             FROM products_costing
+             WHERE costing_id = ? AND seller_id = ?
+             LIMIT 1'
+        );
+        $ownershipStmt->bind_param('ii', $costingId, $sellerId);
+        $ownershipStmt->execute();
+        $ownedCosting = $ownershipStmt->get_result()->fetch_assoc();
+        $ownershipStmt->close();
+
+        if (!$ownedCosting) {
+            jsonResponse(false, 'This saved calculation was not found or you do not have permission to delete it.');
+        }
+
+        $imagePath = trim((string)($ownedCosting['product_image'] ?? ''));
+        $productTitle = trim((string)($ownedCosting['product_title'] ?? 'Saved calculation'));
+
+        $conn->begin_transaction();
+
+        $deleteMaterials = $conn->prepare(
+            'DELETE FROM costing_materials WHERE costing_id = ?'
+        );
+        $deleteMaterials->bind_param('i', $costingId);
+        $deleteMaterials->execute();
+        $deleteMaterials->close();
+
+        $deleteExpenses = $conn->prepare(
+            'DELETE FROM costing_overheads WHERE costing_id = ?'
+        );
+        $deleteExpenses->bind_param('i', $costingId);
+        $deleteExpenses->execute();
+        $deleteExpenses->close();
+
+        $deleteCosting = $conn->prepare(
+            'DELETE FROM products_costing WHERE costing_id = ? AND seller_id = ?'
+        );
+        $deleteCosting->bind_param('ii', $costingId, $sellerId);
+        $deleteCosting->execute();
+        $deletedRows = $deleteCosting->affected_rows;
+        $deleteCosting->close();
+
+        if ($deletedRows !== 1) {
+            throw new RuntimeException('The saved calculation could not be deleted. Please refresh the page and try again.');
+        }
+
+        $conn->commit();
+
+        // Only the image owned by this saved costing is removed. A fallback product
+        // photo from the products table is never deleted by this action.
+        if ($imagePath !== '') {
+            deleteCostingImage($imagePath);
+        }
+
+        jsonResponse(true, 'Saved calculation deleted permanently.', [
+            'costing_id' => $costingId,
+            'product_title' => $productTitle,
+        ]);
+    } catch (Throwable $e) {
+        if (isset($conn) && $conn instanceof mysqli) {
+            try {
+                $conn->rollback();
+            } catch (Throwable $rollbackError) {
+            }
+        }
+        if (!($e instanceof RuntimeException)) {
+            error_log('LokalCraft saved costing delete error: ' . $e->getMessage());
+        }
+        jsonResponse(
+            false,
+            $e instanceof RuntimeException
+                ? $e->getMessage()
+                : 'Unable to delete the saved calculation right now. Please try again.'
+        );
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_costing') {
     $newImagePath = '';
     $oldImagePath = '';
@@ -1207,6 +1297,81 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             .saved-labor-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .product-fields .saved-labor-card, .product-fields .saved-packaging-card { padding: 12px; }
         }
+
+        .button.danger {
+            margin-right: auto;
+            border-color: #c94f45;
+            background: #fff7f6;
+            color: #b64038;
+        }
+        .button.danger:hover {
+            border-color: #b63c34;
+            background: #c94f45;
+            color: #fff;
+        }
+        .delete-confirm-modal[hidden] { display: none !important; }
+        .delete-confirm-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 400000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+        .delete-confirm-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(30, 22, 18, .64);
+            backdrop-filter: blur(3px);
+        }
+        .delete-confirm-panel {
+            position: relative;
+            z-index: 1;
+            width: min(430px, 100%);
+            padding: 24px;
+            border: 1px solid #efceca;
+            border-radius: 16px;
+            background: #fffdfb;
+            box-shadow: 0 24px 70px rgba(45, 25, 18, .25);
+        }
+        .delete-confirm-icon {
+            width: 48px;
+            height: 48px;
+            display: grid;
+            place-items: center;
+            margin-bottom: 14px;
+            border-radius: 50%;
+            background: #fff0ee;
+            color: #c94f45;
+        }
+        .delete-confirm-icon svg { width: 24px; height: 24px; }
+        .delete-confirm-panel h2 { margin: 0; color: #3e312a; font-size: 1.2rem; }
+        .delete-confirm-panel p { margin: 10px 0 0; color: #746a63; font-size: .81rem; line-height: 1.55; }
+        .delete-confirm-name {
+            margin-top: 14px;
+            padding: 10px 12px;
+            border: 1px solid #eadfd6;
+            border-radius: 9px;
+            background: #faf6f2;
+            color: #493c34;
+            font-size: .8rem;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+        .delete-confirm-warning { color: #a93e37 !important; font-weight: 700; }
+        .delete-confirm-status { min-height: 20px; margin-top: 12px; color: #c94f45; font-size: .75rem; }
+        .delete-confirm-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+        .button.danger-solid { border-color: #b63c34; background: #c94f45; color: #fff; }
+        .button.danger-solid:hover { background: #ad3932; }
+        @media (max-width: 560px) {
+            .delete-confirm-panel { padding: 20px; }
+            .delete-confirm-actions { flex-direction: column-reverse; }
+            .delete-confirm-actions .button { width: 100%; }
+            .modal-footer { align-items: stretch; }
+            .modal-footer > .button.danger { width: 100%; margin-right: 0; }
+        }
+
     </style>
 </head>
 <body>
@@ -1478,6 +1643,7 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                 </aside>
             </div>
             <div class="modal-footer">
+                <button class="button danger" id="delete-costing" type="button">Delete Calculation</button>
                 <div class="modal-status" id="modal-status" aria-live="polite"></div>
                 <div class="modal-actions">
                     <button class="button" id="cancel-edit" type="button">Cancel</button>
@@ -1487,6 +1653,25 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         </form>
     </div>
 </div>
+
+<div id="delete-confirm-modal" class="delete-confirm-modal" hidden aria-hidden="true">
+    <div class="delete-confirm-backdrop" id="delete-confirm-backdrop"></div>
+    <div class="delete-confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-message">
+        <div class="delete-confirm-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+        </div>
+        <h2 id="delete-confirm-title">Delete saved calculation?</h2>
+        <p id="delete-confirm-message">This will permanently delete the saved calculation and its material and overhead details.</p>
+        <div class="delete-confirm-name" id="delete-confirm-name"></div>
+        <p class="delete-confirm-warning">This action cannot be undone.</p>
+        <div class="delete-confirm-status" id="delete-confirm-status" aria-live="assertive"></div>
+        <div class="delete-confirm-actions">
+            <button class="button" id="cancel-delete" type="button">Cancel</button>
+            <button class="button danger-solid" id="confirm-delete" type="button">Delete Permanently</button>
+        </div>
+    </div>
+</div>
+
 <script>
 (() => {
     // Keep Saved Calculations below the shared, fixed Seller Search header.
@@ -1530,6 +1715,13 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
     const form = document.getElementById('edit-form');
     const status = document.getElementById('modal-status');
     const productImageInput = document.getElementById('product-image');
+    const deleteButton = document.getElementById('delete-costing');
+    const deleteModal = document.getElementById('delete-confirm-modal');
+    const deleteBackdrop = document.getElementById('delete-confirm-backdrop');
+    const deleteName = document.getElementById('delete-confirm-name');
+    const deleteStatus = document.getElementById('delete-confirm-status');
+    const cancelDelete = document.getElementById('cancel-delete');
+    const confirmDelete = document.getElementById('confirm-delete');
     let selectedCosting = null;
     let imagePreviewUrl = null;
     function escapeHtml(value) {
@@ -1974,6 +2166,54 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         }
         return true;
     }
+    function openDeleteConfirm() {
+        if (!selectedCosting) return;
+        deleteName.textContent = selectedCosting.product_title || 'Saved calculation';
+        deleteStatus.textContent = '';
+        deleteModal.hidden = false;
+        deleteModal.setAttribute('aria-hidden', 'false');
+        confirmDelete.disabled = false;
+        confirmDelete.textContent = 'Delete Permanently';
+        confirmDelete.focus();
+    }
+    function closeDeleteConfirm() {
+        if (deleteModal.hidden || confirmDelete.disabled) return;
+        deleteModal.hidden = true;
+        deleteModal.setAttribute('aria-hidden', 'true');
+        deleteStatus.textContent = '';
+        deleteButton?.focus({ preventScroll: true });
+    }
+    async function deleteSelectedCosting() {
+        if (!selectedCosting || confirmDelete.disabled) return;
+        confirmDelete.disabled = true;
+        cancelDelete.disabled = true;
+        confirmDelete.textContent = 'Deleting...';
+        deleteStatus.textContent = 'Deleting saved calculation permanently...';
+        const body = new FormData();
+        body.append('action', 'delete_costing');
+        body.append('csrf_token', form.elements.csrf_token.value);
+        body.append('costing_id', String(selectedCosting.costing_id || ''));
+        try {
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to delete the saved calculation.');
+            }
+            deleteStatus.style.color = 'var(--green)';
+            deleteStatus.textContent = 'Saved calculation deleted. Refreshing...';
+            window.setTimeout(() => window.location.reload(), 450);
+        } catch (error) {
+            deleteStatus.style.color = 'var(--red)';
+            deleteStatus.textContent = error.message || 'Unable to delete the saved calculation.';
+            confirmDelete.disabled = false;
+            cancelDelete.disabled = false;
+            confirmDelete.textContent = 'Delete Permanently';
+        }
+    }
     function openModal(costing) {
         selectedCosting = costing;
         setStatus('');
@@ -2066,8 +2306,13 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
     modalClose.addEventListener('click', closeModal);
     modalBackdrop.addEventListener('click', closeModal);
     cancelEdit.addEventListener('click', closeModal);
+    deleteButton.addEventListener('click', openDeleteConfirm);
+    cancelDelete.addEventListener('click', closeDeleteConfirm);
+    deleteBackdrop.addEventListener('click', closeDeleteConfirm);
+    confirmDelete.addEventListener('click', deleteSelectedCosting);
     document.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
+        if (!deleteModal.hidden) { closeDeleteConfirm(); return; }
         if (!imageViewer.hidden) { closeImageViewer(); return; }
         if (modal.classList.contains('is-open')) closeModal();
     });

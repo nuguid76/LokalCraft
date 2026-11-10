@@ -2906,12 +2906,26 @@ orderTabs.forEach((tab) => tab.addEventListener('click', () => {
 }));
 ordersSearch?.addEventListener('input', () => applyOrderFilter(activeOrderFilter));
 ordersSearch?.addEventListener('search', () => applyOrderFilter(activeOrderFilter));
-// The shared header clears its mobile search when it collapses; reflect that reset in the order rows.
+const buyerOrdersSearchToggle = document.getElementById('buyerSearchToggle');
 const buyerOrdersSearchLayout = document.querySelector('.buyer-search-layout');
-if (buyerOrdersSearchLayout && window.MutationObserver) {
-    new MutationObserver(() => applyOrderFilter(activeOrderFilter))
-        .observe(buyerOrdersSearchLayout, {attributes:true, attributeFilter:['class']});
-}
+let buyerOrdersSearchBeforeCollapse = '';
+// On mobile, buyer_search.php normally clears the field when its X button
+// collapses the header search. Orders keeps the current query so closing the
+// search UI does not reset the filtered order cards.
+buyerOrdersSearchToggle?.addEventListener('pointerdown', () => {
+    buyerOrdersSearchBeforeCollapse = String(ordersSearch?.value || '');
+}, true);
+buyerOrdersSearchToggle?.addEventListener('click', () => {
+    window.setTimeout(() => {
+        const collapsed = buyerOrdersSearchLayout
+            && !buyerOrdersSearchLayout.classList.contains('is-expanded');
+        if (collapsed && buyerOrdersSearchBeforeCollapse.trim() !== '' && ordersSearch) {
+            ordersSearch.value = buyerOrdersSearchBeforeCollapse;
+        }
+        applyOrderFilter(activeOrderFilter);
+        buyerOrdersSearchBeforeCollapse = '';
+    }, 0);
+});
 applyOrderFilter('all');
 // Each open dialog owns one same-page history entry. Browser Back, Escape and
 // popup Close dismiss the topmost dialog before navigating away from Orders.

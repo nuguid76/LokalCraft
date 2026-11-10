@@ -73,11 +73,25 @@ function signupNormalizePhone(string $value): string
     if (str_starts_with($digits, '9')) return '0' . $digits;
     return $digits;
 }
+function signupEmailDomainAllowed(string $domain): bool
+{
+    $domain = strtolower(trim($domain));
+    return in_array($domain, ['gmail.com', 'yahoo.com', 'outlook.com'], true);
+}
+function signupEmailErrorMessage(string $email, string $default = 'Enter a valid email address.'): string
+{
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $domain = strtolower((string)substr(strrchr($email, '@') ?: '', 1));
+        if (!signupEmailDomainAllowed($domain)) return 'Use a Gmail, Yahoo, or Outlook email address.';
+    }
+    return $default;
+}
 function signupEmailIsValid(string $email): bool
 {
     if ($email === '' || strlen($email) > 100 || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
     $domain = strtolower((string)substr(strrchr($email, '@') ?: '', 1));
     if (in_array($domain, ['g.mail.com','gmail.con','yahoo.con'], true)) return false;
+    if (!signupEmailDomainAllowed($domain)) return false;
     // If DNS is available on the hosting server, check that the domain can receive mail.
     if (function_exists('checkdnsrr') && checkdnsrr('gmail.com', 'MX')) {
         return checkdnsrr($domain, 'MX') || checkdnsrr($domain, 'A');
@@ -108,7 +122,7 @@ function signupValidateAccountData(string $firstname, string $middlename, string
     if (!signupNameIsValid($firstname)) return 'First name: letters, spaces and hyphens only, up to 50 characters.';
     if ($middlename !== '' && !signupNameIsValid($middlename, true)) return 'Middle name: letters, spaces, hyphens and apostrophes only, up to 50 characters.';
     if (!signupNameIsValid($lastname)) return 'Last name: letters, spaces and hyphens only, up to 50 characters. Suffixes such as Jr or III can follow the surname.';
-    if (!signupEmailIsValid($email)) return 'Please enter a valid email address.';
+    if (!signupEmailIsValid($email)) return signupEmailErrorMessage($email, 'Please enter a valid email address.');
     if (!preg_match('/^09\d{9}$/', $phone)) return 'Phone number must be 11 digits and start with 09.';
     return '';
 }
@@ -148,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Cache-Control: private, no-store, max-age=0');
         $checkEmail = strtolower(trim((string)($_POST['email'] ?? '')));
         if (!signupEmailIsValid($checkEmail)) {
-            echo json_encode(['success'=>false,'message'=>'Enter a valid email address.']);
+            echo json_encode(['success'=>false,'message'=>signupEmailErrorMessage($checkEmail)]);
             exit;
         }
         try {
@@ -1321,11 +1335,22 @@ $otpResendSeconds = $otpModalOpen
     let emailIsAvailable = false;
     let emailRequest = null;
     let emailCheckTimer = null;
+    function emailDomainAllowed(domain) {
+      domain = String(domain || '').toLowerCase();
+      return ['gmail.com','yahoo.com','outlook.com'].includes(domain);
+    }
+    function emailErrorText(value) {
+      const email = String(value || '').trim().toLowerCase();
+      const formatOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (formatOk && !emailDomainAllowed(email.split('@').pop())) return 'Use a Gmail, Yahoo, or Outlook email address.';
+      return 'Enter a valid email address.';
+    }
     function emailHasValidFormat(value) {
       const email = value.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 100) return false;
       const domain = email.split('@').pop();
-      return !['g.mail.com','gmail.con','yahoo.con'].includes(domain);
+      if (['g.mail.com','gmail.con','yahoo.con'].includes(domain)) return false;
+      return emailDomainAllowed(domain);
     }
     function setEmailMessage(text, state='') {
       emailCheckMessage.textContent = text;
@@ -1340,7 +1365,7 @@ $otpResendSeconds = $otpModalOpen
       clearTimeout(emailCheckTimer);
       emailRequest?.abort();
       if (!value) { checkedEmail=''; emailIsAvailable=false; setEmailMessage(''); return false; }
-      if (!emailHasValidFormat(value)) { checkedEmail=''; emailIsAvailable=false; setEmailMessage('Enter a valid email address.','error'); return false; }
+      if (!emailHasValidFormat(value)) { checkedEmail=''; emailIsAvailable=false; setEmailMessage(emailErrorText(value),'error'); return false; }
       if (value===checkedEmail && emailIsAvailable) return true;
       const controller = new AbortController();
       emailRequest=controller;
@@ -1418,7 +1443,7 @@ $otpResendSeconds = $otpModalOpen
           invalid??=field;
         } else field.value=titleCaseName(value,id==='lastname');
       }
-      if (!emailHasValidFormat(emailInput.value)) { setEmailMessage('Enter a valid email address.','error'); invalid??=emailInput; }
+      if (!emailHasValidFormat(emailInput.value)) { setEmailMessage(emailErrorText(emailInput.value),'error'); invalid??=emailInput; }
       else if (checkedEmail===emailInput.value.trim().toLowerCase() && !emailIsAvailable) { setEmailMessage('This email cannot be used.','error'); invalid??=emailInput; }
       if (!/^09\d{9}$/.test(phoneInput.value)) { displayFieldError(phoneInput,'Enter a complete 11-digit mobile number.'); invalid??=phoneInput; }
       if (!checkPassword()) invalid??=passwordInput;

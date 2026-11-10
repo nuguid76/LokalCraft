@@ -605,11 +605,23 @@ body.seller-modal-open {
   .filter-box.search {
     min-width: 0;
     min-height: 40px;
+    height: 40px;
+    padding: 7px 11px;
   }
-  .filter-box input,
-  .filter-box select {
+  /* Scope the Safari fix to the shared Seller header search only.
+     Keep the control at 16px to prevent iOS focus zoom, while the outer
+     search field remains the same 40px height as the neighboring controls. */
+  .seller-header-tools #productSearch {
     min-width: 0;
-    font-size: .82rem;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .seller-header-tools .filter-box.search .search-icon {
+    align-self: center;
+    margin: 0;
   }
   .seller-header-actions {
     gap: 7px;
@@ -644,7 +656,7 @@ body.seller-modal-open {
     <div class="filters" id="sellerHeaderFilters">
       <div class="filter-box search">
         <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>
-        <input id="productSearch" type="text" placeholder="<?php echo htmlspecialchars($searchPlaceholder); ?>" aria-label="Search products" />
+        <input id="productSearch" type="search" placeholder="<?php echo htmlspecialchars($searchPlaceholder); ?>" aria-label="Search products" autocomplete="off" />
       </div>
     </div>
   </div>
@@ -760,15 +772,39 @@ body.seller-modal-open {
 <script>
 (function () {
   const productSearch = document.getElementById('productSearch');
+  function normalizeSellerSearch(value) {
+    return String(value || '')
+      .toLocaleLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
   function applySellerHeaderFilters() {
-    const searchTerm = (productSearch?.value || '').trim().toLowerCase();
-    document.querySelectorAll('.product-card').forEach((card) => {
-      const name = (card.dataset.name || '').toLowerCase();
-      const matchesSearch = !searchTerm || name.includes(searchTerm);
+    if (productSearch?.dataset.searchOwner && productSearch.dataset.searchOwner !== 'products') return;
+    const searchTerm = normalizeSellerSearch(productSearch?.value);
+    const compactTerm = searchTerm.replace(/\s+/g, '');
+    const cards = Array.from(document.querySelectorAll('.product-card'));
+    let visibleCards = 0;
+    cards.forEach((card) => {
+      const searchable = normalizeSellerSearch(
+        card.dataset.searchIndex || card.dataset.name || ''
+      );
+      const matchesSearch = !searchTerm
+        || searchable.includes(searchTerm)
+        || searchable.replace(/\s+/g, '').includes(compactTerm);
+      card.hidden = !matchesSearch;
       card.style.display = matchesSearch ? '' : 'none';
+      if (matchesSearch) visibleCards++;
     });
+    const emptyResult = document.getElementById('sellerProductSearchEmpty');
+    if (emptyResult) emptyResult.hidden = !searchTerm || visibleCards !== 0;
+    productSearch?.setAttribute('aria-label', searchTerm
+      ? `Search products, ${visibleCards} result${visibleCards === 1 ? '' : 's'}`
+      : 'Search products');
   }
   productSearch?.addEventListener('input', applySellerHeaderFilters);
+  productSearch?.addEventListener('search', applySellerHeaderFilters);
   const sellerAvatarButton = document.getElementById('sellerAvatarButton');
   const sellerAccountMenu = document.getElementById('sellerAccountMenu');
   function setSellerAccountMenuOpen(isOpen) {

@@ -377,6 +377,25 @@ body .app > main.dashboard-main > .dashboard-content {
     padding: 17px;
     border-radius: 12px;
 }
+.stat-card-link {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.stat-card-link:hover {
+    transform: translateY(-2px);
+    border-color: #ddb78f !important;
+    box-shadow: 0 12px 28px rgba(101,62,27,.10) !important;
+    filter: saturate(1.03);
+}
+.stat-card-link:focus-visible {
+    outline: 3px solid rgba(165,83,37,.32);
+    outline-offset: 3px;
+}
+.stat-card-link:active {
+    transform: translateY(0);
+}
 /* Match the Seller Profile banner: warm cream blending into soft orange.
    All four cards share the same color, with no colored accent stripe. */
 .stats .stat-card {
@@ -729,34 +748,34 @@ body .app > main.dashboard-main > .dashboard-content {
           <div class="dashboard-error"><?= htmlspecialchars($dashboardError, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endif; ?>
         <section class="stats" aria-label="Store summary">
-          <article class="stat-card">
+          <a class="stat-card stat-card-link" href="products.php" aria-label="View all seller products">
             <div class="stat-copy">
               <div class="stat-label">Total Products</div>
               <div class="stat-value"><?php echo $totalProducts; ?></div>
             </div>
             <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg></div>
-          </article>
-          <article class="stat-card">
+          </a>
+          <a class="stat-card stat-card-link" href="orders_seller.php" aria-label="View pending seller orders">
             <div class="stat-copy">
               <div class="stat-label">Pending Orders</div>
               <div class="stat-value"><?php echo $pendingOrders; ?></div>
             </div>
             <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 8h14l1 12H4L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg></div>
-          </article>
-          <article class="stat-card">
+          </a>
+          <a class="stat-card stat-card-link" href="messages_seller.php" aria-label="View unread seller messages">
             <div class="stat-copy">
               <div class="stat-label">Unread Messages</div>
               <div class="stat-value"><?php echo $unreadMessages; ?></div>
             </div>
             <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M20 11.5a8 8 0 0 1-8 8 8.4 8.4 0 0 1-3.6-.8L4 20l1.3-4.4A8.4 8.4 0 0 1 4.5 12a8 8 0 0 1 8-8A7.5 7.5 0 0 1 20 11.5Z"/><path d="M8.5 12h7"/></svg></div>
-          </article>
-          <article class="stat-card">
+          </a>
+          <a class="stat-card stat-card-link" href="seller_wallet.php" aria-label="View seller wallet and sales">
             <div class="stat-copy">
               <div class="stat-label">Total Sales</div>
               <div class="stat-value">₱<?php echo number_format($totalSales, 2); ?></div>
             </div>
             <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></div>
-          </article>
+          </a>
         </section>
         <section class="panel chart-panel">
           <div class="chart-header">

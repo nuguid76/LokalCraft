@@ -442,6 +442,17 @@ try {
             margin: 0 auto;
             padding: 8px 26px 24px;
         }
+        /* Calculator has no searchable listing. Keep the shared Seller header,
+           notifications, account menu, and mobile navigation, but hide search. */
+        .pricing-main .seller-header-tools .seller-search-layout {
+            display: none !important;
+        }
+        .pricing-main .seller-header-tools {
+            justify-content: flex-end;
+        }
+        .pricing-main .seller-header-tools .seller-menu-toggle {
+            margin-right: auto;
+        }
         .seller-header-tools .filter-box input,
         .seller-header-tools .filter-box select {
             width: 100%;
@@ -2566,7 +2577,11 @@ try {
 <div class="page">
     <?php require __DIR__ . '/seller_nav.php'; ?>
     <main class="content pricing-main">
-        <?php require __DIR__ . '/seller_search.php'; ?>
+        <?php
+        // Shared Seller header remains for navigation, notifications, and account actions.
+        // The Calculator-specific CSS above hides only its unused search field.
+        require __DIR__ . '/seller_search.php';
+        ?>
         <div class="calculator-wrap">
             <div id="product-image-lightbox" class="product-image-lightbox" hidden role="dialog" aria-modal="true" aria-label="Product image preview"><button type="button" id="product-image-lightbox-close" aria-label="Close image preview">×</button><img id="product-image-lightbox-img" alt="Full product image"></div>
             <div class="heading-row">
