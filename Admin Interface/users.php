@@ -154,6 +154,79 @@ body,.page{background:var(--users-bg)}
 .users-field input[readonly]{background:#f7f0e9;color:#69584b;cursor:default}
 .users-btn.primary{background:#a55325;border-color:#a55325;color:#fff8ed}
 .users-btn.primary:hover{background:#c2692e;border-color:#c2692e}
+
+.users-heading h1{font-weight:800;color:#382c22;letter-spacing:-.04em}
+.users-stat-link{
+  display:block;
+  width:100%;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  appearance:none;
+  cursor:default;
+}
+.users-stat-link:hover,.users-stat-link:active,.users-stat-link.active{
+  transform:none;
+  border-color:var(--users-line);
+  box-shadow:var(--users-shadow);
+}
+.users-stat-link:focus-visible{
+  outline:2px solid rgba(165,83,37,.22);
+  outline-offset:2px;
+}
+.users-table tbody tr[hidden]{display:none!important}
+.users-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:29px;height:29px;border:0;border-radius:50%;background:transparent;color:#927f70;font-size:1.25rem;line-height:1;cursor:pointer}
+.users-search-clear:hover{background:#f5e9dd;color:#a55325}.users-search-clear[hidden]{display:none!important}
+.users-search input{padding-right:39px}
+.users-dialog{scrollbar-width:thin;scrollbar-color:#d9cec4 transparent}
+@media(max-width:760px){.users-search input,.users-filter,.users-field input,.users-field select{font-size:16px}.users-modal{align-items:flex-start;padding:max(18px,calc(env(safe-area-inset-top) + 10px)) 10px max(14px,calc(env(safe-area-inset-bottom) + 8px))}.users-dialog{max-height:calc(100dvh - 36px);border-radius:16px}}
+
+/* Wider mobile workspace while keeping controls touch-safe and inside the viewport. */
+@media(max-width:760px){
+  .content{
+    width:100%;
+    max-width:100%;
+    padding:88px 8px 30px;
+    overflow-x:hidden;
+  }
+  .users-heading{padding:0 5px;margin-bottom:15px}
+  .users-stats{gap:7px;margin-bottom:13px}
+  .users-stat{padding:14px 12px;border-radius:12px}
+  .users-panel{
+    width:100%;
+    max-width:100%;
+    padding:11px 7px 9px;
+    border-radius:14px;
+  }
+  .users-toolbar{gap:7px;margin-bottom:11px}
+  .users-search{flex:1 1 100%;width:100%}
+  .users-search input{height:43px;min-height:43px;padding-left:35px;padding-right:39px}
+  .users-filter{height:42px;min-height:42px;padding:8px 8px}
+  .users-table-scroll{
+    width:100%;
+    max-width:100%;
+    max-height:64vh;
+    overflow-x:hidden;
+  }
+  .users-table{width:100%;table-layout:fixed}
+  .users-table th:nth-child(2){width:61%}
+  .users-table th:nth-child(5){width:30%}
+  .users-table th:nth-child(6){width:9%}
+  .users-table td,.users-table th{padding:11px 4px}
+  .users-name,.users-mobile-sub{max-width:100%}
+  .users-pill{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .users-count{padding-inline:4px}
+  .users-modal{padding:max(16px,calc(env(safe-area-inset-top) + 8px)) 7px max(12px,calc(env(safe-area-inset-bottom) + 7px))}
+  .users-dialog{width:100%;max-width:100%;padding:17px 13px;border-radius:15px}
+}
+@media(max-width:390px){
+  .content{padding-left:5px;padding-right:5px}
+  .users-panel{padding-left:5px;padding-right:5px}
+  .users-table th:nth-child(2){width:59%}
+  .users-table th:nth-child(5){width:31%}
+  .users-table th:nth-child(6){width:10%}
+  .users-table td,.users-table th{padding-inline:3px}
+}
 </style>
 </head>
 <body>
@@ -163,13 +236,13 @@ body,.page{background:var(--users-bg)}
 <header class="users-heading"><h1>Users</h1></header>
 <?php if ($errorMessage !== ''): ?><div class="users-alert"><?php echo usersEsc($errorMessage); ?></div><?php endif; ?>
 <section class="users-stats" aria-label="Account totals">
-<div class="users-stat"><span>Total Users</span><strong id="usersTotal"><?php echo number_format($userCount); ?></strong><small>Buyers and sellers only</small></div>
-<div class="users-stat"><span>Buyers</span><strong id="usersBuyers"><?php echo number_format($buyerCount); ?></strong><small>Buyer accounts</small></div>
-<div class="users-stat"><span>Sellers</span><strong id="usersSellers"><?php echo number_format($sellerCount); ?></strong><small>Seller accounts</small></div>
+<button class="users-stat users-stat-link" type="button" data-role-card="all" aria-label="Show all users"><span>Total Users</span><strong id="usersTotal"><?php echo number_format($userCount); ?></strong></button>
+<button class="users-stat users-stat-link" type="button" data-role-card="buyer" aria-label="Show buyer accounts"><span>Buyers</span><strong id="usersBuyers"><?php echo number_format($buyerCount); ?></strong></button>
+<button class="users-stat users-stat-link" type="button" data-role-card="seller" aria-label="Show seller accounts"><span>Sellers</span><strong id="usersSellers"><?php echo number_format($sellerCount); ?></strong></button>
 </section>
 <section class="users-panel" aria-label="User accounts">
 <div class="users-toolbar">
-<div class="users-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="usersSearch" type="search" placeholder="Search users by name, email, or ID" aria-label="Search users" autocomplete="off"></div>
+<div class="users-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="usersSearch" type="search" placeholder="Search ID, name, email, phone, role, or status" aria-label="Search users" autocomplete="off"><button class="users-search-clear" id="usersSearchClear" type="button" aria-label="Clear user search" hidden>×</button></div>
 <select id="usersRoleFilter" class="users-filter" aria-label="Filter by role"><option value="all">All Roles</option><option value="buyer">Buyers</option><option value="seller">Sellers</option></select>
 <select id="usersStatusFilter" class="users-filter" aria-label="Filter by account status"><option value="all">All Statuses</option><option value="active">Active</option><option value="pending">Pending</option><option value="disabled">Disabled</option></select>
 </div>
@@ -180,7 +253,17 @@ body,.page{background:var(--users-bg)}
     $status = $user['account_status'];
     $validStatus = in_array($status, ['active','pending','disabled'], true) ? $status : 'pending';
 ?>
-<tr data-user-row data-record="<?php echo usersEsc($json); ?>" data-role="<?php echo usersEsc(strtolower($user['role'])); ?>" data-status="<?php echo usersEsc($validStatus); ?>" tabindex="0" aria-label="Open account for <?php echo usersEsc($user['full_name']); ?>">
+<tr data-user-row data-record="<?php echo usersEsc($json); ?>" data-search="<?php echo usersEsc(implode(' ', [
+    '#'.(int)$user['id'],
+    'user '.(int)$user['id'],
+    (string)$user['full_name'],
+    (string)$user['email'],
+    (string)($user['phone'] ?? ''),
+    (string)$user['role'],
+    (string)$validStatus,
+    (string)($user['application_status'] ?? ''),
+    (string)$user['joined']
+])); ?>" data-role="<?php echo usersEsc(strtolower($user['role'])); ?>" data-status="<?php echo usersEsc($validStatus); ?>" tabindex="0" aria-label="Open account for <?php echo usersEsc($user['full_name']); ?>">
 <td><?php echo (int)$user['id']; ?></td>
 <td><div class="users-name" data-name><?php echo usersEsc($user['full_name']); ?></div><div class="users-mobile-sub" data-mobile-info><?php echo usersEsc($user['role']); ?> · <?php echo usersEsc($user['email']); ?></div></td>
 <td><span class="users-email" data-email title="<?php echo usersEsc($user['email']); ?>"><?php echo usersEsc($user['email']); ?></span></td>
@@ -230,23 +313,34 @@ body,.page{background:var(--users-bg)}
     const form = document.getElementById('usersEditForm');
     const error = document.getElementById('usersFormError');
     const save = document.getElementById('usersSaveButton');
+    const searchClear = document.getElementById('usersSearchClear');
+    const roleCards = [...document.querySelectorAll('[data-role-card]')];
     let openedRow = null;
     let saving = false;
+    let modalHistoryActive = false;
+    let modalHistoryToken = 0;
     const fields = { id: 'usersReadonlyId', role: 'usersReadonlyRole', firstname: 'usersFirst', middlename: 'usersMiddle', lastname: 'usersLast', email: 'usersEmail', phone: 'usersPhone', status: 'usersStatus', application: 'usersApplication', joined: 'usersJoined' };
     const getRecord = row => JSON.parse(row.dataset.record);
+    function normalizeUserSearch(value) {
+        return String(value || '').toLocaleLowerCase().replace(/[_-]+/g,' ').replace(/[^\p{L}\p{N}#.@+\s]/gu,' ').replace(/\s+/g,' ').trim();
+    }
     function filterRows() {
-        const keyword = search.value.trim().toLocaleLowerCase();
+        const keyword = normalizeUserSearch(search.value);
+        const compact = keyword.replace(/\s+/g,'');
         let count = 0;
         rows.forEach(row => {
-            const user = getRecord(row);
-            const haystack = [user.id, user.firstname, user.middlename, user.lastname, user.email, user.phone, user.role, user.status].join(' ').toLocaleLowerCase();
-            const ok = haystack.includes(keyword) && (role.value === 'all' || row.dataset.role === role.value) && (status.value === 'all' || row.dataset.status === status.value);
+            const haystack = normalizeUserSearch(row.dataset.search || '');
+            const textMatch = !keyword || haystack.includes(keyword) || haystack.replace(/\s+/g,'').includes(compact);
+            const ok = textMatch && (role.value === 'all' || row.dataset.role === role.value) && (status.value === 'all' || row.dataset.status === status.value);
             row.hidden = !ok;
             if (ok) count++;
         });
         empty.hidden = count !== 0;
-        empty.querySelector('td').textContent = rows.length ? 'No users match the selected filters.' : 'No users found.';
+        empty.querySelector('td').textContent = rows.length ? 'No users match the search or selected filters.' : 'No users found.';
         visible.textContent = String(count);
+        searchClear.hidden = search.value === '';
+        search.setAttribute('aria-label', keyword ? `Search users, ${count} result${count === 1 ? '' : 's'}` : 'Search users');
+        roleCards.forEach(card => card.classList.toggle('active', card.dataset.roleCard === role.value));
     }
     function openModal(row) {
         if (saving) return;
@@ -260,9 +354,19 @@ body,.page{background:var(--users-bg)}
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('users-modal-open');
         document.getElementById('usersFirst').focus();
+        if (!modalHistoryActive) {
+            modalHistoryActive = true;
+            modalHistoryToken += 1;
+            history.pushState({...(history.state || {}), lokalcraftAdminUsers:true, usersModalToken:modalHistoryToken}, '', location.href);
+        }
     }
-    function closeModal() {
+    function closeModal(source = 'ui') {
         if (saving) return;
+        if (source !== 'history' && modalHistoryActive && history.state?.usersModalToken === modalHistoryToken) {
+            history.back();
+            return;
+        }
+        modalHistoryActive = false;
         modal.hidden = true;
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('users-modal-open');
@@ -276,9 +380,13 @@ body,.page{background:var(--users-bg)}
             if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModal(row); }
         });
     });
-    document.querySelectorAll('[data-close-modal]').forEach(el => el.addEventListener('click', closeModal));
-    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.hidden) closeModal(); });
+    document.querySelectorAll('[data-close-modal]').forEach(el => el.addEventListener('click', () => closeModal('ui')));
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.hidden) { event.preventDefault(); closeModal('ui'); } });
     [search, role, status].forEach(el => el.addEventListener(el === search ? 'input' : 'change', filterRows));
+    search.addEventListener('search', filterRows);
+    searchClear.addEventListener('click', () => { search.value = ''; filterRows(); try { search.focus({preventScroll:true}); } catch (_) { search.focus(); } });
+    roleCards.forEach(card => card.addEventListener('click', () => { role.value = card.dataset.roleCard || 'all'; filterRows(); document.querySelector('.users-panel')?.scrollIntoView({block:'start',behavior:'smooth'}); }));
+    window.addEventListener('popstate', () => { if (modalHistoryActive) { modalHistoryActive = false; closeModal('history'); } });
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (saving || !openedRow) return;
@@ -299,7 +407,7 @@ body,.page{background:var(--users-bg)}
             pill.className = 'users-pill ' + updated.status;
             pill.textContent = updated.status.charAt(0).toUpperCase() + updated.status.slice(1);
             saving = false;
-            closeModal();
+            closeModal('ui');
             filterRows();
         } catch (err) {
             error.textContent = err.message || 'Unable to save changes.';

@@ -5278,6 +5278,118 @@ if ($selectedBuyerId > 0) {
                   0 3px 8px rgba(102, 46, 19, .20);
     }
   </style>
+  <style id="sellerMessageAttachmentEnhancements">
+    /* Attachment-only bubbles fit the displayed asset instead of retaining text-bubble width. */
+    .message-content.has-image-attachment,
+    .message-content.has-pdf-attachment {
+      flex: 0 1 auto;
+      width: auto;
+      max-width: min(72%, 430px);
+    }
+    .message-content.has-image-attachment .bubble,
+    .message-content.has-pdf-attachment .bubble {
+      display: inline-flex;
+      width: auto;
+      max-width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 7px;
+    }
+    .message-content.has-image-attachment.has-message-text .bubble,
+    .message-content.has-pdf-attachment.has-message-text .bubble {
+      width: min(430px, 100%);
+      padding: 9px 10px 8px;
+    }
+    .message-attachment-button {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .message-attachment-button img {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 360px;
+      object-fit: contain;
+      object-position: center;
+      border-radius: 12px;
+    }
+    .message-attachment-button:focus-visible {
+      outline: 3px solid rgba(165,83,37,.38);
+      outline-offset: 2px;
+    }
+    .message-content.has-image-attachment .message-time,
+    .message-content.has-pdf-attachment .message-time {
+      min-width: 72px;
+      padding: 0 3px 1px;
+    }
+    .attachment-preview-thumb {
+      display: none;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #f0e8e1;
+    }
+    .attachment-preview-thumb.show { display: block; }
+    .attachment-preview-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .seller-asset-viewer[hidden] { display: none !important; }
+    .seller-asset-viewer {
+      position: fixed;
+      inset: 0;
+      z-index: 500000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(58px, env(safe-area-inset-top)) 18px max(22px, env(safe-area-inset-bottom));
+      background: rgba(20,16,13,.94);
+    }
+    .seller-asset-viewer img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100dvh - 90px);
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.32);
+    }
+    .seller-asset-viewer-close {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      right: max(16px, env(safe-area-inset-right));
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: #fff;
+      color: #4f4036;
+      font-size: 27px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .seller-pdf-viewer { padding: max(58px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+    .seller-pdf-viewer iframe { width: min(1100px, 100%); height: calc(100dvh - 78px); border: 0; border-radius: 10px; background: #fff; }
+    body.seller-asset-viewer-open { overflow: hidden !important; }
+    @media (max-width: 760px) {
+      .message-content.has-image-attachment,
+      .message-content.has-pdf-attachment { max-width: 86%; }
+      .message-attachment-button img { max-height: 52svh; }
+      .seller-asset-viewer { padding-right: 8px; padding-left: 8px; }
+    }
+  </style>
 </head>
 <body>
   <div class="page">
@@ -5389,7 +5501,8 @@ if ($selectedBuyerId > 0) {
               <div class="chat-input-wrap">
                 <div class="seller-message-notice" id="sellerMessageNotice" role="status" aria-live="polite" hidden></div>
                 <div class="attachment-preview" id="attachmentPreview">
-                  <span class="seller-file-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20.5 11.5-8.7 8.7a6 6 0 0 1-8.5-8.5L13 2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8L15 5.8"/></svg></span>
+                  <span class="attachment-preview-thumb" id="attachmentPreviewThumb" aria-hidden="true"></span>
+                  <span class="seller-file-icon" id="attachmentPreviewIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20.5 11.5-8.7 8.7a6 6 0 0 1-8.5-8.5L13 2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8L15 5.8"/></svg></span>
                   <span class="attachment-preview-name" id="attachmentPreviewName"></span>
                   <button class="attachment-remove" id="attachmentRemove" type="button" aria-label="Remove attachment">×</button>
                 </div>
@@ -5411,6 +5524,14 @@ if ($selectedBuyerId > 0) {
         </div>
       </div>
     </main>
+  </div>
+  <div class="seller-asset-viewer" id="sellerImageViewer" hidden role="dialog" aria-modal="true" aria-label="Full image attachment">
+    <button type="button" class="seller-asset-viewer-close" id="sellerImageViewerClose" aria-label="Close full image">×</button>
+    <img id="sellerImageViewerImage" alt="Full image attachment" />
+  </div>
+  <div class="seller-asset-viewer seller-pdf-viewer" id="sellerPdfViewer" hidden role="dialog" aria-modal="true" aria-label="PDF attachment viewer">
+    <button type="button" class="seller-asset-viewer-close" id="sellerPdfViewerClose" aria-label="Close PDF viewer">×</button>
+    <iframe id="sellerPdfViewerFrame" title="PDF attachment"></iframe>
   </div>
   <dialog class="seller-buyer-profile-dialog" id="sellerBuyerProfileDialog" aria-labelledby="sellerBuyerProfileTitle">
     <section class="seller-buyer-profile-card">
@@ -5592,7 +5713,60 @@ if ($selectedBuyerId > 0) {
     const attachmentInput = document.getElementById('attachmentInput');
     const attachmentPreview = document.getElementById('attachmentPreview');
     const attachmentPreviewName = document.getElementById('attachmentPreviewName');
+    const attachmentPreviewThumb = document.getElementById('attachmentPreviewThumb');
+    const attachmentPreviewIcon = document.getElementById('attachmentPreviewIcon');
     const attachmentRemove = document.getElementById('attachmentRemove');
+    const sellerImageViewer = document.getElementById('sellerImageViewer');
+    const sellerImageViewerImage = document.getElementById('sellerImageViewerImage');
+    const sellerImageViewerClose = document.getElementById('sellerImageViewerClose');
+    const sellerPdfViewer = document.getElementById('sellerPdfViewer');
+    const sellerPdfViewerFrame = document.getElementById('sellerPdfViewerFrame');
+    const sellerPdfViewerClose = document.getElementById('sellerPdfViewerClose');
+    let sellerAttachmentPreviewUrl = '';
+    let sellerAttachmentViewerTrigger = null;
+    // One browser-history entry per visible Messages layer. Browser/device Back
+    // closes only the frontmost layer and never leaves this module prematurely.
+    const sellerSmartBack = (() => {
+      const stack = [];
+      let sequence = 0;
+      let consumingPop = false;
+      const currentState = () => history.state && history.state.lokalcraftSellerMessages === true
+        ? history.state : null;
+      function push(key, close) {
+        const existing = stack.findIndex(layer => layer.key === key);
+        if (existing >= 0) stack.splice(existing, 1);
+        const token = ++sequence;
+        stack.push({key, token, close});
+        history.pushState({
+          ...(history.state || {}),
+          lokalcraftSellerMessages: true,
+          sellerMessagesLayer: key,
+          sellerMessagesToken: token
+        }, '', window.location.href);
+      }
+      function remove(key) {
+        const index = stack.findIndex(layer => layer.key === key);
+        if (index >= 0) stack.splice(index, 1);
+      }
+      function closeByUi(key, close) {
+        const top = stack[stack.length - 1];
+        if (top?.key === key && currentState()?.sellerMessagesToken === top.token) {
+          history.back();
+          return;
+        }
+        remove(key);
+        close?.('ui');
+      }
+      window.addEventListener('popstate', () => {
+        if (consumingPop) return;
+        const layer = stack.pop();
+        if (!layer) return;
+        consumingPop = true;
+        try { layer.close?.('history'); }
+        finally { consumingPop = false; }
+      });
+      return {push, remove, closeByUi, has: key => stack.some(layer => layer.key === key)};
+    })();
     const emptyChat = document.getElementById('emptyChat');
     const chatBack = document.getElementById('chatBack');
     const manageArrangementButton = document.getElementById('manageArrangementButton');
@@ -5953,28 +6127,102 @@ if ($selectedBuyerId > 0) {
       }
       if (previous < value.length) target.appendChild(document.createTextNode(value.slice(previous)));
     }
+    function attachmentExtension(value) {
+      return String(value || '').split('?')[0].split('.').pop()?.toLowerCase() || '';
+    }
+    function openSellerImageViewer(source, trigger) {
+      if (!source || !sellerImageViewer || !sellerImageViewerImage) return;
+      sellerAttachmentViewerTrigger = trigger || null;
+      sellerImageViewerImage.src = source;
+      sellerImageViewer.hidden = false;
+      document.body.classList.add('seller-asset-viewer-open');
+      sellerImageViewerClose?.focus({preventScroll:true});
+      if (!sellerSmartBack.has('image-viewer')) {
+        sellerSmartBack.push('image-viewer', () => closeSellerImageViewer('history'));
+      }
+    }
+    function closeSellerImageViewer(source = 'ui') {
+      if (!sellerImageViewer || sellerImageViewer.hidden) return;
+      if (source !== 'history' && sellerSmartBack.has('image-viewer')) {
+        sellerSmartBack.closeByUi('image-viewer', () => closeSellerImageViewer('history'));
+        return;
+      }
+      sellerSmartBack.remove('image-viewer');
+      sellerImageViewer.hidden = true;
+      sellerImageViewerImage?.removeAttribute('src');
+      document.body.classList.remove('seller-asset-viewer-open');
+      sellerAttachmentViewerTrigger?.focus?.({preventScroll:true});
+      sellerAttachmentViewerTrigger = null;
+    }
+    function openSellerPdfViewer(source, trigger) {
+      if (!source || !sellerPdfViewer || !sellerPdfViewerFrame) return;
+      sellerAttachmentViewerTrigger = trigger || null;
+      sellerPdfViewerFrame.src = source;
+      sellerPdfViewer.hidden = false;
+      document.body.classList.add('seller-asset-viewer-open');
+      sellerPdfViewerClose?.focus({preventScroll:true});
+      if (!sellerSmartBack.has('pdf-viewer')) {
+        sellerSmartBack.push('pdf-viewer', () => closeSellerPdfViewer('history'));
+      }
+    }
+    function closeSellerPdfViewer(source = 'ui') {
+      if (!sellerPdfViewer || sellerPdfViewer.hidden) return;
+      if (source !== 'history' && sellerSmartBack.has('pdf-viewer')) {
+        sellerSmartBack.closeByUi('pdf-viewer', () => closeSellerPdfViewer('history'));
+        return;
+      }
+      sellerSmartBack.remove('pdf-viewer');
+      sellerPdfViewer.hidden = true;
+      sellerPdfViewerFrame?.removeAttribute('src');
+      document.body.classList.remove('seller-asset-viewer-open');
+      sellerAttachmentViewerTrigger?.focus?.({preventScroll:true});
+      sellerAttachmentViewerTrigger = null;
+    }
+    sellerImageViewerClose?.addEventListener('click', () => closeSellerImageViewer('ui'));
+    sellerImageViewer?.addEventListener('click', event => { if (event.target === sellerImageViewer) closeSellerImageViewer('ui'); });
+    sellerPdfViewerClose?.addEventListener('click', () => closeSellerPdfViewer('ui'));
+    sellerPdfViewer?.addEventListener('click', event => { if (event.target === sellerPdfViewer) closeSellerPdfViewer('ui'); });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if (sellerImageViewer && !sellerImageViewer.hidden) { closeSellerImageViewer('ui'); return; }
+      if (sellerPdfViewer && !sellerPdfViewer.hidden) closeSellerPdfViewer('ui');
+    });
     function renderAttachment(container, attachment) {
       if (!attachment) return;
-      const link = document.createElement('a');
-      link.className = 'attachment';
-      link.href = attachment;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      const extension = attachment.split('.').pop()?.toLowerCase() || '';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+      const extension = attachmentExtension(attachment);
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension);
+      if (isImage) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'attachment message-attachment-button';
+        button.setAttribute('aria-label', 'View full image attachment');
         const image = document.createElement('img');
         image.src = attachment;
-        image.alt = 'Attachment';
+        image.alt = 'Image attachment';
         image.loading = 'lazy';
-        link.appendChild(image);
-      } else {
-        const file = document.createElement('div');
-        file.className = 'attachment-file';
-        file.innerHTML = sellerPaperclipSvg;
-        file.appendChild(document.createTextNode(' ' + (attachment.split('/').pop()?.split('?')[0] || 'File')));
-        link.appendChild(file);
+        button.appendChild(image);
+        button.addEventListener('click', () => openSellerImageViewer(attachment, button));
+        container.appendChild(button);
+        return;
       }
-      container.appendChild(link);
+      const isPdf = extension === 'pdf';
+      const control = document.createElement(isPdf ? 'button' : 'a');
+      control.className = 'attachment' + (isPdf ? ' message-attachment-button' : '');
+      if (isPdf) {
+        control.type = 'button';
+        control.setAttribute('aria-label', 'Open PDF attachment viewer');
+        control.addEventListener('click', () => openSellerPdfViewer(attachment, control));
+      } else {
+        control.href = attachment;
+        control.target = '_blank';
+        control.rel = 'noopener noreferrer';
+      }
+      const file = document.createElement('div');
+      file.className = 'attachment-file';
+      file.innerHTML = sellerPaperclipSvg;
+      file.appendChild(document.createTextNode(' ' + (attachment.split('/').pop()?.split('?')[0] || 'File')));
+      control.appendChild(file);
+      container.appendChild(control);
     }
     function orderTerminal(status) {
       return ['cancelled', 'canceled', 'rejected', 'declined', 'expired', 'completed']
@@ -6122,6 +6370,13 @@ if ($selectedBuyerId > 0) {
       if (Number(message.order_id) > 0) row.dataset.orderId = String(message.order_id);
       const content = document.createElement('div');
       content.className = 'message-content';
+      const extension = attachmentExtension(message.attachment);
+      const hasImageAttachment = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension);
+      const hasPdfAttachment = extension === 'pdf';
+      const hasMessageText = Boolean(String(message.message_text || '').trim());
+      content.classList.toggle('has-image-attachment', hasImageAttachment);
+      content.classList.toggle('has-pdf-attachment', hasPdfAttachment);
+      content.classList.toggle('has-message-text', (hasImageAttachment || hasPdfAttachment) && hasMessageText);
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       renderAttachment(bubble, message.attachment);
@@ -6180,6 +6435,13 @@ if ($selectedBuyerId > 0) {
         if (Number(message.order_id) > 0) row.dataset.orderId = String(message.order_id);
         const content = document.createElement('div');
         content.className = 'message-content';
+        const extension = attachmentExtension(message.attachment);
+        const hasImageAttachment = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension);
+        const hasPdfAttachment = extension === 'pdf';
+        const hasMessageText = Boolean(String(message.message_text || '').trim());
+        content.classList.toggle('has-image-attachment', hasImageAttachment);
+        content.classList.toggle('has-pdf-attachment', hasPdfAttachment);
+        content.classList.toggle('has-message-text', (hasImageAttachment || hasPdfAttachment) && hasMessageText);
         const bubble = document.createElement('div');
         bubble.className = 'bubble';
         renderAttachment(bubble, message.attachment);
@@ -7086,7 +7348,7 @@ if ($selectedBuyerId > 0) {
         );
         if (action === 'send_arrangement_confirmation') {
           setTimeout(() => {
-            arrangementDialog?.close();
+            closeSellerArrangementDialog('ui');
           }, 450);
           await loadConversation(
             selectedBuyerId,
@@ -7282,7 +7544,12 @@ if ($selectedBuyerId > 0) {
       document.getElementById('sellerBuyerProfileName').textContent = 'Buyer';
       document.getElementById('sellerBuyerProfileAvatar').textContent = 'B';
       document.getElementById('sellerBuyerProfileActive').hidden = true;
-      if (!sellerBuyerProfileDialog.open) sellerBuyerProfileDialog.showModal();
+      if (!sellerBuyerProfileDialog.open) {
+        sellerBuyerProfileDialog.showModal();
+        sellerSmartBack.push('buyer-profile', () => {
+          if (sellerBuyerProfileDialog.open) sellerBuyerProfileDialog.close('history');
+        });
+      }
       syncSellerBuyerProfilePosition();
       const data = new FormData();
       data.append('action', 'chat_buyer_profile');
@@ -7298,11 +7565,25 @@ if ($selectedBuyerId > 0) {
     }
     chatAvatar?.addEventListener('click', openSellerBuyerProfile);
     chatName?.addEventListener('click', openSellerBuyerProfile);
-    sellerBuyerProfileClose?.addEventListener('click', () => sellerBuyerProfileDialog?.close());
+    function closeSellerBuyerProfile(source = 'ui') {
+      if (!sellerBuyerProfileDialog?.open) return;
+      if (source !== 'history' && sellerSmartBack.has('buyer-profile')) {
+        sellerSmartBack.closeByUi('buyer-profile', () => closeSellerBuyerProfile('history'));
+        return;
+      }
+      sellerSmartBack.remove('buyer-profile');
+      sellerBuyerProfileDialog.close(source);
+    }
+    sellerBuyerProfileClose?.addEventListener('click', () => closeSellerBuyerProfile('ui'));
     sellerBuyerProfileDialog?.addEventListener('click', event => {
-      if (event.target === sellerBuyerProfileDialog) sellerBuyerProfileDialog.close();
+      if (event.target === sellerBuyerProfileDialog) closeSellerBuyerProfile('ui');
+    });
+    sellerBuyerProfileDialog?.addEventListener('cancel', event => {
+      event.preventDefault();
+      closeSellerBuyerProfile('ui');
     });
     sellerBuyerProfileDialog?.addEventListener('close', () => {
+      sellerSmartBack.remove('buyer-profile');
       sellerBuyerProfileRequest++;
       sellerBuyerProfileDialog.style.removeProperty('--buyer-profile-center');
       sellerBuyerProfileDialog.style.removeProperty('--buyer-profile-available');
@@ -7332,14 +7613,23 @@ if ($selectedBuyerId > 0) {
         item.classList.toggle('active', Number(item.dataset.buyerId) === Number(buyerId));
       });
     }
-    function openChatOnMobile() {
+    function openChatOnMobile(pushHistory = true) {
       if (messagesShell && window.matchMedia('(max-width: 760px)').matches) {
+        const wasOpen = messagesShell.classList.contains('chat-open');
         messagesShell.classList.add('chat-open');
         document.body.classList.add('chat-mobile-open');
+        if (pushHistory && !wasOpen && !sellerSmartBack.has('mobile-chat')) {
+          sellerSmartBack.push('mobile-chat', () => closeChatOnMobile('history'));
+        }
         syncSellerMessageViewport();
       }
     }
-    function closeChatOnMobile() {
+    function closeChatOnMobile(source = 'ui') {
+      if (source !== 'history' && sellerSmartBack.has('mobile-chat')) {
+        sellerSmartBack.closeByUi('mobile-chat', () => closeChatOnMobile('history'));
+        return;
+      }
+      sellerSmartBack.remove('mobile-chat');
       if (messagesShell) {
         messagesShell.classList.remove('chat-open');
       }
@@ -7394,7 +7684,7 @@ if ($selectedBuyerId > 0) {
       preferredOrderId = 0
     ) {
       if (!buyerId) return;
-      if (sellerBuyerProfileDialog?.open) sellerBuyerProfileDialog.close();
+      if (sellerBuyerProfileDialog?.open) closeSellerBuyerProfile('ui');
       selectedBuyerId = Number(buyerId);
       selectedOrderId = Number(preferredOrderId) || 0;
       activeOrderDetails = null;
@@ -7654,6 +7944,15 @@ if ($selectedBuyerId > 0) {
       if (attachmentPreviewName) {
         attachmentPreviewName.textContent = '';
       }
+      if (sellerAttachmentPreviewUrl) {
+        URL.revokeObjectURL(sellerAttachmentPreviewUrl);
+        sellerAttachmentPreviewUrl = '';
+      }
+      if (attachmentPreviewThumb) {
+        attachmentPreviewThumb.classList.remove('show');
+        attachmentPreviewThumb.replaceChildren();
+      }
+      if (attachmentPreviewIcon) attachmentPreviewIcon.hidden = false;
       updateSendButton();
     }
     // Position the active order popup within Safari's visible viewport, including the keyboard.
@@ -7667,13 +7966,30 @@ if ($selectedBuyerId > 0) {
     }
     function openSellerArrangementDialog() {
       if (!arrangementDialog || typeof arrangementDialog.showModal !== 'function') return;
-      if (!arrangementDialog.open) arrangementDialog.showModal();
+      if (!arrangementDialog.open) {
+        arrangementDialog.showModal();
+        sellerSmartBack.push('order-details', () => closeSellerArrangementDialog('history'));
+      }
       document.body.classList.add('seller-arrangement-visible');
       const form = document.getElementById('arrangementForm');
       if (form) form.scrollTop = 0;
       syncSellerArrangementPosition();
     }
+    function closeSellerArrangementDialog(source = 'ui') {
+      if (!arrangementDialog?.open) return;
+      if (source !== 'history' && sellerSmartBack.has('order-details')) {
+        sellerSmartBack.closeByUi('order-details', () => closeSellerArrangementDialog('history'));
+        return;
+      }
+      sellerSmartBack.remove('order-details');
+      arrangementDialog.close(source);
+    }
+    arrangementDialog?.addEventListener('cancel', event => {
+      event.preventDefault();
+      closeSellerArrangementDialog('ui');
+    });
     arrangementDialog?.addEventListener('close', () => {
+      sellerSmartBack.remove('order-details');
       document.body.classList.remove('seller-arrangement-visible');
       arrangementDialog.style.removeProperty('--seller-arrangement-center');
       arrangementDialog.style.removeProperty('--seller-arrangement-available');
@@ -7724,13 +8040,13 @@ if ($selectedBuyerId > 0) {
     );
     arrangementClose?.addEventListener(
       'click',
-      () => arrangementDialog?.close()
+      () => closeSellerArrangementDialog('ui')
     );
     arrangementDialog?.addEventListener(
       'click',
       (event) => {
         if (event.target === arrangementDialog) {
-          arrangementDialog.close();
+          closeSellerArrangementDialog('ui');
         }
       }
     );
@@ -7814,7 +8130,7 @@ if ($selectedBuyerId > 0) {
       });
     }
     if (chatBack) {
-      chatBack.addEventListener('click', closeChatOnMobile);
+      chatBack.addEventListener('click', () => closeChatOnMobile('ui'));
     }
     if (messageInput) {
       messageInput.addEventListener('focus', () => {
@@ -7892,6 +8208,21 @@ if ($selectedBuyerId > 0) {
         if (attachmentPreviewName) {
           attachmentPreviewName.textContent = file.name;
         }
+        if (sellerAttachmentPreviewUrl) URL.revokeObjectURL(sellerAttachmentPreviewUrl);
+        sellerAttachmentPreviewUrl = '';
+        if (attachmentPreviewThumb) {
+          attachmentPreviewThumb.replaceChildren();
+          const isImage = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type);
+          attachmentPreviewThumb.classList.toggle('show', isImage);
+          if (isImage) {
+            sellerAttachmentPreviewUrl = URL.createObjectURL(file);
+            const previewImage = document.createElement('img');
+            previewImage.src = sellerAttachmentPreviewUrl;
+            previewImage.alt = '';
+            attachmentPreviewThumb.appendChild(previewImage);
+          }
+          if (attachmentPreviewIcon) attachmentPreviewIcon.hidden = isImage;
+        }
         showSellerMessageNotice();
         updateSendButton();
       });
@@ -7953,6 +8284,7 @@ if ($selectedBuyerId > 0) {
       startTypingPolling();
       if (window.matchMedia('(max-width: 760px)').matches) {
         messagesShell?.classList.add('chat-open');
+        document.body.classList.add('chat-mobile-open');
       }
       // Reposition after the order summary and mobile chat are actually visible.
       // The seller notification's validated order ID takes precedence over newer orders.

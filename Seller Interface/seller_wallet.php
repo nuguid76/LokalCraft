@@ -898,6 +898,34 @@ body.wallet-detail-open { overflow: hidden; }
   });
   applyWalletSearch();
   let lastTrigger = null;
+  let walletHistoryToken = 0;
+  let walletHistoryActive = false;
+  function pushWalletDetailHistory() {
+    if (walletHistoryActive) return;
+    walletHistoryActive = true;
+    walletHistoryToken += 1;
+    history.pushState({
+      ...(history.state || {}),
+      lokalcraftSellerWallet: true,
+      walletDetailToken: walletHistoryToken
+    }, '', location.href);
+  }
+  function closeWalletDetails(source = 'ui') {
+    if (!dialog.open && !dialog.hasAttribute('open')) return;
+    if (source !== 'history' && walletHistoryActive
+        && history.state?.walletDetailToken === walletHistoryToken) {
+      history.back();
+      return;
+    }
+    walletHistoryActive = false;
+    if (dialog.open && typeof dialog.close === 'function') dialog.close(source);
+    else dialog.removeAttribute('open');
+  }
+  window.addEventListener('popstate', () => {
+    if (!walletHistoryActive) return;
+    walletHistoryActive = false;
+    closeWalletDetails('history');
+  });
   const get = (id) => document.getElementById(id);
   const asText = (value) => value == null ? '' : String(value);
   function appendRow(container, name, value, highlighted = false) {
@@ -966,20 +994,22 @@ body.wallet-detail-open { overflow: hidden; }
     document.body.classList.add('wallet-detail-open');
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
+    pushWalletDetailHistory();
   }
   document.querySelectorAll('[data-wallet-transaction]').forEach(button => {
     button.addEventListener('click', () => openDetails(button));
   });
-  function closeDetails() {
-    if (dialog.open && typeof dialog.close === 'function') dialog.close();
-    else dialog.removeAttribute('open');
-  }
-  get('walletTransactionClose').addEventListener('click', closeDetails);
-  get('walletTransactionDone').addEventListener('click', closeDetails);
+  get('walletTransactionClose').addEventListener('click', () => closeWalletDetails('ui'));
+  get('walletTransactionDone').addEventListener('click', () => closeWalletDetails('ui'));
   dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) closeDetails();
+    if (event.target === dialog) closeWalletDetails('ui');
+  });
+  dialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    closeWalletDetails('ui');
   });
   dialog.addEventListener('close', () => {
+    walletHistoryActive = false;
     document.body.classList.remove('wallet-detail-open');
     lastTrigger?.focus({preventScroll:true});
   });

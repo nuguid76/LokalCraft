@@ -370,17 +370,17 @@ function renderOrderRows(array $orders): string
                 <span class="monitor-customer-avatar" aria-hidden="true"><?php echo e($buyerInitials); ?></span>
                 <span class="monitor-customer-info"><strong><?php echo e($order['buyer_name']); ?></strong><small>Customer</small></span>
             </span>
-            <span class="monitor-order-store"><span class="monitor-store-icon" aria-hidden="true">▣</span><span><?php echo e($order['seller_name']); ?></span></span>
+            <span class="monitor-order-store"><span class="monitor-store-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v10h16V10"/><path d="M3 10 5 4h14l2 6"/><path d="M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M9 20v-5h6v5"/></svg></span><span><?php echo e($order['seller_name']); ?></span></span>
             <span class="monitor-product-line"><?php echo e($order['items_summary']); ?></span>
             <span class="monitor-order-bottom">
                 <span><strong><?php echo e(money($order['total_amount'])); ?></strong><small><?php echo (int)$order['total_quantity']; ?> item(s)</small></span>
                 <span class="monitor-order-date"><?php echo e(formatDate($order['ordered_at'])); ?></span>
             </span>
-            <span class="monitor-order-link">View order details <span aria-hidden="true">↗</span></span>
+            <span class="monitor-order-link">View order details <span class="monitor-inline-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></span></span>
         </button>
     <?php endforeach; ?>
     <div class="monitor-empty" id="empty-orders" <?php echo $orders ? 'hidden' : ''; ?>>
-        <span class="monitor-empty-icon" aria-hidden="true">▤</span>
+        <span class="monitor-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>
         <strong><?php echo $orders ? 'No matching orders' : 'No orders recorded yet'; ?></strong>
         <span><?php echo $orders ? 'Try another search or filter.' : 'New customer orders will appear here automatically.'; ?></span>
     </div>
@@ -533,6 +533,107 @@ body,.page{background:var(--monitor-bg)}
 .monitor-page-nav:focus-visible,.monitor-page-number:focus-visible{outline:3px solid rgba(201,109,32,.18);outline-offset:2px}
 .monitor-page-summary{color:#887a6d;font-size:.72rem}
 @media(max-width:600px){.monitor-footer{justify-content:center;text-align:center}.monitor-pagination{width:100%;order:3}.monitor-page-summary{width:100%;order:2}.monitor-page-nav{padding:7px 9px}.monitor-page-number{min-width:36px}}
+
+/* Responsive status tabs and pagination for mobile Order Monitoring. */
+@media(max-width:600px){
+  .monitor-controls{padding:14px 11px 16px;overflow:hidden}
+  .monitor-section-head{gap:11px;margin-bottom:14px}
+  .monitor-search input{height:42px;font-size:16px;padding-right:13px}
+  .monitor-filters{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:7px;
+    width:100%;
+    margin-bottom:15px;
+  }
+  .monitor-filter{
+    width:100%;
+    min-width:0;
+    min-height:43px;
+    padding:7px 5px;
+    gap:5px;
+    border-radius:10px;
+    font-size:clamp(.66rem,2.8vw,.75rem);
+    line-height:1.16;
+    white-space:normal;
+  }
+  .monitor-filter>span:first-child{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .monitor-filter-count{
+    flex:0 0 auto;
+    min-width:19px;
+    padding:2px 4px;
+    font-size:.62rem;
+  }
+  .monitor-footer{
+    display:grid;
+    grid-template-columns:1fr;
+    justify-items:center;
+    gap:10px;
+    margin-top:16px;
+    text-align:center;
+  }
+  .monitor-footer>span:first-child{order:1;width:100%}
+  .monitor-pagination{
+    order:2;
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:center;
+    gap:6px;
+    width:100%;
+    max-width:390px;
+  }
+  .monitor-page-numbers{
+    display:flex;
+    min-width:0;
+    align-items:center;
+    justify-content:center;
+    gap:5px;
+    flex-wrap:nowrap;
+  }
+  .monitor-page-nav{
+    min-width:70px;
+    min-height:38px;
+    padding:7px 9px;
+    border-radius:9px;
+    font-size:.7rem;
+  }
+  .monitor-page-number{
+    flex:0 0 36px;
+    min-width:36px;
+    min-height:36px;
+    padding:5px;
+    border-radius:9px;
+    font-size:.72rem;
+  }
+  .monitor-page-ellipsis{
+    flex:0 0 15px;
+    color:#94887d;
+    font-size:.74rem;
+    text-align:center;
+  }
+  .monitor-page-summary{order:3;width:100%;font-size:.68rem}
+}
+@media(max-width:380px){
+  .monitor-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .monitor-page-nav{min-width:62px;padding-inline:7px;font-size:.66rem}
+  .monitor-page-number{flex-basis:33px;min-width:33px;min-height:35px}
+  .monitor-page-numbers{gap:4px}
+}
+
+/* Consistent SVG icon system for Order Monitoring. */
+.monitor-stat-icon svg{width:20px;height:20px;display:block}
+.monitor-store-icon{display:grid;place-items:center;width:18px;height:18px}
+.monitor-store-icon svg{width:17px;height:17px;display:block}
+.monitor-inline-icon{display:grid;place-items:center;margin-left:auto}
+.monitor-inline-icon svg{width:15px;height:15px;display:block}
+.monitor-empty-icon svg{width:25px;height:25px;display:block}
+.monitor-modal-close{padding:0}
+.monitor-modal-close svg{width:17px;height:17px;display:block}
+.monitor-detail-section-head .icon svg{width:17px;height:17px;display:block}
 </style>
 </head>
 <body>
@@ -546,10 +647,10 @@ body,.page{background:var(--monitor-bg)}
 </header>
 <div class="monitor-error" id="monitorError" role="status" <?php echo $errorMessage === '' ? 'hidden' : ''; ?>><?php echo e($errorMessage); ?></div>
 <section class="monitor-stats" aria-label="Order overview">
-<article class="monitor-stat all"><div class="monitor-stat-content"><span class="monitor-stat-title">Total Orders</span><strong class="monitor-stat-value" id="stat-total"><?php echo number_format($data['stats']['total']); ?></strong><span class="monitor-stat-detail">All recorded orders</span></div><span class="monitor-stat-icon" aria-hidden="true">▤</span></article>
-<article class="monitor-stat pending"><div class="monitor-stat-content"><span class="monitor-stat-title">Pending Orders</span><strong class="monitor-stat-value" id="stat-pending"><?php echo number_format($data['stats']['pending']); ?></strong><span class="monitor-stat-detail">Awaiting confirmation</span></div><span class="monitor-stat-icon" aria-hidden="true">◷</span></article>
-<article class="monitor-stat accepted"><div class="monitor-stat-content"><span class="monitor-stat-title">Accepted Orders</span><strong class="monitor-stat-value" id="stat-accepted"><?php echo number_format($data['stats']['accepted']); ?></strong><span class="monitor-stat-detail">Accepted by sellers</span></div><span class="monitor-stat-icon" aria-hidden="true">↗</span></article>
-<article class="monitor-stat completed"><div class="monitor-stat-content"><span class="monitor-stat-title">Completed Orders</span><strong class="monitor-stat-value" id="stat-completed"><?php echo number_format($data['stats']['completed']); ?></strong><span class="monitor-stat-detail">Finished orders</span></div><span class="monitor-stat-icon" aria-hidden="true">✓</span></article>
+<article class="monitor-stat all"><div class="monitor-stat-content"><span class="monitor-stat-title">Total Orders</span><strong class="monitor-stat-value" id="stat-total"><?php echo number_format($data['stats']['total']); ?></strong><span class="monitor-stat-detail">All recorded orders</span></div><span class="monitor-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span></article>
+<article class="monitor-stat pending"><div class="monitor-stat-content"><span class="monitor-stat-title">Pending Orders</span><strong class="monitor-stat-value" id="stat-pending"><?php echo number_format($data['stats']['pending']); ?></strong><span class="monitor-stat-detail">Awaiting confirmation</span></div><span class="monitor-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></article>
+<article class="monitor-stat accepted"><div class="monitor-stat-content"><span class="monitor-stat-title">Accepted Orders</span><strong class="monitor-stat-value" id="stat-accepted"><?php echo number_format($data['stats']['accepted']); ?></strong><span class="monitor-stat-detail">Accepted by sellers</span></div><span class="monitor-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/><path d="M5 6v12"/></svg></span></article>
+<article class="monitor-stat completed"><div class="monitor-stat-content"><span class="monitor-stat-title">Completed Orders</span><strong class="monitor-stat-value" id="stat-completed"><?php echo number_format($data['stats']['completed']); ?></strong><span class="monitor-stat-detail">Finished orders</span></div><span class="monitor-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.7 2.7L16.5 9"/></svg></span></article>
 </section>
 <section class="monitor-controls" aria-label="Order monitoring filters">
 <div class="monitor-section-head"><div><h2>All Orders</h2></div><label class="monitor-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="orderSearch" type="search" placeholder="Search order, customer or product" aria-label="Search orders" autocomplete="off"></label></div>
@@ -576,12 +677,12 @@ body,.page{background:var(--monitor-bg)}
 <div class="monitor-modal-card" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle" tabindex="-1">
 <header class="monitor-modal-head">
 <div><span class="monitor-modal-kicker">LokalCraft · Order Monitoring</span><h2 id="orderModalTitle">Order #—</h2><p class="monitor-modal-sub">Buyer and seller order agreement</p></div>
-<button type="button" class="monitor-modal-close" id="modalClose" aria-label="Close order details">×</button>
+<button type="button" class="monitor-modal-close" id="modalClose" aria-label="Close order details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
 </header>
 <div class="monitor-modal-body">
 <div class="monitor-modal-hero"><div><small>Order Total</small><strong id="detail-total">—</strong></div><span class="monitor-status" id="modalOrderStatus">Pending</span></div>
 <section class="monitor-detail-section" aria-label="Order overview">
-<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true">▤</span><h3>Order Overview</h3></div>
+<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><h3>Order Overview</h3></div>
 <div class="monitor-detail-grid">
 <div class="monitor-detail-field"><span class="key">Customer</span><strong class="value" id="detail-customer">—</strong></div>
 <div class="monitor-detail-field"><span class="key">Seller</span><strong class="value" id="detail-seller">—</strong></div>
@@ -590,7 +691,7 @@ body,.page{background:var(--monitor-bg)}
 <div class="monitor-detail-field wide"><span class="key">Products</span><strong class="value" id="detail-products">—</strong></div>
 </div></section>
 <section class="monitor-detail-section" aria-label="Delivery and meetup agreement">
-<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true">⌖</span><h3>Delivery / Meetup Agreement</h3><small>From order arrangements</small></div>
+<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span><h3>Delivery / Meetup Agreement</h3><small>From order arrangements</small></div>
 <div class="monitor-detail-grid">
 <div class="monitor-detail-field"><span class="key">Delivery Option</span><strong class="value" id="detail-delivery">—</strong></div>
 <div class="monitor-detail-field"><span class="key">Agreement Status</span><strong class="value" id="detail-arrangement-status">—</strong></div>
@@ -602,7 +703,7 @@ body,.page{background:var(--monitor-bg)}
 <div class="monitor-detail-field wide"><span class="key">Arrangement Notes</span><strong class="value" id="detail-arrangement-notes">—</strong></div>
 </div></section>
 <section class="monitor-detail-section" aria-label="Payment details">
-<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true">₱</span><h3>Payment Details</h3></div>
+<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg></span><h3>Payment Details</h3></div>
 <div class="monitor-detail-grid">
 <div class="monitor-detail-field"><span class="key">Selected Payment Option</span><strong class="value" id="detail-payment-option">—</strong></div>
 <div class="monitor-detail-field"><span class="key">Payment Method</span><strong class="value" id="detail-payment">—</strong></div>
@@ -613,14 +714,14 @@ body,.page{background:var(--monitor-bg)}
 <div class="monitor-detail-field wide"><span class="key">Payment Reference</span><strong class="value" id="detail-payment-reference">—</strong></div>
 </div></section>
 <section class="monitor-detail-section" aria-label="Ordered items">
-<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true">▦</span><h3>Ordered Items</h3></div>
+<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4V7Z"/><path d="M12 11v10"/></svg></span><h3>Ordered Items</h3></div>
 <div class="monitor-item-list" id="monitorItems" aria-live="polite"><div class="monitor-detail-loading">Loading items...</div></div>
 </section>
 <section class="monitor-detail-section" aria-label="Order conversation">
-<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true">☷</span><h3>Buyer–Seller Conversation</h3><small>Latest 30 linked messages</small></div>
+<div class="monitor-detail-section-head"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.4-4.2A8.5 8.5 0 1 1 21 12Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg></span><h3>Buyer–Seller Conversation</h3><small>Latest 30 linked messages</small></div>
 <div class="monitor-chat" id="monitorChat" aria-live="polite"><div class="monitor-detail-loading">Loading order messages...</div></div>
 </section>
-<section class="monitor-detail-section" aria-label="Order notes"><div class="monitor-detail-section-head"><span class="icon" aria-hidden="true">≡</span><h3>Order Notes</h3></div><div class="monitor-detail-grid"><div class="monitor-detail-field wide"><strong class="value" id="detail-notes">—</strong></div></div></section>
+<section class="monitor-detail-section" aria-label="Order notes"><div class="monitor-detail-section-head"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4M9 12h6M9 16h6M9 8h2"/></svg></span><h3>Order Notes</h3></div><div class="monitor-detail-grid"><div class="monitor-detail-field wide"><strong class="value" id="detail-notes">—</strong></div></div></section>
 </div>
 <footer class="monitor-modal-bottom"><span>Read-only monitoring · No order changes</span><button type="button" class="monitor-done" id="modalDone">Done</button></footer>
 </div>
@@ -665,20 +766,46 @@ body,.page{background:var(--monitor-bg)}
         const lastShown = Math.min(currentPage * ORDERS_PER_PAGE, totalMatches);
         pageSummary.textContent = 'Showing ' + formatter.format(firstShown) + '–' + formatter.format(lastShown) + ' of ' + formatter.format(totalMatches);
 
-        for (let page = 1; page <= totalPages; page++) {
+        const mobile = window.matchMedia('(max-width:600px)').matches;
+        const visibleLimit = mobile ? 3 : 7;
+        const pages = [];
+        if (totalPages <= visibleLimit) {
+            for (let page = 1; page <= totalPages; page++) pages.push(page);
+        } else if (mobile) {
+            if (currentPage <= 2) pages.push(1, 2, 3, 'ellipsis', totalPages);
+            else if (currentPage >= totalPages - 1) pages.push(1, 'ellipsis', totalPages - 2, totalPages - 1, totalPages);
+            else pages.push(1, 'ellipsis', currentPage, 'ellipsis', totalPages);
+        } else {
+            const start = Math.max(2, currentPage - 2);
+            const end = Math.min(totalPages - 1, currentPage + 2);
+            pages.push(1);
+            if (start > 2) pages.push('ellipsis');
+            for (let page = start; page <= end; page++) pages.push(page);
+            if (end < totalPages - 1) pages.push('ellipsis');
+            pages.push(totalPages);
+        }
+        pages.forEach((page, index) => {
+            if (page === 'ellipsis') {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'monitor-page-ellipsis';
+                ellipsis.textContent = '…';
+                ellipsis.setAttribute('aria-hidden', 'true');
+                pageNumbers.append(ellipsis);
+                return;
+            }
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'monitor-page-number' + (page === currentPage ? ' active' : '');
             button.textContent = formatter.format(page);
             button.setAttribute('aria-label', 'Go to order page ' + page);
-            button.setAttribute('aria-current', page === currentPage ? 'page' : 'false');
+            if (page === currentPage) button.setAttribute('aria-current', 'page');
             button.addEventListener('click', () => {
                 currentPage = page;
                 filterOrders(false);
                 document.querySelector('.monitor-controls')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             });
             pageNumbers.append(button);
-        }
+        });
     }
 
     function filterOrders(resetPage = false) {
@@ -730,6 +857,8 @@ body,.page{background:var(--monitor-bg)}
         currentPage++;
         filterOrders(false);
     });
+    const paginationViewport = window.matchMedia('(max-width:600px)');
+    paginationViewport.addEventListener?.('change', () => filterOrders(false));
     function makeNode(tag, className, text) {
         const node = document.createElement(tag);
         if (className) node.className = className;

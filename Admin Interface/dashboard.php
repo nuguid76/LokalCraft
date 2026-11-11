@@ -105,7 +105,7 @@ function loadDashboard(mysqli $conn): array
         INNER JOIN users u ON u.id = sa.user_id
         WHERE LOWER(sa.status) = 'pending'
         ORDER BY sa.submitted_at DESC, sa.application_id DESC
-        LIMIT 15
+        LIMIT 10
     ");
 
     if (!$pendingResult) {
@@ -177,7 +177,7 @@ function loadDashboard(mysqli $conn): array
 
         WHERE event_at IS NOT NULL
         ORDER BY event_at DESC
-        LIMIT 15
+        LIMIT 10
     ");
 
     if (!$activityResult) {
@@ -283,9 +283,24 @@ if (isset($_GET['dashboard_data'])) {
         .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
         .stat-card { min-width: 0; min-height: 130px; display: flex; justify-content: space-between; align-items: flex-start; gap: 9px; padding: 19px; border: 1px solid var(--dash-line); border-radius: 15px; background: var(--dash-card); box-shadow: var(--dash-shadow); }
         .stat-card > div:first-child { flex: 1; min-width: 0; }
+        .stat-card-link {
+            color: inherit;
+            text-decoration: none;
+            cursor: pointer;
+            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+        }
+        .stat-card-link:hover {
+            transform: translateY(-2px);
+            border-color: #ddb78f;
+            box-shadow: 0 14px 30px rgba(101,62,27,.10);
+        }
+        .stat-card-link:focus-visible {
+            outline: 3px solid rgba(165,83,37,.28);
+            outline-offset: 3px;
+        }
+        .stat-card-link:active { transform: translateY(0); }
         .stat-card .label { margin-bottom: 8px; color: #89837e; font-size: .8rem; line-height: 1.35; font-weight: 550; }
         .stat-card .value { margin-bottom: 8px; color: #46403a; font-size: clamp(1.35rem, 2vw, 1.85rem); font-weight: 750; line-height: 1.18; letter-spacing: -.6px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-        .stat-note { color: #aaa19a; font-size: .68rem; line-height: 1.42; }
         .stat-icon { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 11px; background: #fff0e4; color: #d78a45; }
         .stat-icon svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; fill: none; }
         .stat-card.green .stat-icon { background: #eaf7ee; color: #5eaf80; }
@@ -307,7 +322,6 @@ if (isset($_GET['dashboard_data'])) {
         .activity-item { justify-content: flex-start; align-items: flex-start; }
         .activity-dot { width: 7px; height: 7px; margin: 6px 4px 0 2px; flex-shrink: 0; border-radius: 50%; background: #eab17b; }
         .empty-list { padding: 21px 0; color: #958d87; font-size: .8rem; }
-        .dashboard-footnote { margin: 17px 1px 0; color: #9b938d; font-size: .7rem; line-height: 1.6; }
         @media (max-width: 1170px) {
             .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .stat-card { min-height: 119px; }
@@ -329,7 +343,6 @@ if (isset($_GET['dashboard_data'])) {
             .stat-icon svg { width: 16px; height: 16px; }
             .stat-card .label { margin-bottom: 5px; font-size: .71rem; }
             .stat-card .value { font-size: clamp(1.08rem, 4.6vw, 1.5rem); margin-bottom: 5px; }
-            .stat-note { font-size: .63rem; }
             .panel { padding: 15px 14px 9px; border-radius: 13px; }
             .panel-title { font-size: .92rem; }
             .item-name, .event-title { font-size: .78rem; }
@@ -412,7 +425,6 @@ if (isset($_GET['dashboard_data'])) {
             font-weight: 800;
             letter-spacing: -.035em;
         }
-        .stat-note,
         .panel-note,
         .item-sub,
         .event-time,
@@ -441,8 +453,8 @@ if (isset($_GET['dashboard_data'])) {
             color: #b47543;
         }
         .stat-card.purple .stat-icon {
-            background: linear-gradient(135deg, #a55325, #c2692e);
-            color: #fff8ed;
+            background: #fff1e4;
+            color: #c8844b;
         }
         .bottom-grid {
             gap: 18px;
@@ -488,11 +500,6 @@ if (isset($_GET['dashboard_data'])) {
             color: #c2692e;
             background: #fff1e4;
         }
-        .dashboard-footnote {
-            margin-top: 18px;
-            padding: 0 2px;
-            line-height: 1.6;
-        }
         @media (max-width: 950px) {
             .content { padding: 24px 22px 44px; }
         }
@@ -506,7 +513,14 @@ if (isset($_GET['dashboard_data'])) {
             .stat-card { border-radius: 16px; }
             .panel { border-radius: 16px; }
         }
-    </style>
+    
+        .dashboard-list-item[hidden] { display: none !important; }
+        .list-more-wrap { padding: 9px 0 11px; border-top: 1px solid #f1eeeb; text-align: center; }
+        .list-more-wrap[hidden] { display: none !important; }
+        .list-more-button { padding: 8px 14px; border: 1px solid #e6c4a6; border-radius: 999px; background: #fff8f0; color: #a55325; font: inherit; font-size: .72rem; font-weight: 750; cursor: pointer; }
+        .list-more-button:hover { border-color: #d99a63; background: #fff0e2; }
+        .list-more-button:focus-visible { outline: 3px solid rgba(165,83,37,.25); outline-offset: 2px; }
+</style>
 </head>
 
 <body>
@@ -532,7 +546,7 @@ if (isset($_GET['dashboard_data'])) {
 
         <section class="stats" aria-label="Platform statistics">
 
-            <div class="stat-card blue">
+            <a class="stat-card stat-card-link blue" href="users.php" aria-label="View all users">
                 <div>
                     <div class="label">Total Users</div>
 
@@ -543,14 +557,12 @@ if (isset($_GET['dashboard_data'])) {
                             : number_format($data['stats']['users']);
                         ?>
                     </div>
-
-                    <div class="stat-note">Buyers and sellers only</div>
                 </div>
 
                 <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.5-3.2 2.5-5 6-5s5.5 1.8 6 5M16 5.5a3 3 0 0 1 0 5.7M18 15.5c1.5.8 2.4 2.1 2.8 4.5"/></svg></div>
-            </div>
+            </a>
 
-            <div class="stat-card green">
+            <a class="stat-card stat-card-link green" href="users.php" aria-label="View active seller accounts">
                 <div>
                     <div class="label">Active Sellers</div>
 
@@ -561,16 +573,12 @@ if (isset($_GET['dashboard_data'])) {
                             : number_format($data['stats']['sellers']);
                         ?>
                     </div>
-
-                    <div class="stat-note">
-                        Approved and active accounts
-                    </div>
                 </div>
 
                 <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9h16l-1 12H5L4 9Z"/><path d="M8 9V7a4 4 0 0 1 8 0v2"/></svg></div>
-            </div>
+            </a>
 
-            <div class="stat-card yellow">
+            <a class="stat-card stat-card-link yellow" href="monitoring.php" aria-label="View order monitoring">
                 <div>
                     <div class="label">Total Orders</div>
 
@@ -581,14 +589,12 @@ if (isset($_GET['dashboard_data'])) {
                             : number_format($data['stats']['orders']);
                         ?>
                     </div>
-
-                    <div class="stat-note">All order records</div>
                 </div>
 
                 <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.2 11h11.5l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></div>
-            </div>
+            </a>
 
-            <div class="stat-card purple">
+            <a class="stat-card stat-card-link purple" href="admin_wallet.php" aria-label="View admin wallet and paid order records">
                 <div>
                     <div class="label">Paid Order Value</div>
 
@@ -599,14 +605,10 @@ if (isset($_GET['dashboard_data'])) {
                             : dashboardMoney($data['stats']['paid_value']);
                         ?>
                     </div>
-
-                    <div class="stat-note">
-                        Latest paid payments, excluding cancelled orders
-                    </div>
                 </div>
 
                 <div class="stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19h16M5 16l5-5 4 3 6-7M15 7h5v5"/></svg></div>
-            </div>
+            </a>
 
         </section>
 
@@ -618,7 +620,7 @@ if (isset($_GET['dashboard_data'])) {
 
                     <div>
                         <h2 class="panel-title" id="approvalsTitle">Pending Seller Approvals</h2>
-                        <p class="panel-note">Showing latest 15 applications</p>
+                        <p class="panel-note">Showing 5 applications at a time</p>
                     </div>
 
                     <span class="count-badge" id="pendingCount" title="Total pending seller applications">
@@ -647,7 +649,7 @@ if (isset($_GET['dashboard_data'])) {
 
                         <?php foreach ($data['approvals'] as $application): ?>
 
-                            <li class="approval-item">
+                            <li class="approval-item dashboard-list-item">
 
                                 <div class="item-main">
 
@@ -674,6 +676,9 @@ if (isset($_GET['dashboard_data'])) {
                     <?php endif; ?>
 
                 </ul>
+                <div class="list-more-wrap" id="approvalMoreWrap">
+                    <button class="list-more-button" id="approvalSeeMore" type="button">See 5 More</button>
+                </div>
 
             </section>
 
@@ -682,7 +687,7 @@ if (isset($_GET['dashboard_data'])) {
                 <div class="panel-head">
                     <div>
                         <h2 class="panel-title" id="activityTitle">Recent Activity</h2>
-                        <p class="panel-note">Showing latest 15 events</p>
+                        <p class="panel-note">Showing 5 events at a time</p>
                     </div>
                 </div>
 
@@ -702,7 +707,7 @@ if (isset($_GET['dashboard_data'])) {
 
                         <?php foreach ($data['activity'] as $event): ?>
 
-                            <li class="activity-item">
+                            <li class="activity-item dashboard-list-item">
 
                                 <span
                                     class="activity-dot"
@@ -728,17 +733,14 @@ if (isset($_GET['dashboard_data'])) {
                     <?php endif; ?>
 
                 </ul>
+                <div class="list-more-wrap" id="activityMoreWrap">
+                    <button class="list-more-button" id="activitySeeMore" type="button">See 5 More</button>
+                </div>
 
             </section>
 
         </div>
 
-        <p class="dashboard-footnote">
-            Paid Order Value is the sum of the most recent paid payment
-            for each non-cancelled order. It is not LokalCraft commission
-            or platform revenue. Activity is based on recorded timestamps,
-            not a full audit log.
-        </p>
 
         </div>
     </main>
@@ -774,6 +776,25 @@ if (isset($_GET['dashboard_data'])) {
         return element;
     }
 
+    function createListPager(listId, buttonId, wrapId) {
+        const list = document.getElementById(listId);
+        const button = document.getElementById(buttonId);
+        const wrap = document.getElementById(wrapId);
+        let visible = 5;
+        function apply(reset = false) {
+            if (reset) visible = 5;
+            const items = Array.from(list.querySelectorAll('.dashboard-list-item'));
+            items.forEach((item, index) => { item.hidden = index >= visible; });
+            const remaining = Math.max(0, items.length - visible);
+            wrap.hidden = remaining === 0;
+            if (remaining > 0) button.textContent = `See ${Math.min(5, remaining)} More`;
+        }
+        button.addEventListener('click', () => { visible += 5; apply(); });
+        return { reset: () => apply(true) };
+    }
+    const approvalPager = createListPager('approvalList', 'approvalSeeMore', 'approvalMoreWrap');
+    const activityPager = createListPager('activityList', 'activitySeeMore', 'activityMoreWrap');
+
     function updateApprovals(items) {
         const list = document.getElementById('approvalList');
 
@@ -783,11 +804,12 @@ if (isset($_GET['dashboard_data'])) {
             list.append(
                 node('li', 'empty-list', 'No pending applications.')
             );
+            approvalPager.reset();
             return;
         }
 
         items.forEach(item => {
-            const li = node('li', 'approval-item');
+            const li = node('li', 'approval-item dashboard-list-item');
             const main = node('div', 'item-main');
 
             main.append(
@@ -803,6 +825,7 @@ if (isset($_GET['dashboard_data'])) {
 
             list.append(li);
         });
+        approvalPager.reset();
     }
 
     function updateActivity(items) {
@@ -814,11 +837,12 @@ if (isset($_GET['dashboard_data'])) {
             list.append(
                 node('li', 'empty-list', 'No recent recorded activity.')
             );
+            activityPager.reset();
             return;
         }
 
         items.forEach(item => {
-            const li = node('li', 'activity-item');
+            const li = node('li', 'activity-item dashboard-list-item');
 
             const dot = node('span', 'activity-dot');
             dot.setAttribute('aria-hidden', 'true');
@@ -834,6 +858,7 @@ if (isset($_GET['dashboard_data'])) {
 
             list.append(li);
         });
+        activityPager.reset();
     }
 
     async function syncDashboardData() {
@@ -918,6 +943,8 @@ if (isset($_GET['dashboard_data'])) {
     });
     window.addEventListener('focus', syncDashboardData);
 
+    approvalPager.reset();
+    activityPager.reset();
     startDashboardPolling();
 })();
 </script>

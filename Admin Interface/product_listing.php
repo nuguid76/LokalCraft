@@ -209,8 +209,12 @@ function pmProductCard(array $p): void
         ? ($isAdminRemoved ? 'Removed by Admin' : 'Seller Archived')
         : ($state === 'out_of_stock' ? 'Out of Stock' : 'Available');
     $search = implode(' ', [
-        $p['product_id'], $p['product_name'], $p['seller_name'],
-        $p['craft_category'], $p['status'], $badgeLabel
+        '#'.$p['product_id'], 'product '.$p['product_id'],
+        $p['product_name'], $p['seller_name'], $p['craft_category'],
+        $p['description'], $p['status'], $badgeLabel,
+        number_format((float)$p['cost'], 2, '.', ''),
+        (string)$p['stock'], (string)$p['reserved_stock'],
+        (string)$p['created_at']
     ]);
     ?>
     <article class="product-card" data-product data-state="<?= pmEscape($state) ?>" data-search="<?= pmEscape(strtolower($search)) ?>" <?= $state === 'live' ? '' : 'hidden' ?>>
@@ -235,13 +239,13 @@ function pmProductCard(array $p): void
                 <?php if ($photos): ?>
                     <img src="<?= pmEscape($photos[0]) ?>" data-fallbacks="<?= $photoJson ?>" alt="<?= pmEscape($p['product_name']) ?>" loading="lazy">
                 <?php endif; ?>
-                <div class="photo-empty" <?= $photos ? 'hidden' : '' ?>><span aria-hidden="true">▧</span><small>No product image</small></div>
+                <div class="photo-empty" <?= $photos ? 'hidden' : '' ?>><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m4 17 4.8-4.8a2 2 0 0 1 2.8 0L14 14.6l1.3-1.3a2 2 0 0 1 2.8 0L21 16.2"/></svg></span><small>No product image</small></div>
                 <span class="product-state state-<?= pmEscape($state) ?>"><?= pmEscape($badgeLabel) ?></span>
             </div>
             <div class="product-copy">
                 <h3><?= pmEscape($p['product_name']) ?></h3>
                 <p><?= pmEscape($p['seller_name']) ?></p>
-                <div class="product-bottom"><strong><?= pmEscape(pmMoney($p['cost'])) ?></strong><span>View details <span aria-hidden="true">↗</span></span></div>
+                <div class="product-bottom"><strong><?= pmEscape(pmMoney($p['cost'])) ?></strong><span>View details <span class="pm-inline-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></span></span></div>
             </div>
         </button>
     </article>
@@ -403,6 +407,45 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
 .pm-empty{color:#80756b}
 @media(max-width:840px){.content{padding:93px 17px 80px}}
 @media(max-width:600px){.content{padding-left:13px;padding-right:13px}.pm-stat,.pm-controls,.product-card{border-radius:16px}.pm-controls{padding:15px 13px}}
+
+.pm-catalog{min-width:0;padding:18px 20px 20px;border:1px solid var(--pm-line);border-radius:18px;background:var(--pm-surface);box-shadow:var(--pm-shadow)}
+.pm-catalog .pm-toolbar{margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--pm-line)}
+.pm-search-wrap{position:relative;flex:1 1 260px;max-width:380px;min-width:0}
+.pm-search-wrap .pm-search{max-width:none;padding-right:42px}
+.pm-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:29px;height:29px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:#927f70;font:inherit;font-size:1.17rem;line-height:1;cursor:pointer}
+.pm-search-clear:hover{background:#f5e9dd;color:#a55325}.pm-search-clear[hidden]{display:none!important}
+.product-card[hidden]{display:none!important}
+#pmDetails{z-index:20000}#pmRemove{z-index:20010}
+@media(max-width:840px){.pm-catalog{padding:14px 13px 16px;border-radius:16px}.pm-catalog .pm-toolbar{padding-bottom:13px}.pm-search-wrap{max-width:none;width:100%}.pm-search{font-size:16px}.pm-reason-input{font-size:16px}.pm-overlay{align-items:flex-start;padding:max(18px,calc(env(safe-area-inset-top) + 10px)) 9px max(14px,calc(env(safe-area-inset-bottom) + 8px));overflow-y:auto}.pm-dialog{max-height:calc(100dvh - 36px)}}
+
+/* Single-container layout: tabs no longer have a second boxed container. */
+.pm-catalog .pm-tabs{
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+@media(max-width:640px){
+  .pm-catalog .pm-tabs{
+    padding:0;
+    border:0;
+    background:transparent;
+  }
+}
+
+/* Consistent SVG icon system for Product Listing. */
+.pm-stat-icon svg{width:18px;height:18px;display:block}
+.photo-empty>span{display:grid;place-items:center;width:38px;height:38px}
+.photo-empty>span svg{width:32px;height:32px;display:block}
+.pm-inline-icon{display:inline-grid;place-items:center;vertical-align:-2px}
+.pm-inline-icon svg{width:14px;height:14px;display:block}
+.pm-x{display:grid;place-items:center;padding:0}
+.pm-x svg{width:17px;height:17px;display:block}
+.pm-search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);display:grid;place-items:center;color:#9b8c80;pointer-events:none;z-index:1}
+.pm-search-icon svg{width:17px;height:17px;display:block}
+.pm-search-wrap .pm-search{padding-left:37px}
+.pm-search-clear{padding:0}
+.pm-search-clear svg{width:16px;height:16px;display:block}
 </style>
 </head>
 <body>
@@ -414,11 +457,12 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
 <?php if ($flash): ?><div class="pm-note <?= pmEscape($flash['type'] ?? '') ?>" role="status"><?= pmEscape($flash['message'] ?? '') ?></div><?php endif; ?>
 <?php if ($errorMessage): ?><div class="pm-note error" role="alert"><?= pmEscape($errorMessage) ?></div><?php endif; ?>
 <section class="pm-stats" aria-label="Product summary">
-<article class="pm-stat total"><div class="pm-stat-top"><span class="pm-stat-label">Total Products</span><span class="pm-stat-icon" aria-hidden="true">▣</span></div><strong class="pm-stat-value"><?= number_format($counts['total']) ?></strong></article>
-<article class="pm-stat available"><div class="pm-stat-top"><span class="pm-stat-label">Available</span><span class="pm-stat-icon" aria-hidden="true">✓</span></div><strong class="pm-stat-value"><?= number_format($counts['live']) ?></strong></article>
-<article class="pm-stat stock"><div class="pm-stat-top"><span class="pm-stat-label">Out of Stock</span><span class="pm-stat-icon" aria-hidden="true">◷</span></div><strong class="pm-stat-value"><?= number_format($counts['out_of_stock']) ?></strong></article>
-<article class="pm-stat removed"><div class="pm-stat-top"><span class="pm-stat-label">Removed</span><span class="pm-stat-icon" aria-hidden="true">⊘</span></div><strong class="pm-stat-value"><?= number_format($counts['removed']) ?></strong></article>
+<article class="pm-stat total"><div class="pm-stat-top"><span class="pm-stat-label">Total Products</span><span class="pm-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span></div><strong class="pm-stat-value"><?= number_format($counts['total']) ?></strong></article>
+<article class="pm-stat available"><div class="pm-stat-top"><span class="pm-stat-label">Available</span><span class="pm-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 8.8"/></svg></span></div><strong class="pm-stat-value"><?= number_format($counts['live']) ?></strong></article>
+<article class="pm-stat stock"><div class="pm-stat-top"><span class="pm-stat-label">Out of Stock</span><span class="pm-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></div><strong class="pm-stat-value"><?= number_format($counts['out_of_stock']) ?></strong></article>
+<article class="pm-stat removed"><div class="pm-stat-top"><span class="pm-stat-label">Removed</span><span class="pm-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/></svg></span></div><strong class="pm-stat-value"><?= number_format($counts['removed']) ?></strong></article>
 </section>
+<section class="pm-catalog" aria-label="Product listing controls and results">
 <div class="pm-toolbar">
 <div class="pm-tabs" role="group" aria-label="Product filters">
 <button class="pm-tab active" type="button" data-filter="all" aria-pressed="true"><span class="pm-tab-name">All</span><span class="pm-tab-count"><?= number_format($counts['total']) ?></span></button>
@@ -426,17 +470,18 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
 <button class="pm-tab" type="button" data-filter="out_of_stock" aria-pressed="false"><span class="pm-tab-name">Out of Stock</span><span class="pm-tab-count"><?= number_format($counts['out_of_stock']) ?></span></button>
 <button class="pm-tab" type="button" data-filter="removed" aria-pressed="false" title="Seller-archived and Admin-removed products"><span class="pm-tab-name">Removed</span><span class="pm-tab-count"><?= number_format($counts['removed']) ?></span></button>
 </div>
-<div class="pm-tools"><input class="pm-search" type="search" id="pmSearch" autocomplete="off" aria-label="Search products" placeholder="Search product, seller, category, or ID"><span class="pm-visible" id="pmVisible"></span></div>
+<div class="pm-tools"><div class="pm-search-wrap"><span class="pm-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg></span><input class="pm-search" type="search" id="pmSearch" autocomplete="off" aria-label="Search products" placeholder="Search ID, product, seller, category, status, or price"><button class="pm-search-clear" id="pmSearchClear" type="button" aria-label="Clear product search" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><span class="pm-visible" id="pmVisible"></span></div>
 </div>
 <section class="pm-grid" id="pmGrid" aria-label="Seller products">
 <?php foreach ($products as $product): ?><?php pmProductCard($product); ?><?php endforeach; ?>
 </section>
-<div class="pm-empty" id="pmEmpty" <?= $products ? 'hidden' : '' ?>>No products match your filter.</div>
+<div class="pm-empty" id="pmEmpty" <?= $products ? 'hidden' : '' ?>>No products match your search and selected status.</div>
+</section>
 </div>
 </main>
 </div>
 <div class="pm-overlay" id="pmDetails" aria-hidden="true"><section class="pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pmDetailsTitle">
-<div class="pm-dialog-head"><h2 id="pmDetailsTitle">Product Details</h2><button type="button" class="pm-x" data-close="details" aria-label="Close">×</button></div>
+<div class="pm-dialog-head"><h2 id="pmDetailsTitle">Product Details</h2><button type="button" class="pm-x" data-close="details" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
 <div class="pm-dialog-body"><img class="pm-detail-image" id="pmDetailImage" alt="Seller product" hidden><div class="pm-image-missing" id="pmImageMissing">No product image</div>
 <div class="pm-detail-grid">
 <div class="pm-field"><span>Product ID</span><strong id="pmId"></strong></div>
@@ -453,7 +498,7 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
 </div><div class="pm-dialog-foot"><button class="pm-btn" type="button" data-close="details">Close</button><button class="pm-btn remove" type="button" id="pmRemoveButton">Remove listing</button></div>
 </section></div>
 <div class="pm-overlay" id="pmRemove" aria-hidden="true"><section class="pm-dialog" role="dialog" aria-modal="true" aria-labelledby="pmRemoveTitle">
-<div class="pm-dialog-head"><h2 id="pmRemoveTitle">Remove Listing</h2><button type="button" class="pm-x" data-close="remove" aria-label="Cancel">×</button></div>
+<div class="pm-dialog-head"><h2 id="pmRemoveTitle">Remove Listing</h2><button type="button" class="pm-x" data-close="remove" aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
 <form method="post" action="product_listing.php" id="pmRemoveForm"><div class="pm-dialog-body">
 <p class="pm-help">The listing will be changed to <strong>Archived</strong>. A warning and the reason will be recorded for the Seller interface. This action does not delete product data.</p>
 <input type="hidden" name="csrf_token" value="<?= pmEscape($csrfToken) ?>"><input type="hidden" name="action" value="remove"><input type="hidden" name="product_id" id="pmRemoveId">
@@ -471,16 +516,51 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
     const reason = document.getElementById('pmRemovalReason');
     let currentFilter = 'all';
     let currentButton = null;
+    const productListingSmartBack = (() => {
+        const stack = [];
+        let sequence = 0;
+        let consuming = false;
+        function push(key, close) {
+            const old = stack.findIndex(layer => layer.key === key);
+            if (old >= 0) stack.splice(old, 1);
+            const token = ++sequence;
+            stack.push({key, token, close});
+            history.pushState({...(history.state || {}), lokalcraftProductListing:true, productListingLayer:key, productListingToken:token}, '', location.href);
+        }
+        function remove(key) { const i = stack.findIndex(layer => layer.key === key); if (i >= 0) stack.splice(i, 1); }
+        function closeByUi(key, close) {
+            const top = stack[stack.length - 1];
+            if (top?.key === key && history.state?.productListingToken === top.token) { history.back(); return; }
+            remove(key); close?.('history');
+        }
+        addEventListener('popstate', () => {
+            if (consuming) return;
+            const layer = stack.pop();
+            if (!layer) return;
+            consuming = true;
+            try { layer.close?.('history'); } finally { consuming = false; }
+        });
+        return {push, remove, closeByUi, has:key => stack.some(layer => layer.key === key)};
+    })();
+    const searchClear = document.getElementById('pmSearchClear');
+    function normalizeProductSearch(value) {
+        return String(value || '').toLocaleLowerCase().replace(/[_-]+/g,' ').replace(/[^\p{L}\p{N}#₱.\s]/gu,' ').replace(/\s+/g,' ').trim();
+    }
     function filterCards() {
-        const q = search.value.trim().toLowerCase();
+        const q = normalizeProductSearch(search.value);
+        const compact = q.replace(/\s+/g,'');
         let visible = 0;
         cards.forEach(card => {
-            const matches = (currentFilter === 'all' || card.dataset.state === currentFilter) && card.dataset.search.includes(q);
+            const searchable = normalizeProductSearch(card.dataset.search || '');
+            const textMatch = !q || searchable.includes(q) || searchable.replace(/\s+/g,'').includes(compact);
+            const matches = (currentFilter === 'all' || card.dataset.state === currentFilter) && textMatch;
             card.hidden = !matches;
             if (matches) visible++;
         });
         document.getElementById('pmVisible').textContent = visible + ' of <?= (int)$counts['total'] ?> products shown';
         document.getElementById('pmEmpty').hidden = visible !== 0;
+        searchClear.hidden = search.value === '';
+        search.setAttribute('aria-label', q ? `Search products, ${visible} result${visible === 1 ? '' : 's'}` : 'Search products');
     }
     tabs.forEach(tab => tab.addEventListener('click', () => {
         currentFilter = tab.dataset.filter;
@@ -492,6 +572,12 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
         filterCards();
     }));
     search.addEventListener('input', filterCards);
+    search.addEventListener('search', filterCards);
+    searchClear.addEventListener('click', () => {
+        search.value = '';
+        filterCards();
+        try { search.focus({preventScroll:true}); } catch (_) { search.focus(); }
+    });
     filterCards();
     function loadImage(img, placeholder, sources) {
         let at = 0;
@@ -514,10 +600,11 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
         try { sources = JSON.parse(img.dataset.fallbacks || '[]'); } catch (error) {}
         loadImage(img, img.parentElement.querySelector('.photo-empty'), sources);
     });
-    function show(modal) {
+    function show(modal, key, close) {
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('pm-modal-open');
+        if (!productListingSmartBack.has(key)) productListingSmartBack.push(key, close);
     }
     function hide(modal) {
         modal.classList.remove('open');
@@ -554,40 +641,48 @@ body,.page{background:var(--pm-bg);color:var(--pm-text)}
         let images = [];
         try { images = JSON.parse(d.photos || '[]'); } catch (error) {}
         loadImage(document.getElementById('pmDetailImage'), document.getElementById('pmImageMissing'), images);
-        show(details);
+        show(details, 'product-details', () => closeDetails('history'));
         details.querySelector('.pm-x').focus();
     });
-    function closeDetails() {
+    function closeDetails(source = 'ui') {
+        if (!details.classList.contains('open')) return;
+        if (source !== 'history' && productListingSmartBack.has('product-details')) {
+            productListingSmartBack.closeByUi('product-details', () => closeDetails('history'));
+            return;
+        }
+        productListingSmartBack.remove('product-details');
         hide(details);
         currentButton?.focus();
     }
-    function closeRemoval() {
-        hide(removal);
-        if (currentButton) {
-            show(details);
-            details.querySelector('.pm-x').focus();
+    function closeRemoval(source = 'ui') {
+        if (!removal.classList.contains('open')) return;
+        if (source !== 'history' && productListingSmartBack.has('remove-listing')) {
+            productListingSmartBack.closeByUi('remove-listing', () => closeRemoval('history'));
+            return;
         }
+        productListingSmartBack.remove('remove-listing');
+        hide(removal);
+        details.querySelector('.pm-x')?.focus();
     }
-    details.querySelectorAll('[data-close="details"]').forEach(b => b.addEventListener('click', closeDetails));
-    removal.querySelectorAll('[data-close="remove"]').forEach(b => b.addEventListener('click', closeRemoval));
+    details.querySelectorAll('[data-close="details"]').forEach(b => b.addEventListener('click', () => closeDetails('ui')));
+    removal.querySelectorAll('[data-close="remove"]').forEach(b => b.addEventListener('click', () => closeRemoval('ui')));
     document.getElementById('pmRemoveButton').addEventListener('click', () => {
         if (!currentButton) return;
         document.getElementById('pmRemoveId').value = currentButton.dataset.id;
         document.getElementById('pmRemoveTitle').textContent = 'Remove: ' + currentButton.dataset.name;
         reason.value = '';
         reason.setCustomValidity('');
-        hide(details);
-        show(removal);
+        show(removal, 'remove-listing', () => closeRemoval('history'));
         reason.focus();
     });
     [details, removal].forEach(modal => modal.addEventListener('click', event => {
         if (event.target !== modal) return;
-        modal === removal ? closeRemoval() : closeDetails();
+        modal === removal ? closeRemoval('ui') : closeDetails('ui');
     }));
     document.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
-        if (removal.classList.contains('open')) closeRemoval();
-        else if (details.classList.contains('open')) closeDetails();
+        if (removal.classList.contains('open')) closeRemoval('ui');
+        else if (details.classList.contains('open')) closeDetails('ui');
     });
     reason.addEventListener('input', () => reason.setCustomValidity(''));
     document.getElementById('pmRemoveForm').addEventListener('submit', event => {

@@ -702,6 +702,9 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         }
         .costing-card:hover { transform: translateY(-3px); box-shadow: 0 16px 24px rgba(18,13,9,.08); }
         .costing-card:focus-visible { outline: 3px solid rgba(230,141,45,.28); outline-offset: 2px; }
+        .costing-card[hidden] { display: none !important; }
+        .saved-search-empty[hidden] { display: none !important; }
+        .saved-search-empty .clear-saved-search { margin-top: 14px; border: 1px solid #c96d20; border-radius: 9px; padding: 9px 13px; background: var(--cta-gradient); color: #fff; font: inherit; font-size: .74rem; font-weight: 800; cursor: pointer; }
         .costing-image-wrap { position: relative; width: 100%; aspect-ratio: 1 / .82; background: #eae4df; overflow: hidden; }
         .costing-image { width: 100%; height: 100%; object-fit: cover; display: block; }
         .placeholder-image { width: 100%; height: 100%; display: grid; place-items: center; color: #97908a; background: linear-gradient(135deg,#ece7e2,#e2dbd4); font-size: 2rem; }
@@ -1418,6 +1421,17 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                             tabindex="0"
                             role="button"
                             aria-label="Open <?= htmlspecialchars($costing['product_title'], ENT_QUOTES, 'UTF-8') ?> costing"
+                            data-search="<?= htmlspecialchars(implode(' ', [
+                                'calculation '.(int)$costing['costing_id'],
+                                (string)$costing['product_title'],
+                                (string)$costing['craft_category'],
+                                formatCategory($costing['craft_category']),
+                                number_format((float)$costing['total_material_cost'], 2, '.', ''),
+                                number_format((float)$costing['total_cost'], 2, '.', ''),
+                                number_format((float)$costing['suggested_price'], 2, '.', ''),
+                                number_format((float)$payload['target_markup'], 2, '.', ''),
+                                (string)$costing['created_at']
+                            ]), ENT_QUOTES, 'UTF-8') ?>"
                             data-costing="<?= htmlspecialchars(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE), ENT_QUOTES, 'UTF-8') ?>"
                         >
                             <div class="costing-image-wrap">
@@ -1440,6 +1454,11 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
                             </div>
                         </article>
                     <?php endforeach; ?>
+                </div>
+                <div class="empty-state saved-search-empty" id="savedCalculationSearchEmpty" hidden>
+                    <h2>No matching saved calculations</h2>
+                    <p>Search by product name, category, calculation ID, price, markup, or date.</p>
+                    <button class="clear-saved-search" id="clearSavedCalculationSearch" type="button">Clear Search</button>
                 </div>
             <?php endif; ?>
         </div>
@@ -1694,6 +1713,43 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
     }
 })();
 (() => {
+    const search = document.getElementById('productSearch');
+    const cards = Array.from(document.querySelectorAll('#costing-grid .costing-card'));
+    const empty = document.getElementById('savedCalculationSearchEmpty');
+    const clear = document.getElementById('clearSavedCalculationSearch');
+    if (!search || !cards.length) return;
+    search.dataset.searchOwner = 'saved-calculations';
+    search.placeholder = 'Search saved calculations...';
+    search.autocomplete = 'off';
+    const normalize = value => String(value || '')
+        .toLocaleLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/[^\p{L}\p{N}#₱.%\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const apply = () => {
+        const query = normalize(search.value);
+        const compact = query.replace(/\s+/g, '');
+        let visible = 0;
+        cards.forEach(card => {
+            const haystack = normalize(card.dataset.search || '');
+            const match = !query || haystack.includes(query) || haystack.replace(/\s+/g, '').includes(compact);
+            card.hidden = !match;
+            if (match) visible++;
+        });
+        if (empty) empty.hidden = !query || visible !== 0;
+        search.setAttribute('aria-label', query ? `Search saved calculations, ${visible} result${visible === 1 ? '' : 's'}` : 'Search saved calculations');
+    };
+    search.addEventListener('input', apply);
+    search.addEventListener('search', apply);
+    clear?.addEventListener('click', () => {
+        search.value = '';
+        apply();
+        try { search.focus({preventScroll:true}); } catch (_) { search.focus(); }
+    });
+    apply();
+})();
+(() => {
     const savedMaterials = <?= $savedMaterialsJson ?: '[]' ?>;
     const ESTIMATED_PLATFORM_FEE_RATE = 0.05;
     const materialMap = new Map(
@@ -1724,6 +1780,47 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
     const confirmDelete = document.getElementById('confirm-delete');
     let selectedCosting = null;
     let imagePreviewUrl = null;
+    // Edit Calculation is the parent layer. Full image and Delete confirmation
+    // are child layers. Browser/mobile Back closes only the top layer.
+    const savedCostingSmartBack = (() => {
+        const stack = [];
+        let sequence = 0;
+        let consuming = false;
+        function push(key, close) {
+            const current = stack.findIndex(layer => layer.key === key);
+            if (current >= 0) stack.splice(current, 1);
+            const token = ++sequence;
+            stack.push({key, token, close});
+            history.pushState({
+                ...(history.state || {}),
+                lokalcraftSavedCosting: true,
+                savedCostingLayer: key,
+                savedCostingToken: token
+            }, '', location.href);
+        }
+        function remove(key) {
+            const index = stack.findIndex(layer => layer.key === key);
+            if (index >= 0) stack.splice(index, 1);
+        }
+        function closeByUi(key, close) {
+            const top = stack[stack.length - 1];
+            if (top?.key === key && history.state?.savedCostingToken === top.token) {
+                history.back();
+                return;
+            }
+            remove(key);
+            close?.('history');
+        }
+        addEventListener('popstate', () => {
+            if (consuming) return;
+            const layer = stack.pop();
+            if (!layer) return;
+            consuming = true;
+            try { layer.close?.('history'); }
+            finally { consuming = false; }
+        });
+        return {push, remove, closeByUi, has:key => stack.some(layer => layer.key === key)};
+    })();
     function escapeHtml(value) {
         return String(value ?? '')
             .replaceAll('&', '&amp;')
@@ -1778,9 +1875,17 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         imageViewerImg.src = activeImageSrc;
         imageViewer.hidden = false;
         document.getElementById('saved-image-viewer-close').focus();
+        if (!savedCostingSmartBack.has('full-image')) {
+            savedCostingSmartBack.push('full-image', () => closeImageViewer('history'));
+        }
     }
-    function closeImageViewer() {
+    function closeImageViewer(source = 'ui') {
         if (imageViewer.hidden) return;
+        if (source !== 'history' && savedCostingSmartBack.has('full-image')) {
+            savedCostingSmartBack.closeByUi('full-image', () => closeImageViewer('history'));
+            return;
+        }
+        savedCostingSmartBack.remove('full-image');
         imageViewer.hidden = true;
         imageViewerImg.removeAttribute('src');
         if (previewTrigger?.isConnected) previewTrigger.focus({preventScroll:true});
@@ -1823,8 +1928,8 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         discardPendingImage();
         clearFieldError(productImageInput);
     });
-    document.getElementById('saved-image-viewer-close').addEventListener('click', closeImageViewer);
-    imageViewer.addEventListener('click', event => { if (event.target === imageViewer) closeImageViewer(); });
+    document.getElementById('saved-image-viewer-close').addEventListener('click', () => closeImageViewer('ui'));
+    imageViewer.addEventListener('click', event => { if (event.target === imageViewer) closeImageViewer('ui'); });
     function clearFieldError(input) {
         if (!input) return;
         input.classList.remove('field-error');
@@ -2175,9 +2280,17 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
         confirmDelete.disabled = false;
         confirmDelete.textContent = 'Delete Permanently';
         confirmDelete.focus();
+        if (!savedCostingSmartBack.has('delete-confirm')) {
+            savedCostingSmartBack.push('delete-confirm', () => closeDeleteConfirm('history'));
+        }
     }
-    function closeDeleteConfirm() {
+    function closeDeleteConfirm(source = 'ui') {
         if (deleteModal.hidden || confirmDelete.disabled) return;
+        if (source !== 'history' && savedCostingSmartBack.has('delete-confirm')) {
+            savedCostingSmartBack.closeByUi('delete-confirm', () => closeDeleteConfirm('history'));
+            return;
+        }
+        savedCostingSmartBack.remove('delete-confirm');
         deleteModal.hidden = true;
         deleteModal.setAttribute('aria-hidden', 'true');
         deleteStatus.textContent = '';
@@ -2265,12 +2378,22 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             top: 0,
             behavior: 'instant'
         });
+        if (!savedCostingSmartBack.has('edit-calculation')) {
+            savedCostingSmartBack.push('edit-calculation', () => closeModal('history'));
+        }
     }
-    function closeModal() {
+    function closeModal(source = 'ui') {
+        if (!modal.classList.contains('is-open')) return;
+        if (source !== 'history' && savedCostingSmartBack.has('edit-calculation')) {
+            savedCostingSmartBack.closeByUi('edit-calculation', () => closeModal('history'));
+            return;
+        }
+        savedCostingSmartBack.remove('edit-calculation');
         modal.classList.remove('is-open');
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('modal-open');
-        closeImageViewer();
+        if (!imageViewer.hidden) closeImageViewer('history');
+        if (!deleteModal.hidden && !confirmDelete.disabled) closeDeleteConfirm('history');
         selectedCosting = null;
         setStatus('');
         clearValidation();
@@ -2303,18 +2426,18 @@ $savedMaterialsJson = json_encode($savedMaterials, JSON_UNESCAPED_UNICODE | JSON
             }
         });
     });
-    modalClose.addEventListener('click', closeModal);
-    modalBackdrop.addEventListener('click', closeModal);
-    cancelEdit.addEventListener('click', closeModal);
+    modalClose.addEventListener('click', () => closeModal('ui'));
+    modalBackdrop.addEventListener('click', () => closeModal('ui'));
+    cancelEdit.addEventListener('click', () => closeModal('ui'));
     deleteButton.addEventListener('click', openDeleteConfirm);
-    cancelDelete.addEventListener('click', closeDeleteConfirm);
-    deleteBackdrop.addEventListener('click', closeDeleteConfirm);
+    cancelDelete.addEventListener('click', () => closeDeleteConfirm('ui'));
+    deleteBackdrop.addEventListener('click', () => closeDeleteConfirm('ui'));
     confirmDelete.addEventListener('click', deleteSelectedCosting);
     document.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
-        if (!deleteModal.hidden) { closeDeleteConfirm(); return; }
-        if (!imageViewer.hidden) { closeImageViewer(); return; }
-        if (modal.classList.contains('is-open')) closeModal();
+        if (!deleteModal.hidden) { closeDeleteConfirm('ui'); return; }
+        if (!imageViewer.hidden) { closeImageViewer('ui'); return; }
+        if (modal.classList.contains('is-open')) closeModal('ui');
     });
     document
         .getElementById('add-material')

@@ -411,6 +411,10 @@ body{background:#f7f6f4;color:#352f29;font-family:Inter,system-ui,-apple-system,
   .profile-summary>.approved-pill{padding:6px 10px;min-height:30px;font-size:.68rem}
   .profile-name{color:#493a30}
 }
+/* Seller Profile has no searchable listing. Hide only the shared search area here. */
+.profile-content .seller-header-tools .seller-search-layout{display:none!important}
+.profile-content .seller-header-tools{justify-content:flex-end}
+.profile-content .seller-header-tools .seller-menu-toggle{margin-right:auto}
 /* Seller Profile only: agreed page width, palette, and action colors. */
 :root{--sp-cta-gradient:linear-gradient(135deg,#A55325 0%,#C2692E 100%)}
 body,.page,.profile-content{background:#FFF8ED}
@@ -428,7 +432,11 @@ body,.page,.profile-content{background:#FFF8ED}
 <div class="page">
 <?php require __DIR__ . '/seller_nav.php'; ?>
 <main class="profile-content">
-<?php require __DIR__ . '/seller_search.php'; ?>
+<?php
+// Profile has no searchable listing. Keep the shared Seller header actions,
+// but hide its search control on this module only.
+require __DIR__ . '/seller_search.php';
+?>
 <div class="profile-wrap">
 <div class="profile-topbar">
 <div><div class="sp-eyebrow">SELLER ACCOUNT</div><h1 class="profile-title">My Profile</h1></div>
@@ -569,7 +577,7 @@ if(birthInput && calendar && birthButton){
     for(let n=1;n<=count;n++){
       const iso=`${year}-${String(month).padStart(2,'0')}-${String(n).padStart(2,'0')}`;
       const button=document.createElement('button');button.type='button';button.textContent=String(n);button.setAttribute('aria-label',`${months[month-1]} ${n}, ${year}`);button.setAttribute('aria-pressed',String(iso===birthInput.value));button.disabled=iso>todayIso;
-      button.addEventListener('click',()=>{birthInput.value=iso;refreshLabel();close();});days.append(button);
+      button.addEventListener('click',()=>{birthInput.value=iso;refreshLabel();close('ui');});days.append(button);
     }
     $('spPrevMonth').disabled=year===1900&&month===1;
     $('spNextMonth').disabled=year===today.getFullYear()&&month>=today.getMonth()+1;
@@ -599,11 +607,17 @@ if(birthInput && calendar && birthButton){
     const top=Math.max(visibleTop+12,Math.min(proposed,visibleTop+visibleHeight-height-12));
     calendar.style.top=`${top}px`;
   };
-  const close=()=>{calendar.hidden=true;birthButton.setAttribute('aria-expanded','false');};
+  window.closeProfileCalendar=(source='ui')=>{
+    if(calendar.hidden)return;
+    if(source!=='history'&&profileSmartBack.has('birthday-calendar')){profileSmartBack.closeByUi('birthday-calendar',()=>closeProfileCalendar('history'));return;}
+    profileSmartBack.remove('birthday-calendar');calendar.hidden=true;birthButton.setAttribute('aria-expanded','false');
+  };
+  const close=source=>closeProfileCalendar(source||'ui');
   birthButton.addEventListener('click',()=>{
-    if(!calendar.hidden){close();return;}
+    if(!calendar.hidden){close('ui');return;}
     if(document.activeElement instanceof HTMLElement && document.activeElement.matches('input,textarea,select'))document.activeElement.blur();
     render();calendar.hidden=false;birthButton.setAttribute('aria-expanded','true');
+    if(!profileSmartBack.has('birthday-calendar'))profileSmartBack.push('birthday-calendar',()=>closeProfileCalendar('history'));
     positionCalendar();requestAnimationFrame(positionCalendar);window.setTimeout(positionCalendar,220);
   });
   const editDialog=$('spEditOverlay')?.querySelector('.sp-modal');
@@ -611,16 +625,16 @@ if(birthInput && calendar && birthButton){
   window.addEventListener('resize',positionCalendar,{passive:true});
   window.visualViewport?.addEventListener('resize',positionCalendar,{passive:true});
   window.visualViewport?.addEventListener('scroll',positionCalendar,{passive:true});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!calendar.hidden){event.preventDefault();event.stopImmediatePropagation();close();}},true);
-  ['spEditClose','spCancel'].forEach(id=>$(id)?.addEventListener('click',close));
-  new MutationObserver(()=>{if(!$('spEditOverlay')?.classList.contains('open')&&!calendar.hidden)close();}).observe($('spEditOverlay'),{attributes:true,attributeFilter:['class']});
-  $('spForm')?.addEventListener('submit',close);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!calendar.hidden){event.preventDefault();event.stopImmediatePropagation();close('ui');}},true);
+  ['spEditClose','spCancel'].forEach(id=>$(id)?.addEventListener('click',()=>{if(!calendar.hidden)close('history');}));
+  new MutationObserver(()=>{if(!$('spEditOverlay')?.classList.contains('open')&&!calendar.hidden)close('history');}).observe($('spEditOverlay'),{attributes:true,attributeFilter:['class']});
+  $('spForm')?.addEventListener('submit',()=>{if(!calendar.hidden)close('history');});
 
   monthBox.addEventListener('change',()=>{month=Number(monthBox.value);render();});yearBox.addEventListener('change',()=>{year=Number(yearBox.value);render();});
   $('spPrevMonth').addEventListener('click',()=>{if(month===1){year--;month=12;}else month--;render();});
   $('spNextMonth').addEventListener('click',()=>{if(month===12){year++;month=1;}else month++;render();});
-  $('spBirthClear').addEventListener('click',()=>{birthInput.value='';refreshLabel();close();});
-  document.addEventListener('pointerdown',event=>{if(!calendar.hidden&&!calendar.contains(event.target)&&!birthButton.contains(event.target))close();});
+  $('spBirthClear').addEventListener('click',()=>{birthInput.value='';refreshLabel();close('ui');});
+  document.addEventListener('pointerdown',event=>{if(!calendar.hidden&&!calendar.contains(event.target)&&!birthButton.contains(event.target))close('ui');});
   refreshLabel();render();
 }
 const profileTooltips=[...document.querySelectorAll('.sp-once-tooltip')];
@@ -644,6 +658,27 @@ function revealField(field){
 document.addEventListener('focusin',event=>{const field=event.target;if(field instanceof HTMLElement&&field.closest('.sp-modal')&&field.matches('input,textarea,select'))revealField(field);});
 
 const edit=$('spEditOverlay'),otp=$('spOtpOverlay'),form=$('spForm'),error=$('spFormError');
+const profileSmartBack=(()=>{
+  const stack=[];let sequence=0,consuming=false;
+  function push(key,close){
+    const existing=stack.findIndex(layer=>layer.key===key);
+    if(existing>=0)stack.splice(existing,1);
+    const token=++sequence;stack.push({key,token,close});
+    history.pushState({...history.state,lokalcraftSellerProfile:true,profileLayer:key,profileToken:token},'',location.href);
+  }
+  function remove(key){const index=stack.findIndex(layer=>layer.key===key);if(index>=0)stack.splice(index,1);}
+  function closeByUi(key,close){
+    const top=stack[stack.length-1];
+    if(top?.key===key&&history.state?.profileToken===top.token){history.back();return;}
+    remove(key);close?.('history');
+  }
+  addEventListener('popstate',()=>{
+    if(consuming)return;
+    const layer=stack.pop();if(!layer)return;
+    consuming=true;try{layer.close?.('history');}finally{consuming=false;}
+  });
+  return{push,remove,closeByUi,has:key=>stack.some(layer=>layer.key===key)};
+})();
 const email=$('spEmail'),phone=$('spPhone'),business=$('spBusinessName'),desc=$('spDescription'),street=$('spStreet'),barangay=$('spBarangay'),city=$('spCity'),zip=$('spZip');
 const currentEmail=<?= json_encode(strtolower(trim((string)($profile['email']??''))),JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
 const csrf=<?= json_encode($csrf,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
@@ -651,9 +686,18 @@ const barangays=<?= json_encode($barangays,JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|J
 let saving=false,verifying=false,emailSerial=0,emailTimer=null,cooldown=null,cooldownEnd=0;
 const lockBody=()=>document.body.classList.toggle('profile-modal-open',edit.classList.contains('open')||otp.classList.contains('open'));
 const setError=message=>{error.textContent=message||'';error.hidden=!message;};
-const openEdit=()=>{edit.classList.add('open');edit.setAttribute('aria-hidden','false');lockBody();$('spEditClose').focus({preventScroll:true});};
-const closeEdit=()=>{if(saving||verifying||otp.classList.contains('open'))return;if(calendar)calendar.hidden=true;birthButton?.setAttribute('aria-expanded','false');edit.classList.remove('open');edit.setAttribute('aria-hidden','true');lockBody();};
-$('spOpen')?.addEventListener('click',openEdit);$('spEditClose').addEventListener('click',closeEdit);$('spCancel').addEventListener('click',closeEdit);
+const openEdit=(pushHistory=true)=>{
+  edit.classList.add('open');edit.setAttribute('aria-hidden','false');lockBody();$('spEditClose').focus({preventScroll:true});
+  if(pushHistory&&!profileSmartBack.has('edit-profile'))profileSmartBack.push('edit-profile',()=>closeEdit('history'));
+};
+const closeEdit=(source='ui')=>{
+  if(saving||verifying||otp.classList.contains('open'))return;
+  if(source!=='history'&&profileSmartBack.has('edit-profile')){profileSmartBack.closeByUi('edit-profile',()=>closeEdit('history'));return;}
+  profileSmartBack.remove('edit-profile');
+  if(calendar&&!calendar.hidden)closeProfileCalendar('history');
+  birthButton?.setAttribute('aria-expanded','false');edit.classList.remove('open');edit.setAttribute('aria-hidden','true');lockBody();
+};
+$('spOpen')?.addEventListener('click',()=>openEdit(true));$('spEditClose').addEventListener('click',()=>closeEdit('ui'));$('spCancel').addEventListener('click',()=>closeEdit('ui'));
 // Outside taps do not close the form; protects copy/paste and unsaved changes.
 async function request(action,values={}){
   const params=new URLSearchParams({...values,action,csrf_token:csrf});
@@ -691,14 +735,28 @@ function syncDigits(){otpValue.value=digits.map(x=>x.value).join('');digits.forE
 function fillDigits(text,start=0){String(text).replace(/\D/g,'').slice(0,6-start).split('').forEach((c,i)=>digits[start+i].value=c);syncDigits();digits[Math.min(5,start+String(text).replace(/\D/g,'').length)].focus({preventScroll:true});}
 digits.forEach((digit,i)=>{digit.addEventListener('input',()=>{const value=digit.value.replace(/\D/g,'');digit.value='';if(value)fillDigits(value,i);else syncDigits();setOtpMessage('');});digit.addEventListener('paste',event=>{event.preventDefault();fillDigits(event.clipboardData?.getData('text')||'',i);setOtpMessage('');});digit.addEventListener('keydown',event=>{if(event.key==='Backspace'){event.preventDefault();if(digit.value)digit.value='';else if(i>0){digits[i-1].value='';digits[i-1].focus({preventScroll:true});}syncDigits();setOtpMessage('');}else if(event.key==='ArrowLeft'&&i>0){event.preventDefault();digits[i-1].focus({preventScroll:true});}else if(event.key==='ArrowRight'&&i<5){event.preventDefault();digits[i+1].focus({preventScroll:true});}else if(event.key==='Enter'){event.preventDefault();if(!verify.disabled)verify.click();}});digit.addEventListener('focus',()=>digit.select());});
 function startCooldown(seconds){clearInterval(cooldown);cooldownEnd=Date.now()+Math.max(0,Number(seconds)||0)*1000;function draw(){const left=Math.max(0,Math.ceil((cooldownEnd-Date.now())/1000));resend.disabled=left>0||verifying;resend.textContent=left>0?`Resend code (${left}s)`:'Resend code';if(!left)clearInterval(cooldown);}draw();cooldown=setInterval(draw,1000);}
-function openOtp(masked,seconds){if(calendar)calendar.hidden=true;birthButton?.setAttribute('aria-expanded','false');digits.forEach(x=>x.value='');otpValue.value='';setOtpMessage('');otpEmail.textContent=masked||email.value;otp.classList.add('open');otp.setAttribute('aria-hidden','false');edit.setAttribute('aria-hidden','true');syncDigits();startCooldown(seconds);lockBody();digits[0].focus({preventScroll:true});}
-async function closeOtp(){if(verifying)return;otp.classList.remove('open');otp.setAttribute('aria-hidden','true');edit.setAttribute('aria-hidden','false');clearInterval(cooldown);lockBody();email.focus({preventScroll:true});try{await request('sp_email_cancel');}catch(e){}}
-$('spOtpClose').addEventListener('click',closeOtp);$('spOtpCancel').addEventListener('click',closeOtp);
+function openOtp(masked,seconds){
+  if(calendar&&!calendar.hidden)closeProfileCalendar('history');
+  birthButton?.setAttribute('aria-expanded','false');digits.forEach(x=>x.value='');otpValue.value='';setOtpMessage('');otpEmail.textContent=masked||email.value;otp.classList.add('open');otp.setAttribute('aria-hidden','false');edit.setAttribute('aria-hidden','true');syncDigits();startCooldown(seconds);lockBody();digits[0].focus({preventScroll:true});
+  if(!profileSmartBack.has('email-otp'))profileSmartBack.push('email-otp',()=>closeOtp('history'));
+}
+async function closeOtp(source='ui'){
+  if(verifying)return;
+  if(source!=='history'&&profileSmartBack.has('email-otp')){profileSmartBack.closeByUi('email-otp',()=>closeOtp('history'));return;}
+  profileSmartBack.remove('email-otp');otp.classList.remove('open');otp.setAttribute('aria-hidden','true');edit.setAttribute('aria-hidden','false');clearInterval(cooldown);lockBody();email.focus({preventScroll:true});try{await request('sp_email_cancel');}catch(e){}
+}
+$('spOtpClose').addEventListener('click',()=>closeOtp('ui'));$('spOtpCancel').addEventListener('click',()=>closeOtp('ui'));
 form.addEventListener('submit',async event=>{if(saving){event.preventDefault();return;}if(!validate()){event.preventDefault();return;}if(email.value.trim().toLowerCase()===currentEmail){save.disabled=true;save.textContent='Saving...';return;}event.preventDefault();setSaving(true);try{const values=Object.fromEntries(new FormData(form).entries());const result=await request('sp_email_start',values);if(!result.success){setError(result.message||'Unable to send verification code.');return;}openOtp(result.masked_email,result.resend_seconds);}catch(e){setError('Unable to send verification code right now. Please try again.');}finally{setSaving(false);}});
 verify.addEventListener('click',async()=>{if(verifying||verify.disabled)return;verifying=true;syncDigits();verify.textContent='Verifying...';try{const result=await request('sp_email_verify',{otp:otpValue.value});if(!result.success){setOtpMessage(result.message||'Incorrect verification code.','bad');digits.forEach(x=>x.value='');syncDigits();digits[0].focus({preventScroll:true});return;}setOtpMessage('Email verified. Saving changes...','good');window.location.assign(result.redirect||'profile_seller.php');}catch(e){setOtpMessage('Verification unavailable. Please try again.','bad');}finally{verifying=false;verify.textContent='Verify & Save Changes';syncDigits();}});
 resend.addEventListener('click',async()=>{if(resend.disabled||verifying)return;resend.disabled=true;try{const result=await request('sp_email_resend');setOtpMessage(result.message|| (result.success?'New code sent.':'Could not resend code.'),result.success?'good':'bad');startCooldown(result.resend_seconds||45);}catch(e){setOtpMessage('Unable to resend right now.','bad');startCooldown(30);}});
 // Close dialogs only via their Close / Cancel controls.
-if(edit.classList.contains('open'))lockBody();
+if(edit.classList.contains('open')){lockBody();}
+// Escape closes only the top profile layer.
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape')return;
+  if(otp.classList.contains('open')){event.preventDefault();closeOtp('ui');return;}
+  if(edit.classList.contains('open')&&!saving&&!verifying){event.preventDefault();closeEdit('ui');}
+});
 })();
 </script>
 </body>

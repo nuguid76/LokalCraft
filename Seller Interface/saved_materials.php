@@ -606,6 +606,9 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
 .card, .material-card { border-color: #eadfd6; background: rgba(255,255,255,.94); box-shadow: 0 8px 22px rgba(76,50,32,.05); }
 .material-card { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
 .material-card:focus-visible { outline: 3px solid rgba(234,138,58,.35); outline-offset: 2px; }
+.material-card[hidden] { display: none !important; }
+.material-search-empty[hidden] { display: none !important; }
+.material-search-empty .clear-material-search { margin-top: 14px; border: 1px solid #c96d20; border-radius: 9px; padding: 9px 13px; background: var(--cta-gradient); color: #fff; font: inherit; font-size: .74rem; font-weight: 800; cursor: pointer; }
 .material-name { overflow-wrap: anywhere; }
 .material-detail { overflow-wrap: anywhere; }
 .unit-cost { overflow-wrap: anywhere; }
@@ -788,7 +791,15 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
                              data-name="<?= htmlspecialchars($material['material_name'], ENT_QUOTES, 'UTF-8') ?>"
                              data-quantity="<?= number_format($qty, 2, '.', '') ?>"
                              data-unit="<?= htmlspecialchars($material['unit'], ENT_QUOTES, 'UTF-8') ?>"
-                             data-price="<?= number_format($price, 2, '.', '') ?>">
+                             data-price="<?= number_format($price, 2, '.', '') ?>"
+                             data-search="<?= htmlspecialchars(implode(' ', [
+                                 'material '.(int)$material['material_id'],
+                                 (string)$material['material_name'],
+                                 number_format($qty, 2, '.', ''),
+                                 (string)$material['unit'],
+                                 number_format($price, 2, '.', ''),
+                                 number_format($unitCost, 2, '.', '')
+                             ]), ENT_QUOTES, 'UTF-8') ?>">
                         <div class="material-name"><?= htmlspecialchars($material['material_name'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="material-detail">
                             Reference: <?= number_format($qty, 2) ?> <?= htmlspecialchars($material['unit'], ENT_QUOTES, 'UTF-8') ?><br />
@@ -801,6 +812,11 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
                         </div>
                     </article>
                 <?php endforeach; ?>
+            </div>
+            <div class="empty material-search-empty" id="materialSearchEmpty" hidden>
+                <h3>No matching saved materials</h3>
+                <p>Search by material name, material ID, quantity, unit, price, or unit cost.</p>
+                <button class="clear-material-search" id="clearMaterialSearch" type="button">Clear Search</button>
             </div>
         </div>
     </main>
@@ -893,6 +909,9 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
     const status = document.getElementById('status');
     const materialsGrid = document.getElementById('materials-grid');
     const emptyState = document.getElementById('empty-state');
+    const materialSearch = document.getElementById('productSearch');
+    const materialSearchEmpty = document.getElementById('materialSearchEmpty');
+    const clearMaterialSearch = document.getElementById('clearMaterialSearch');
     const materialCount = document.getElementById('material-count');
     const editModal = document.getElementById('edit-modal');
     const editId = document.getElementById('edit-material-id');
@@ -990,6 +1009,36 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
         const payload = await response.json();
         return payload;
     }
+    function normalizeMaterialSearch(value) {
+        return String(value || '').toLocaleLowerCase().replace(/[_-]+/g, ' ').replace(/[^\p{L}\p{N}#₱.\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    }
+    function applyMaterialSearch() {
+        const query = normalizeMaterialSearch(materialSearch?.value);
+        const compact = query.replace(/\s+/g, '');
+        const cards = Array.from(materialsGrid.querySelectorAll('.material-card'));
+        let visible = 0;
+        cards.forEach(card => {
+            const haystack = normalizeMaterialSearch(card.dataset.search || [card.dataset.id, card.dataset.name, card.dataset.quantity, card.dataset.unit, card.dataset.price].join(' '));
+            const match = !query || haystack.includes(query) || haystack.replace(/\s+/g, '').includes(compact);
+            card.hidden = !match;
+            if (match) visible++;
+        });
+        if (materialSearchEmpty) materialSearchEmpty.hidden = !query || visible !== 0;
+        materialSearch?.setAttribute('aria-label', query ? `Search saved materials, ${visible} result${visible === 1 ? '' : 's'}` : 'Search saved materials');
+    }
+    if (materialSearch) {
+        materialSearch.dataset.searchOwner = 'saved-materials';
+        materialSearch.placeholder = 'Search saved materials...';
+        materialSearch.autocomplete = 'off';
+        materialSearch.addEventListener('input', applyMaterialSearch);
+        materialSearch.addEventListener('search', applyMaterialSearch);
+    }
+    clearMaterialSearch?.addEventListener('click', () => {
+        if (!materialSearch) return;
+        materialSearch.value = '';
+        applyMaterialSearch();
+        try { materialSearch.focus({preventScroll:true}); } catch (_) { materialSearch.focus(); }
+    });
     function currentMaterialCount() {
         return materialsGrid.querySelectorAll('.material-card').length;
     }
@@ -1010,6 +1059,14 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
         card.dataset.quantity = Number.isFinite(qty) ? qty.toFixed(2) : '';
         card.dataset.unit = String(material.unit || '');
         card.dataset.price = Number.isFinite(price) ? price.toFixed(2) : '';
+        card.dataset.search = [
+            `material ${Number(material.material_id || 0)}`,
+            String(material.material_name || ''),
+            Number.isFinite(qty) ? qty.toFixed(2) : '',
+            String(material.unit || ''),
+            Number.isFinite(price) ? price.toFixed(2) : '',
+            Number.isFinite(unitCost) ? unitCost.toFixed(2) : ''
+        ].join(' ');
         card.innerHTML = `
             <div class="material-name">${escapeHtml(material.material_name)}</div>
             <div class="material-detail">
@@ -1035,6 +1092,7 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
             .find(other => other !== card && other.dataset.name.localeCompare(materialName, undefined, {sensitivity: 'base'}) > 0);
         materialsGrid.insertBefore(card, followingCard || null);
         updateCountAndEmptyState();
+        applyMaterialSearch();
         return card;
     }
     function clearEditCloseTimer() {
@@ -1306,6 +1364,7 @@ h1 { margin: 0; font-size: 2.1rem; font-weight: 800; letter-spacing: -.7px; }
     bindTooltips();
     updateCreatePreview();
     updateCountAndEmptyState();
+    applyMaterialSearch();
 })();
 </script>
 </body>

@@ -132,20 +132,41 @@ function walletRows(array $transactions): string {
         $orderId = (int)($transaction['order_id'] ?? 0);
         $details = walletDetails($transaction);
         $json = json_encode($details, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
-        $searchText = strtolower(implode(' ', [$transaction['wallet_transaction_id'], $orderId, $category, $transaction['seller_name'] ?? '', $transaction['reference_key'] ?? '', $transaction['description'] ?? '', $transaction['payment_reference'] ?? '', $transaction['paymongo_payment_reference'] ?? '', $transaction['paymongo_intent_reference'] ?? '']));
+        $searchText = strtolower(implode(' ', [
+            '#'.$transaction['wallet_transaction_id'],
+            'transaction '.$transaction['wallet_transaction_id'],
+            $orderId > 0 ? '#'.$orderId.' order '.$orderId : '',
+            $category,
+            $transaction['seller_name'] ?? '',
+            $transaction['buyer_name'] ?? '',
+            $transaction['direction'] ?? '',
+            $transaction['collection_method'] ?? '',
+            $transaction['commission_status'] ?? '',
+            $transaction['order_status'] ?? '',
+            $transaction['payment_method'] ?? '',
+            $transaction['payment_provider'] ?? '',
+            $transaction['payment_status'] ?? '',
+            $transaction['reference_key'] ?? '',
+            $transaction['description'] ?? '',
+            $transaction['payment_reference'] ?? '',
+            $transaction['paymongo_payment_reference'] ?? '',
+            $transaction['paymongo_intent_reference'] ?? '',
+            number_format((float)$transaction['amount'], 2, '.', ''),
+            $transaction['created_at'] ?? ''
+        ]));
     ?>
     <button type="button" class="wallet-row" data-wallet-row data-direction="<?= walletEsc($directionClass) ?>" data-search="<?= walletEsc($searchText) ?>" data-details="<?= walletEsc($json ?: '{}') ?>" aria-label="View <?= walletEsc($category) ?> transaction #<?= (int)$transaction['wallet_transaction_id'] ?>">
         <span class="wallet-row-main">
-            <span class="wallet-entry-icon <?= walletEsc($directionClass) ?>" aria-hidden="true"><?= $directionClass === 'debit' ? '↗' : '↙' ?></span>
+            <span class="wallet-entry-icon <?= walletEsc($directionClass) ?>" aria-hidden="true"><?= $directionClass === 'debit' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>' ?></span>
             <span class="wallet-row-identity"><strong><?= walletEsc($orderId > 0 ? 'Order #' . $orderId : 'Transaction #' . (int)$transaction['wallet_transaction_id']) ?></strong><small><?= walletEsc($category) ?> · <?= walletEsc($orderId > 0 ? walletValue($transaction['seller_name']) : 'Platform wallet') ?></small></span>
         </span>
         <span class="wallet-row-type"><span class="wallet-category"><?= walletEsc($category) ?></span></span>
         <span class="wallet-row-date"><?= walletEsc(walletDate($transaction['created_at'])) ?></span>
         <span class="wallet-row-end"><strong class="wallet-row-amount <?= walletEsc($directionClass) ?>"><?= $sign . walletEsc(walletMoney($transaction['amount'])) ?></strong><small>Balance: <?= walletEsc(walletMoneyOptional($transaction['balance_after'])) ?></small></span>
-        <span class="wallet-row-chevron" aria-hidden="true">›</span>
+        <span class="wallet-row-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span>
     </button>
     <?php endforeach; ?>
-    <div class="wallet-empty" id="walletEmpty" <?= $transactions ? 'hidden' : '' ?>><span class="wallet-empty-mark" aria-hidden="true">▤</span><strong><?= $transactions ? 'No matching transactions' : 'No wallet transactions yet' ?></strong><span><?= $transactions ? 'Try another search or transaction type.' : 'Transactions will appear here when recorded.' ?></span></div>
+    <div class="wallet-empty" id="walletEmpty" <?= $transactions ? 'hidden' : '' ?>><span class="wallet-empty-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4zM7 4h10v3H7z"/><path d="M8 12h8M8 16h5"/></svg></span><strong><?= $transactions ? 'No matching transactions' : 'No wallet transactions yet' ?></strong><span><?= $transactions ? 'Try another search or transaction type.' : 'Transactions will appear here when recorded.' ?></span></div>
     <?php
     return ob_get_clean();
 }
@@ -251,6 +272,26 @@ body,.page{background:var(--w-bg)}
 .wallet-panel-footer{justify-content:flex-start;color:#887a6d}
 @media(max-width:840px){.page>.content{padding:93px 17px 80px}}
 @media(max-width:620px){.page>.content{padding-left:13px;padding-right:13px}.wallet-stat,.wallet-panel{border-radius:16px}}
+
+.wallet-search input{padding-right:41px}
+.wallet-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:29px;height:29px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:#927f70;font:inherit;font-size:1.15rem;line-height:1;cursor:pointer}
+.wallet-search-clear:hover{background:#f5e9dd;color:#a55325}.wallet-search-clear[hidden]{display:none!important}
+.wallet-row[hidden]{display:none!important}
+.wallet-stat-filter{font:inherit;color:inherit;text-align:left;appearance:none;cursor:default}
+.wallet-stat-filter:hover,.wallet-stat-filter.active{border-color:var(--w-line);box-shadow:var(--w-shadow);transform:none}
+.wallet-stat-filter:focus-visible{outline:2px solid rgba(165,83,37,.24);outline-offset:2px}
+@media(max-width:620px){.wallet-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.wallet-search input{height:42px;font-size:16px}.wallet-modal{align-items:flex-start;padding:max(18px,calc(env(safe-area-inset-top) + 10px)) 9px max(14px,calc(env(safe-area-inset-bottom) + 8px))}.wallet-modal-card{max-height:calc(100dvh - 36px)}}
+
+/* Consistent SVG icon system for Admin Platform Wallet. */
+.wallet-stat-icon svg{width:19px;height:19px;display:block}
+.wallet-entry-icon svg{width:18px;height:18px;display:block}
+.wallet-row-chevron{display:grid;place-items:center}
+.wallet-row-chevron svg{width:17px;height:17px;display:block}
+.wallet-empty-mark svg{width:24px;height:24px;display:block}
+.wallet-modal-close,.wallet-search-clear{padding:0;display:grid;place-items:center}
+.wallet-modal-close svg{width:17px;height:17px;display:block}
+.wallet-search-clear svg{width:15px;height:15px;display:block}
+.wallet-search>svg{width:17px;height:17px;display:block}
 </style>
 </head>
 <body>
@@ -258,17 +299,17 @@ body,.page{background:var(--w-bg)}
 <?php include __DIR__ . '/admin_nav.php'; ?>
 <main class="content">
 <div class="wallet-wrap">
-<header class="wallet-header"><div><h1>Platform Wallet</h1></div></header>
+<header class="wallet-header"><div><h1>Admin Platform Wallet</h1></div></header>
 <div class="wallet-error" id="walletError" role="status" <?= $errorMessage === '' ? 'hidden' : '' ?>><?= walletEsc($errorMessage) ?></div>
 <section class="wallet-stats" aria-label="Platform wallet summary">
-<article class="wallet-stat"><div><span class="wallet-stat-name">Platform Balance</span><strong class="wallet-stat-value" id="walletStatBalance"><?= walletEsc(walletMoney($data['platform_balance'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true">₱</span></article>
-<article class="wallet-stat"><div><span class="wallet-stat-name">Total Platform Fees</span><strong class="wallet-stat-value" id="walletStatFees"><?= walletEsc(walletMoney($data['total_fees'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true">↗</span></article>
-<article class="wallet-stat"><div><span class="wallet-stat-name">Gross QR Sales</span><strong class="wallet-stat-value" id="walletStatGross"><?= walletEsc(walletMoney($data['gross_qr_sales'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true">▦</span></article>
-<article class="wallet-stat"><div><span class="wallet-stat-name">Fee Transactions</span><strong class="wallet-stat-value" id="walletStatCount"><?= number_format($data['fee_transactions']) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true">▤</span></article>
+<button class="wallet-stat wallet-stat-filter" type="button" data-wallet-stat-filter="all" aria-label="Show all platform wallet transactions"><div><span class="wallet-stat-name">Platform Balance</span><strong class="wallet-stat-value" id="walletStatBalance"><?= walletEsc(walletMoney($data['platform_balance'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5z"/><path d="M4 8h15M15 11h6v5h-6a2.5 2.5 0 0 1 0-5Z"/><circle cx="16.8" cy="13.5" r=".7" fill="currentColor" stroke="none"/></svg></span></button>
+<button class="wallet-stat wallet-stat-filter" type="button" data-wallet-stat-filter="credit" aria-label="Show platform fee credits"><div><span class="wallet-stat-name">Total Platform Fees</span><strong class="wallet-stat-value" id="walletStatFees"><?= walletEsc(walletMoney($data['total_fees'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17 17 5M8 5h9v9"/><path d="M5 9v8h8"/></svg></span></button>
+<button class="wallet-stat wallet-stat-filter" type="button" data-wallet-stat-filter="credit" aria-label="Show QR and platform fee credits"><div><span class="wallet-stat-name">Gross QR Sales</span><strong class="wallet-stat-value" id="walletStatGross"><?= walletEsc(walletMoney($data['gross_qr_sales'])) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM18 14h3M21 17v4h-4M14 19v2"/></svg></span></button>
+<button class="wallet-stat wallet-stat-filter" type="button" data-wallet-stat-filter="all" aria-label="Show all fee transactions"><div><span class="wallet-stat-name">Fee Transactions</span><strong class="wallet-stat-value" id="walletStatCount"><?= number_format($data['fee_transactions']) ?></strong></div><span class="wallet-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span></button>
 </section>
 <section class="wallet-panel" aria-labelledby="walletHistoryTitle">
-<div class="wallet-panel-head"><div class="wallet-panel-title"><h2 id="walletHistoryTitle">Recent Transactions</h2></div><span class="wallet-sync" id="walletSync" hidden aria-hidden="true"><span class="wallet-sync-dot"></span></span></div>
-<div class="wallet-controls"><div class="wallet-filters" aria-label="Transaction filters"><button type="button" class="wallet-filter active" data-filter="all" aria-pressed="true">All <span class="wallet-count" data-count="all"><?= (int)$counts['all'] ?></span></button><button type="button" class="wallet-filter" data-filter="credit" aria-pressed="false">Credits <span class="wallet-count" data-count="credit"><?= (int)$counts['credit'] ?></span></button><button type="button" class="wallet-filter" data-filter="debit" aria-pressed="false">Debits <span class="wallet-count" data-count="debit"><?= (int)$counts['debit'] ?></span></button></div><label class="wallet-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input type="search" id="walletSearch" autocomplete="off" placeholder="Search order, seller or reference" aria-label="Search wallet transactions"></label></div>
+<div class="wallet-panel-head"><div class="wallet-panel-title"><h2 id="walletHistoryTitle">Platform Transaction History</h2></div><span class="wallet-sync" id="walletSync" hidden aria-hidden="true"><span class="wallet-sync-dot"></span></span></div>
+<div class="wallet-controls"><div class="wallet-filters" aria-label="Transaction filters"><button type="button" class="wallet-filter active" data-filter="all" aria-pressed="true">All <span class="wallet-count" data-count="all"><?= (int)$counts['all'] ?></span></button><button type="button" class="wallet-filter" data-filter="credit" aria-pressed="false">Credits <span class="wallet-count" data-count="credit"><?= (int)$counts['credit'] ?></span></button><button type="button" class="wallet-filter" data-filter="debit" aria-pressed="false">Debits <span class="wallet-count" data-count="debit"><?= (int)$counts['debit'] ?></span></button><button type="button" class="wallet-filter" data-filter="refund" aria-pressed="false">Refunds</button></div><label class="wallet-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input type="search" id="walletSearch" autocomplete="off" placeholder="Search ID, order, seller, buyer, amount, or reference" aria-label="Search platform wallet transactions"><button class="wallet-search-clear" id="walletSearchClear" type="button" aria-label="Clear wallet search" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></label></div>
 <div class="wallet-list-head" aria-hidden="true"><span>Transaction</span><span>Category</span><span>Date</span><span style="text-align:right">Amount</span><span></span></div>
 <div id="walletRows"><?= walletRows($data['transactions']) ?></div>
 <footer class="wallet-panel-footer"><span><strong id="walletVisible"><?= number_format($counts['all']) ?></strong> transaction(s) shown · Latest 100 records</span></footer>
@@ -277,7 +318,7 @@ body,.page{background:var(--w-bg)}
 </main>
 </div>
 <div class="wallet-modal" id="walletModal" aria-hidden="true"><div class="wallet-modal-card" role="dialog" aria-modal="true" aria-labelledby="walletModalTitle">
-<div class="wallet-modal-head"><div><small>Platform wallet activity</small><h2 id="walletModalTitle">Transaction Details</h2></div><button type="button" class="wallet-modal-close" id="walletClose" aria-label="Close transaction details">×</button></div>
+<div class="wallet-modal-head"><div><small>Platform wallet activity</small><h2 id="walletModalTitle">Transaction Details</h2></div><button type="button" class="wallet-modal-close" id="walletClose" aria-label="Close transaction details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
 <div class="wallet-modal-body">
 <div class="wallet-hero"><div><small>Transaction amount</small><strong id="walletHeroAmount">—</strong></div><span class="wallet-hero-tag" id="walletHeroCategory">—</span></div>
 <section class="wallet-detail-section"><h3>Transaction Overview</h3><div class="wallet-detail-grid">
@@ -316,6 +357,8 @@ body,.page{background:var(--w-bg)}
     const closeButton = document.getElementById('walletClose');
     const doneButton = document.getElementById('walletDone');
     const error = document.getElementById('walletError');
+    const searchClear = document.getElementById('walletSearchClear');
+    const statFilters = [...document.querySelectorAll('[data-wallet-stat-filter]')];
     const formatter = new Intl.NumberFormat('en-PH');
     let currentFilter = 'all';
     let trigger = null;
@@ -323,12 +366,21 @@ body,.page{background:var(--w-bg)}
     let closingFromHistory = false;
     let refreshing = false;
     let lastRefresh = Date.now();
+    function normalizeWalletSearch(value) {
+        return String(value || '').toLocaleLowerCase().replace(/[_-]+/g,' ').replace(/[^\p{L}\p{N}#₱.@+\s]/gu,' ').replace(/\s+/g,' ').trim();
+    }
     function applyFilters() {
-        const term = search.value.trim().toLocaleLowerCase();
+        const term = normalizeWalletSearch(search.value);
+        const compact = term.replace(/\s+/g,'');
         const cards = rows.querySelectorAll('[data-wallet-row]');
         let visible = 0;
         cards.forEach(card => {
-            const show = (currentFilter === 'all' || card.dataset.direction === currentFilter) && (card.dataset.search || '').includes(term);
+            const searchable = normalizeWalletSearch(card.dataset.search || '');
+            const directionMatch = currentFilter === 'all'
+                || card.dataset.direction === currentFilter
+                || (currentFilter === 'refund' && searchable.includes('refund'));
+            const textMatch = !term || searchable.includes(term) || searchable.replace(/\s+/g,'').includes(compact);
+            const show = directionMatch && textMatch;
             card.hidden = !show;
             if (show) visible++;
         });
@@ -341,6 +393,9 @@ body,.page{background:var(--w-bg)}
             if (note) note.textContent = cards.length ? 'Try another search or transaction type.' : 'Transactions will appear here when recorded.';
         }
         document.getElementById('walletVisible').textContent = formatter.format(visible);
+        searchClear.hidden = search.value === '';
+        search.setAttribute('aria-label', term ? `Search platform wallet, ${visible} result${visible === 1 ? '' : 's'}` : 'Search platform wallet transactions');
+        statFilters.forEach(card => card.classList.toggle('active', card.dataset.walletStatFilter === currentFilter));
     }
     filters.forEach(button => button.addEventListener('click', () => {
         currentFilter = button.dataset.filter || 'all';
@@ -352,6 +407,22 @@ body,.page{background:var(--w-bg)}
         applyFilters();
     }));
     search.addEventListener('input', applyFilters);
+    search.addEventListener('search', applyFilters);
+    searchClear.addEventListener('click', () => {
+        search.value = '';
+        applyFilters();
+        try { search.focus({preventScroll:true}); } catch (_) { search.focus(); }
+    });
+    statFilters.forEach(card => card.addEventListener('click', () => {
+        currentFilter = card.dataset.walletStatFilter || 'all';
+        filters.forEach(other => {
+            const selected = other.dataset.filter === currentFilter;
+            other.classList.toggle('active', selected);
+            other.setAttribute('aria-pressed', String(selected));
+        });
+        applyFilters();
+        document.getElementById('walletHistoryTitle')?.scrollIntoView({block:'start',behavior:'smooth'});
+    }));
     rows.addEventListener('click', event => {
         const row = event.target.closest('[data-wallet-row]');
         if (!row) return;

@@ -1689,6 +1689,24 @@ body .page > main.content.orders-content {
     const detailsBody=document.getElementById('orderDetailsBody');
     const detailsFooter=document.getElementById('orderDetailsFooter');
     const confirm=document.getElementById('actionDialog');
+    // Order Details is the parent layer; action/rejection confirmation is the
+    // child. Browser/device Back closes one layer at a time.
+    const ordersSmartBack=(()=>{
+        const stack=[];let sequence=0,consuming=false;
+        function push(key,close){
+            const old=stack.findIndex(layer=>layer.key===key);if(old>=0)stack.splice(old,1);
+            const token=++sequence;stack.push({key,token,close});
+            history.pushState({...history.state,lokalcraftSellerOrders:true,ordersLayer:key,ordersToken:token},'',location.href);
+        }
+        function remove(key){const i=stack.findIndex(layer=>layer.key===key);if(i>=0)stack.splice(i,1)}
+        function closeByUi(key,close){
+            const top=stack[stack.length-1];
+            if(top?.key===key&&history.state?.ordersToken===top.token){history.back();return}
+            remove(key);close?.('history');
+        }
+        addEventListener('popstate',()=>{if(consuming)return;const layer=stack.pop();if(!layer)return;consuming=true;try{layer.close?.('history')}finally{consuming=false}});
+        return{push,remove,closeByUi,has:key=>stack.some(layer=>layer.key===key)};
+    })();
     const toast=document.getElementById('ordersToast');
     let toastTimeout=null;
     function syncToastLayer(){
@@ -1722,16 +1740,23 @@ body .page > main.content.orders-content {
         detailsBody.scrollTop=0;
         lastRow=row;
         details.showModal();
+        if(!ordersSmartBack.has('order-details'))ordersSmartBack.push('order-details',()=>closeDetails('history'));
         syncToastLayer();
         updateScroll();
+    }
+    function closeDetails(source='ui'){
+        if(!details?.open)return;
+        if(source!=='history'&&ordersSmartBack.has('order-details')){ordersSmartBack.closeByUi('order-details',()=>closeDetails('history'));return}
+        ordersSmartBack.remove('order-details');details.close(source);
     }
     rows.forEach(row=>{
         row.addEventListener('click',event=>{if(event.target.closest('button,a,input,select,textarea'))return;openDetails(row)});
         row.addEventListener('keydown',event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();openDetails(row)}});
     });
-    document.getElementById('orderDetailsClose')?.addEventListener('click',()=>details?.close());
-    details?.addEventListener('click',event=>{if(event.target===details)details.close()});
-    details?.addEventListener('close',()=>{syncToastLayer();updateScroll();lastRow?.focus({preventScroll:true})});
+    document.getElementById('orderDetailsClose')?.addEventListener('click',()=>closeDetails('ui'));
+    details?.addEventListener('click',event=>{if(event.target===details)closeDetails('ui')});
+    details?.addEventListener('cancel',event=>{event.preventDefault();closeDetails('ui')});
+    details?.addEventListener('close',()=>{ordersSmartBack.remove('order-details');syncToastLayer();updateScroll();lastRow?.focus({preventScroll:true})});
     const title=document.getElementById('actionDialogTitle');
     const message=document.getElementById('actionDialogMessage');
     const action=document.getElementById('actionDialogAction');
@@ -1798,12 +1823,19 @@ body .page > main.content.orders-content {
         extra.classList.remove('is-invalid');
         updateRejectionState();
         confirm.showModal();
+        if(!ordersSmartBack.has('order-action'))ordersSmartBack.push('order-action',()=>closeActionDialog('history'));
         syncToastLayer();
         updateScroll();
     });
-    document.getElementById('actionDialogCancel')?.addEventListener('click',()=>confirm?.close());
-    confirm?.addEventListener('click',event=>{if(event.target===confirm)confirm.close()});
-    confirm?.addEventListener('close',()=>{saving=false;syncToastLayer();updateScroll();actionTrigger?.focus({preventScroll:true});actionTrigger=null});
+    function closeActionDialog(source='ui'){
+        if(!confirm?.open)return;
+        if(source!=='history'&&ordersSmartBack.has('order-action')){ordersSmartBack.closeByUi('order-action',()=>closeActionDialog('history'));return}
+        ordersSmartBack.remove('order-action');confirm.close(source);
+    }
+    document.getElementById('actionDialogCancel')?.addEventListener('click',()=>closeActionDialog('ui'));
+    confirm?.addEventListener('click',event=>{if(event.target===confirm)closeActionDialog('ui')});
+    confirm?.addEventListener('cancel',event=>{event.preventDefault();closeActionDialog('ui')});
+    confirm?.addEventListener('close',()=>{ordersSmartBack.remove('order-action');saving=false;syncToastLayer();updateScroll();actionTrigger?.focus({preventScroll:true});actionTrigger=null});
     form?.addEventListener('submit',event=>{
         if(saving){event.preventDefault();return}
         if(!updateRejectionState()){

@@ -467,6 +467,12 @@ body,.page{background:var(--bg);color:var(--ink)}
 .viewer-header{background:#fffaf5;border-color:#eee3da}
 @media(max-width:840px){.content{padding:93px 17px 80px}}
 @media(max-width:600px){.content{padding-left:13px;padding-right:13px}.summary-card,.list-panel{border-radius:16px}.toolbar{padding:15px 13px}}
+
+.search-wrap input{padding-right:41px}
+.search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:29px;height:29px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:#927f70;font:inherit;font-size:1.15rem;line-height:1;cursor:pointer}
+.search-clear:hover{background:#f5e9dd;color:#a55325}.search-clear[hidden]{display:none!important}
+.application-row[hidden]{display:none!important}
+@media(max-width:900px){.search-wrap input,.reject-form textarea{font-size:16px}.modal-overlay{padding:max(18px,calc(env(safe-area-inset-top) + 10px)) 8px max(14px,calc(env(safe-area-inset-bottom) + 8px))}.modal{max-height:calc(100dvh - 36px)}}
 </style>
 </head>
 <body>
@@ -509,9 +515,11 @@ body,.page{background:var(--bg);color:var(--ink)}
         <input
           type="search"
           id="applicationSearch"
-          placeholder="Search seller or business"
+          placeholder="Search ID, seller, email, phone, business, category, location, or status"
+          aria-label="Search seller applications"
           autocomplete="off"
         >
+        <button class="search-clear" id="applicationSearchClear" type="button" aria-label="Clear seller application search" hidden>&times;</button>
       </div>
     </div>
     <div class="table-shell">
@@ -600,11 +608,24 @@ body,.page{background:var(--bg);color:var(--ink)}
                     'rejectionReason' => $application['rejection_reason'] ?? '',
                 ];
                 $searchText = strtolower(implode(' ', [
+                    '#'.$applicationId,
+                    'application '.$applicationId,
+                    'user '.(int)($application['user_id'] ?? 0),
                     $fullName,
                     $application['email'] ?? '',
+                    $application['phone'] ?? '',
                     $application['businessname'] ?? '',
                     $application['craftcategory'] ?? '',
+                    $application['businessdescription'] ?? '',
+                    $application['validid_type'] ?? '',
+                    $application['business_document_type'] ?? '',
+                    $application['streetaddress'] ?? '',
+                    $application['barangay'] ?? '',
+                    $application['city'] ?? '',
+                    $application['zipcode'] ?? '',
                     $location,
+                    $status,
+                    $application['submitted_at'] ?? '',
                 ]));
               ?>
               <tr
@@ -768,6 +789,41 @@ body,.page{background:var(--bg);color:var(--ink)}
   let currentApplication = null;
   let currentStatusFilter = 'all';
   let currentDocumentObjectUrl = '';
+  let lastOverlayFocus = null;
+  const approvalSmartBack = (() => {
+    const stack = [];
+    let sequence = 0;
+    let consuming = false;
+    function push(id) {
+      const index = stack.findIndex(layer => layer.id === id);
+      if (index >= 0) stack.splice(index, 1);
+      const token = ++sequence;
+      stack.push({id, token});
+      history.pushState({...(history.state || {}), lokalcraftSellerApprovals:true, approvalLayer:id, approvalToken:token}, '', location.href);
+    }
+    function remove(id) {
+      const index = stack.findIndex(layer => layer.id === id);
+      if (index >= 0) stack.splice(index, 1);
+    }
+    function closeByUi(id) {
+      const top = stack[stack.length - 1];
+      if (top?.id === id && history.state?.approvalToken === top.token) {
+        history.back();
+        return true;
+      }
+      remove(id);
+      return false;
+    }
+    addEventListener('popstate', () => {
+      if (consuming) return;
+      const layer = stack.pop();
+      if (!layer) return;
+      consuming = true;
+      try { closeOverlay(layer.id, 'history'); }
+      finally { consuming = false; }
+    });
+    return {push, remove, closeByUi, has:id => stack.some(layer => layer.id === id)};
+  })();
   function escapeHtml(value) {
     return String(value ?? '')
       .replaceAll('&', '&amp;')
@@ -776,38 +832,40 @@ body,.page{background:var(--bg);color:var(--ink)}
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#039;');
   }
-  function openOverlay(id) {
+  function openOverlay(id, trigger = null) {
     const overlay = document.getElementById(id);
     if (!overlay) return;
-    overlay.classList.add('show');
-    overlay.setAttribute('aria-hidden', 'false');
+    if (!overlay.classList.contains('show')) {
+      lastOverlayFocus = trigger || document.activeElement;
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+      approvalSmartBack.push(id);
+    }
     document.body.classList.add('modal-open');
+    overlay.querySelector('.modal-close,button,input,textarea,select')?.focus({preventScroll:true});
   }
-  function closeOverlay(id) {
+  function clearDocumentViewer() {
+    const image = document.getElementById('documentViewerImage');
+    const pdf = document.getElementById('documentViewerPdf');
+    const loading = document.getElementById('documentViewerLoading');
+    const viewerError = document.getElementById('documentViewerError');
+    image.hidden = true; image.removeAttribute('src');
+    pdf.hidden = true; pdf.removeAttribute('src');
+    loading.hidden = true; viewerError.hidden = true; viewerError.textContent = '';
+    if (currentDocumentObjectUrl) { URL.revokeObjectURL(currentDocumentObjectUrl); currentDocumentObjectUrl = ''; }
+  }
+  function closeOverlay(id, source = 'ui') {
     const overlay = document.getElementById(id);
-    if (!overlay) return;
+    if (!overlay || !overlay.classList.contains('show')) return;
+    if (source !== 'history' && approvalSmartBack.has(id) && approvalSmartBack.closeByUi(id)) return;
+    approvalSmartBack.remove(id);
     overlay.classList.remove('show');
     overlay.setAttribute('aria-hidden', 'true');
+    if (id === 'documentViewerOverlay') clearDocumentViewer();
     if (!document.querySelector('.modal-overlay.show')) {
       document.body.classList.remove('modal-open');
     }
-    if (id === 'documentViewerOverlay') {
-      const image = document.getElementById('documentViewerImage');
-      const pdf = document.getElementById('documentViewerPdf');
-      const loading = document.getElementById('documentViewerLoading');
-      const viewerError = document.getElementById('documentViewerError');
-      image.hidden = true;
-      image.removeAttribute('src');
-      pdf.hidden = true;
-      pdf.removeAttribute('src');
-      loading.hidden = true;
-      viewerError.hidden = true;
-      viewerError.textContent = '';
-      if (currentDocumentObjectUrl) {
-        URL.revokeObjectURL(currentDocumentObjectUrl);
-        currentDocumentObjectUrl = '';
-      }
-    }
+    lastOverlayFocus?.focus?.({preventScroll:true});
   }
   function infoItem(label, value, full = false) {
     return `
@@ -1082,13 +1140,13 @@ body,.page{background:var(--bg);color:var(--ink)}
   });
   document.querySelectorAll('[data-close]').forEach(button => {
     button.addEventListener('click', () => {
-      closeOverlay(button.dataset.close);
+      closeOverlay(button.dataset.close, 'ui');
     });
   });
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', event => {
       if (event.target === overlay) {
-        closeOverlay(overlay.id);
+        closeOverlay(overlay.id, 'ui');
       }
     });
   });
@@ -1118,24 +1176,28 @@ body,.page{background:var(--bg);color:var(--ink)}
     }
   });
   const searchInput = document.getElementById('applicationSearch');
+  const searchClear = document.getElementById('applicationSearchClear');
   const rows = Array.from(document.querySelectorAll('.application-row'));
   const noResults = document.getElementById('noFilterResults');
+  function normalizeApplicationSearch(value) {
+    return String(value || '').toLocaleLowerCase().replace(/[_-]+/g,' ').replace(/[^\p{L}\p{N}#.@+\s]/gu,' ').replace(/\s+/g,' ').trim();
+  }
   function filterApplications() {
-    const search = searchInput.value.trim().toLowerCase();
+    const search = normalizeApplicationSearch(searchInput.value);
+    const compact = search.replace(/\s+/g,'');
     let visible = 0;
     rows.forEach(row => {
-      const matchesSearch = !search || row.dataset.search.includes(search);
-      const matchesStatus =
-        currentStatusFilter === 'all'
-        || row.dataset.status === currentStatusFilter;
+      const searchable = normalizeApplicationSearch(row.dataset.search || '');
+      const matchesSearch = !search || searchable.includes(search) || searchable.replace(/\s+/g,'').includes(compact);
+      const matchesStatus = currentStatusFilter === 'all' || row.dataset.status === currentStatusFilter;
       const show = matchesSearch && matchesStatus;
       row.hidden = !show;
       if (show) visible++;
     });
-    noResults.style.display =
-      rows.length > 0 && visible === 0
-        ? 'block'
-        : 'none';
+    noResults.style.display = rows.length > 0 && visible === 0 ? 'block' : 'none';
+    noResults.textContent = search ? 'No seller applications match your search and selected status.' : 'No applications match your current filter.';
+    searchClear.hidden = searchInput.value === '';
+    searchInput.setAttribute('aria-label', search ? `Search seller applications, ${visible} result${visible === 1 ? '' : 's'}` : 'Search seller applications');
   }
   document.querySelectorAll('.filter-tab').forEach(button => {
     button.addEventListener('click', () => {
@@ -1147,13 +1209,20 @@ body,.page{background:var(--bg);color:var(--ink)}
     });
   });
   searchInput.addEventListener('input', filterApplications);
+  searchInput.addEventListener('search', filterApplications);
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    filterApplications();
+    try { searchInput.focus({preventScroll:true}); } catch (_) { searchInput.focus(); }
+  });
+  filterApplications();
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     const openOverlays = Array.from(
       document.querySelectorAll('.modal-overlay.show')
     );
     if (openOverlays.length) {
-      closeOverlay(openOverlays[openOverlays.length - 1].id);
+      closeOverlay(openOverlays[openOverlays.length - 1].id, 'ui');
     }
   });
 </script>

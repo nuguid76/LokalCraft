@@ -2493,6 +2493,42 @@ body .page > main.content.products-main {
     const maxQuickCustomizations = 5;
     let activeProductCard = null;
     let savedCalculationSnapshot = null;
+    // One history entry per visible Products popup. Back closes only the
+    // frontmost popup, preserving any parent popup underneath it.
+    const productsSmartBack = (() => {
+      const stack = [];
+      let sequence = 0;
+      let consumingPop = false;
+      function push(key, close) {
+        const existing = stack.findIndex(layer => layer.key === key);
+        if (existing >= 0) stack.splice(existing, 1);
+        const token = ++sequence;
+        stack.push({key, token, close});
+        history.pushState({...(history.state || {}), lokalcraftProducts: true,
+          productsLayer: key, productsToken: token}, '', location.href);
+      }
+      function remove(key) {
+        const index = stack.findIndex(layer => layer.key === key);
+        if (index >= 0) stack.splice(index, 1);
+      }
+      function closeByUi(key, close) {
+        const top = stack[stack.length - 1];
+        if (top?.key === key && history.state?.productsToken === top.token) {
+          history.back();
+          return;
+        }
+        remove(key);
+        close?.('history');
+      }
+      addEventListener('popstate', () => {
+        if (consumingPop) return;
+        const layer = stack.pop();
+        if (!layer) return;
+        consumingPop = true;
+        try { layer.close?.('history'); } finally { consumingPop = false; }
+      });
+      return {push, remove, closeByUi, has:key => stack.some(layer => layer.key === key)};
+    })();
     function formatPeso(value) {
       return new Intl.NumberFormat('en-PH', {
         style: 'currency',
@@ -2643,8 +2679,16 @@ body .page > main.content.products-main {
         if (productViewModalCard) productViewModalCard.scrollTop = 0;
       });
       setPageScrollLock();
+      if (!productsSmartBack.has('product-details')) {
+        productsSmartBack.push('product-details', () => closeProductView('history'));
+      }
     }
-    function closeProductView() {
+    function closeProductView(source = 'ui') {
+      if (source !== 'history' && productsSmartBack.has('product-details')) {
+        productsSmartBack.closeByUi('product-details', () => closeProductView('history'));
+        return;
+      }
+      productsSmartBack.remove('product-details');
       viewModal.classList.remove('show');
       viewModal.setAttribute('aria-hidden', 'true');
       setPageScrollLock();
@@ -2684,8 +2728,16 @@ body .page > main.content.products-main {
       reviewsModal.classList.add('show');
       reviewsModal.setAttribute('aria-hidden', 'false');
       setPageScrollLock();
+      if (!productsSmartBack.has('product-reviews')) {
+        productsSmartBack.push('product-reviews', () => closeReviews('history'));
+      }
     }
-    function closeReviews() {
+    function closeReviews(source = 'ui') {
+      if (source !== 'history' && productsSmartBack.has('product-reviews')) {
+        productsSmartBack.closeByUi('product-reviews', () => closeReviews('history'));
+        return;
+      }
+      productsSmartBack.remove('product-reviews');
       reviewsModal.classList.remove('show');
       reviewsModal.setAttribute('aria-hidden', 'true');
       setPageScrollLock();
@@ -2696,8 +2748,16 @@ body .page > main.content.products-main {
       deleteModal.classList.add('show');
       deleteModal.setAttribute('aria-hidden', 'false');
       setPageScrollLock();
+      if (!productsSmartBack.has('delete-product')) {
+        productsSmartBack.push('delete-product', () => closeDeleteProductModal('history'));
+      }
     }
-    function closeDeleteProductModal() {
+    function closeDeleteProductModal(source = 'ui') {
+      if (source !== 'history' && productsSmartBack.has('delete-product')) {
+        productsSmartBack.closeByUi('delete-product', () => closeDeleteProductModal('history'));
+        return;
+      }
+      productsSmartBack.remove('delete-product');
       deleteModal.classList.remove('show');
       deleteModal.setAttribute('aria-hidden', 'true');
       setPageScrollLock();
@@ -2725,8 +2785,16 @@ body .page > main.content.products-main {
       imageWarningOverlay.setAttribute('aria-hidden', 'false');
       setPageScrollLock();
       window.setTimeout(() => imageWarningClose?.focus(), 0);
+      if (!productsSmartBack.has('image-warning')) {
+        productsSmartBack.push('image-warning', () => closeImageWarning('history'));
+      }
     }
-    function closeImageWarning() {
+    function closeImageWarning(source = 'ui') {
+      if (source !== 'history' && productsSmartBack.has('image-warning')) {
+        productsSmartBack.closeByUi('image-warning', () => closeImageWarning('history'));
+        return;
+      }
+      productsSmartBack.remove('image-warning');
       imageWarningOverlay?.classList.remove('show');
       imageWarningOverlay?.setAttribute('aria-hidden', 'true');
       setPageScrollLock();
@@ -2952,6 +3020,9 @@ body .page > main.content.products-main {
       resetProductModalPosition();
       window.requestAnimationFrame(resetProductModalPosition);
       setPageScrollLock();
+      if (!productsSmartBack.has('product-form')) {
+        productsSmartBack.push('product-form', () => closeModal('history'));
+      }
     }
     function openEditModal(source) {
       if (!source) return;
@@ -3000,14 +3071,22 @@ body .page > main.content.products-main {
           ? 'Current saved image will be kept unless you choose a new one.'
           : 'Choose an image to run the safety check.'
       );
-      closeProductView();
+      // Keep Product Details underneath. Back from Edit returns there.
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
       resetProductModalPosition();
       window.requestAnimationFrame(resetProductModalPosition);
       setPageScrollLock();
+      if (!productsSmartBack.has('product-form')) {
+        productsSmartBack.push('product-form', () => closeModal('history'));
+      }
     }
-    function closeModal() {
+    function closeModal(source = 'ui') {
+      if (source !== 'history' && productsSmartBack.has('product-form')) {
+        productsSmartBack.closeByUi('product-form', () => closeModal('history'));
+        return;
+      }
+      productsSmartBack.remove('product-form');
       ++imageSelectionRequestId;
       ++imageSafetyRequestId;
       preparedProductPhoto = null;
@@ -3046,12 +3125,10 @@ body .page > main.content.products-main {
     });
     viewProductReviews?.addEventListener('click', () => {
       if (!activeProductCard) return;
-      closeProductView();
       openReviewsModal(activeProductCard);
     });
     viewDeleteProduct?.addEventListener('click', () => {
       if (!activeProductCard || !viewDeleteProductId.value) return;
-      closeProductView();
       openDeleteProductModal();
     });
     closeDeleteProduct?.addEventListener('click', closeDeleteProductModal);
